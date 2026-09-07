@@ -690,6 +690,10 @@ class 二维码连接页(QWidget):
 
         self._waiting = True
         self.btn_stop_wait.setEnabled(True)
+        # 进入等待状态：禁用「生成二维码」按钮（再点会换服务名/配对码，
+        # 打断当前等待）。停止等待时由 _stop_waiting 恢复。
+        self.btn_gen_qr.setEnabled(False)
+        self.btn_gen_qr.setText("⏳ 等待手机扫描…")
         self.wait_status.setText(
             f"状态：等待手机扫描二维码…\n"
             f"正在监听服务名 {self._service_name} 的 mDNS 广播（_adb-tls-pairing._tcp）")
@@ -699,6 +703,9 @@ class 二维码连接页(QWidget):
         """停止监听（反注册回调；全局浏览器由 mdns发现 单例统一管理）。"""
         self._waiting = False
         self.btn_stop_wait.setEnabled(False)
+        # 恢复「生成二维码」按钮（等待结束：点停止 / 配对成功 / 配对失败都会走这里）
+        self.btn_gen_qr.setEnabled(True)
+        self.btn_gen_qr.setText("✨ 生成二维码并开始等待")
         if self._mdns_bridge is not None:
             try:
                 from 工具.自研adb.mdns发现 import unregister_pairing_listener
@@ -766,12 +773,25 @@ class 二维码连接页(QWidget):
         self._qr_pair_worker.moveToThread(self._qr_pair_thread)
         self._qr_pair_thread.started.connect(self._qr_pair_worker.run)
         self._qr_pair_worker.log.connect(self._log_scan)
-        self._qr_pair_worker.done.connect(
-            lambda ok, msg: self._on_qr_pair_done(ok, msg, ip, port))
+        # ★ 必须用【绑定方法】连接（绝不能用 lambda）。done 信号由工作线程 emit，
+        #   lambda 连接会被当作 DirectConnection 在工作线程同步执行 _on_qr_pair_done，
+        #   进而在非 GUI 线程访问 Qt 控件（ip_edit / _start_connect 等）→ 原生崩溃
+        #   (0xC0000005)。绑定方法按 self 线程亲和性走 QueuedConnection 回主线程执行。
+        #   发现上下文存 self 传递，避免 lambda 闭包。
+        self._discovered_ip = ip
+        self._discovered_port = port
+        self._qr_pair_worker.done.connect(self._on_qr_pair_done)
         self._qr_pair_thread.start()
 
-    def _on_qr_pair_done(self, ok, msg, ip, port):
-        """adb pair 结果处理：配对成功后自动连接调试端口。"""
+    def _on_qr_pair_done(self, ok, msg):
+        """adb pair 结果处理：配对成功后自动连接调试端口。
+
+        本方法通过绑定方法连接（见 _on_discovered），由 Qt 按 self 的线程亲和性
+        调度到【主线程】执行；发现时的上下文（ip/port）存于 self._discovered_*，
+        避免用 lambda 连接导致在工作线程访问 Qt 控件崩溃。
+        """
+        ip = getattr(self, '_discovered_ip', '')
+        port = getattr(self, '_discovered_port', 0)
         self._pairing_in_progress = False
         self._log_scan(msg)
         if ok:

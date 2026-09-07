@@ -508,6 +508,14 @@ class Ui_MainWindow(object):
 
         self.horizontalLayout.addWidget(self.fileMgr_btnRefresh)
 
+        self.fileMgr_btnDeviceMgr = QPushButton(self.fileMgrContainer)
+        self.fileMgr_btnDeviceMgr.setObjectName(u"fileMgr_btnDeviceMgr")
+        self.fileMgr_btnDeviceMgr.setCheckable(True)
+        self.fileMgr_btnDeviceMgr.setChecked(False)
+
+        self.horizontalLayout.addWidget(self.fileMgr_btnDeviceMgr)
+
+
         self.horizontalSpacer_5 = QSpacerItem(40, 20, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout.addItem(self.horizontalSpacer_5)
@@ -843,6 +851,10 @@ class Ui_MainWindow(object):
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), QCoreApplication.translate("MainWindow", u"adb\u8c03\u8bd5\u6a21\u5757", None))
         self.fileMgrLblDevice.setText(QCoreApplication.translate("MainWindow", u"\u8bbe\u5907:", None))
         self.fileMgr_btnRefresh.setText(QCoreApplication.translate("MainWindow", u"\u5237\u65b0\u8bbe\u5907", None))
+#if QT_CONFIG(tooltip)
+        self.fileMgr_btnDeviceMgr.setToolTip(QCoreApplication.translate("MainWindow", u"\u6253\u5f00\u540e\u52a0\u8f7d\u5e76\u5b9a\u65f6\u5237\u65b0\u6587\u4ef6\u5217\u8868\uff1b\u5173\u95ed\u72b6\u6001\u4e0b\u4e0d\u6267\u884c\u83b7\u53d6\u6587\u4ef6", None))
+#endif // QT_CONFIG(tooltip)
+        self.fileMgr_btnDeviceMgr.setText(QCoreApplication.translate("MainWindow", u"\u6253\u5f00\u8bbe\u5907\u7ba1\u7406\u5668", None))
         self.fileMgr_btnRoot.setText(QCoreApplication.translate("MainWindow", u"\u6839\u76ee\u5f55: /sdcard", None))
         self.fileMgr_pathLabel.setText(QCoreApplication.translate("MainWindow", u"\u2014", None))
         self.fileMgr_statusLabel.setText(QCoreApplication.translate("MainWindow", u"\u5c31\u7eea", None))

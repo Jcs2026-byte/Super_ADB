@@ -28,7 +28,8 @@ import socket
 import time
 
 from PySide6.QtCore import (
-    Qt, QSize, QByteArray, QBuffer, QIODevice, Signal, QObject, QThread)
+    Qt, QSize, QByteArray, QBuffer, QIODevice, Signal, QObject, QThread,
+    QTimer)
 from PySide6.QtGui import QIcon, QPixmap, QImage
 from PySide6.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
@@ -39,6 +40,23 @@ from PySide6.QtWidgets import (
 from 项目UI import png_rc  # noqa: F401
 from 项目UI.弹窗样式 import add_green_glow
 from 项目UI.界面样式 import STYLE_SHEET, get_stylesheet, get_current_theme_id, THEMES
+
+# 精确匹配等待窗口（秒）：超过该时间仍未发现「服务名匹配」的配对广播时，
+# 放开为「任意 pairing 服务」兜底配对。部分 ROM（华为/荣耀/小米等）扫描
+# 二维码后不沿用二维码里的服务名，而是用自生成的实例名注册 mDNS，
+# 精确匹配会永远等不到 → 表现为「手机一直转圈、PC 无反应」。
+# 兜底配对仍受 6 位配对码 + SPAKE2 校验保护，配对码不符会直接失败。
+宽松兜底等待秒 = 12.0
+
+# 端口扫描兜底：极少数 ROM 扫描二维码后【完全不广播】_adb-tls-pairing
+# （实测 adb-ATLS* 类设备如此），mDNS 永远等不到。此时手机其实正在某个
+# 随机端口上等待配对，扫描其高端口并用配对码尝试即可完成配对。
+# 配对码由 SPAKE2 校验，端口猜错会立刻失败，不会误配对。
+端口扫描触发秒 = 10.0
+端口扫描起始 = 30000
+端口扫描结束 = 61000     # Linux/Android 临时端口段（ip_local_port_range 上界）
+端口扫描并发 = 800
+端口扫描超时 = 0.2
 
 
 # ───────────────────────────────────────────────────────────────
@@ -201,10 +219,112 @@ class _PairingPollWorker(QObject):
             except Exception:
                 results = []
             for name, ip, port in results:
-                if self.expected in name:
+                if self.expected.lower() in name.lower():
                     self.found.emit(name, ip, port)
                     return
             time.sleep(1.0)
+
+
+class _PortScanWorker(QObject):
+    """mDNS 兜底：扫描手机高端口，用配对码逐个尝试，找到真正的配对端口。
+
+    背景：部分 ROM 扫描二维码后完全不注册 _adb-tls-pairing 服务（手机一直
+    转圈、PC 端 mDNS 无任何反应），但手机此刻确实在某个随机端口上等待配对。
+    因此退化为「端口扫描 + 配对码校验」：扫到开放端口后逐个尝试 adb pair，
+    配对码错误会在 SPAKE2/PeerInfo 阶段立即失败，不会误配对别的设备。
+    """
+
+    log = Signal(str)
+    found = Signal(str, str, int)      # 伪服务名, ip, port
+    scanned = Signal(str, list)        # ip, 开放端口列表（仅扫描模式）
+
+    def __init__(self, ips, code, start=端口扫描起始, end=端口扫描结束,
+                 workers=端口扫描并发, timeout=端口扫描超时,
+                 exclude=(), mode='pair'):
+        super().__init__()
+        self.ips = list(ips)
+        self.code = code
+        self.start = start
+        self.end = end
+        self.workers = workers
+        self.timeout = timeout
+        self.exclude = set(exclude)     # 已知/基线端口，直接跳过不尝试配对
+        self.按ip排除 = {}              # {ip: set(端口)}，按 IP 细化的排除集合
+        self.mode = mode                # 'pair' 扫描并配对 | 'scan' 仅扫描（取基线）
+        self._stop = False
+
+    def stop(self):
+        self._stop = True
+
+    def _scan(self, ip):
+        import concurrent.futures
+        开放 = []
+
+        def probe(p):
+            if self._stop:
+                return None
+            s = socket.socket()
+            s.settimeout(self.timeout)
+            try:
+                s.connect((ip, p))
+                return p
+            except Exception:
+                return None
+            finally:
+                try:
+                    s.close()
+                except Exception:
+                    pass
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=self.workers) as ex:
+                for r in ex.map(probe, range(self.start, self.end + 1)):
+                    if r:
+                        开放.append(r)
+        except Exception as e:
+            self.log.emit(f"⚠️ 端口扫描异常：{e}")
+        return sorted(开放)
+
+    def run(self):
+        for ip in self.ips:
+            if self._stop:
+                return
+            if self.mode == 'scan':
+                self.log.emit(f"📋 采集基线：扫描 {ip}（{self.start}-{self.end}）…")
+                开放 = self._scan(ip)
+                self.log.emit(f"  ↳ {ip} 扫码前开放端口：{开放 if 开放 else '无'}")
+                self.scanned.emit(ip, 开放)
+                continue
+            self.log.emit(f"🔎 未收到 mDNS 配对广播，启动端口扫描兜底："
+                          f"{ip}（{self.start}-{self.end}）…")
+            开放 = self._scan(ip)
+            self.log.emit(f"  ↳ {ip} 开放端口：{开放 if 开放 else '无'}")
+            排除 = set(self.exclude) | set(self.按ip排除.get(ip, ()))
+            if 排除:
+                新增 = [p for p in 开放 if p not in 排除]
+                self.log.emit(f"  ↳ 与基线做差集后新增端口：{新增 if 新增 else '无（手机未新开端口）'}")
+            for port in 开放:
+                if self._stop:
+                    return
+                if port in 排除:
+                    continue
+                self.log.emit(f"  ↳ 尝试配对 {ip}:{port} …")
+                try:
+                    from 工具.自研adb.配对客户端 import 配对设备
+                    ok, msg = 配对设备(
+                        ip, port, self.code, timeout=15,
+                        log_callback=lambda m: self.log.emit(f"    {m}"))
+                except Exception as e:
+                    ok, msg = False, str(e)
+                if ok:
+                    self.log.emit(f"✅ 端口扫描命中配对端口：{ip}:{port}")
+                    self.found.emit('端口扫描兜底', ip, port)
+                    return
+                self.log.emit(f"    （{ip}:{port} 非配对端口：{msg[:60]}，继续）")
+        self.log.emit("⚠️ 端口扫描兜底未找到配对端口。"
+                      "请改用「配对码连接」页：手机端「使用配对码配对设备」"
+                      "会直接显示 IP:端口 + 6 位码，不依赖 mDNS。")
 
 
 class 二维码连接页(QWidget):
@@ -226,6 +346,7 @@ class 二维码连接页(QWidget):
         self._code = ''             # 本次二维码对应的 6 位配对码
         self._waiting = False       # 是否正在 mDNS 等待手机扫描
         self._pairing_in_progress = False  # 防止重复触发配对
+        self._wait_start = 0.0      # 开始等待的时间戳（用于兜底窗口判定）
 
         # mDNS / 配对后台句柄
         self._zc = None
@@ -238,6 +359,10 @@ class 二维码连接页(QWidget):
         self._qr_gen_thread = None
         self._poll_worker = None
         self._poll_thread = None
+        self._scan_worker = None
+        self._scan_thread = None
+        # 已停止线程的引用池：置停止标志后线程仍在收尾，保留引用防止运行中被 GC 销毁崩溃
+        self._retired_threads = []
 
         # 扫码结果回填状态
         self._last_scan_ip = ''
@@ -570,9 +695,11 @@ class 二维码连接页(QWidget):
         if not re.match(r"^\d{6}$", code):
             code = f"{random.randint(0, 999999):06d}"
             self.gen_code.setText(code)
-        # 服务名：固定前缀 + 6 位无歧义字符（去除 0/O/1/I 等易混字符）
-        alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-        name = 'superadb-' + ''.join(random.choices(alphabet, k=6))
+        # 服务名：官方 AOSP 格式以 "adb-" 开头（部分 ROM 会校验该前缀，
+        # 用自定义前缀可能导致手机扫描后不广播配对服务）；后缀用小写无歧义
+        # 字符，规避 ROM 改写大小写后 mDNS 实例名匹配失败。
+        alphabet = 'abcdefghjklmnpqrstuvwxyz23456789'
+        name = 'adb-superadb-' + ''.join(random.choices(alphabet, k=6))
         payload = f"WIFI:T:ADB;S:{name};P:{code};;"
         return payload, name, code
 
@@ -614,11 +741,12 @@ class 二维码连接页(QWidget):
         # 若页面已关闭/清理，忽略迟到的信号
         if self._qr_gen_worker is None:
             return
-        self.btn_gen_qr.setEnabled(True)
-        self.btn_gen_qr.setText("✨ 生成二维码并开始等待")
         self._cleanup_gen_thread()
 
         if error:
+            # 生成失败：恢复按钮，允许重试
+            self.btn_gen_qr.setEnabled(True)
+            self.btn_gen_qr.setText("✨ 生成二维码并开始等待")
             self._log_scan(f"⚠️ 生成二维码失败：{error}")
             self.wait_status.setText("状态：生成二维码失败")
             return
@@ -689,23 +817,143 @@ class 二维码连接页(QWidget):
         self._poll_thread.start()
 
         self._waiting = True
+        self._wait_start = time.time()
         self.btn_stop_wait.setEnabled(True)
         # 进入等待状态：禁用「生成二维码」按钮（再点会换服务名/配对码，
-        # 打断当前等待）。停止等待时由 _stop_waiting 恢复。
+        # 打断当前等待）。停止等待时由 _stop_waiting 恢复
         self.btn_gen_qr.setEnabled(False)
         self.btn_gen_qr.setText("⏳ 等待手机扫描…")
+        # 兜底：mDNS 迟迟收不到 pairing 广播时（部分 ROM 不广播），
+        # 到点后改为扫描手机配对端口（详见 _PortScanWorker 说明）
+        try:
+            QTimer.singleShot(int(端口扫描触发秒 * 1000),
+                              self._maybe_start_port_scan)
+        except Exception:
+            pass
         self.wait_status.setText(
             f"状态：等待手机扫描二维码…\n"
             f"正在监听服务名 {self._service_name} 的 mDNS 广播（_adb-tls-pairing._tcp）")
         self._log_scan("👂 已启动 mDNS 监听，等待手机扫描二维码后广播配对服务…")
 
+    def _候选设备ip(self):
+        """从 mDNS 已发现的 connect 服务里取候选手机 IP + 已知调试端口。"""
+        try:
+            from 工具.自研adb.mdns发现 import get_connect_services
+            services = get_connect_services() or {}
+        except Exception:
+            services = {}
+        ips, known = [], set()
+        for _name, pair in services.items():
+            try:
+                ip, port = pair[0], pair[1]
+            except Exception:
+                continue
+            if ip:
+                if ip not in ips:
+                    ips.append(ip)
+                if isinstance(port, int):
+                    known.add(port)
+        return ips, known
+
+    def _maybe_start_port_scan(self):
+        """mDNS 等待超时：改用端口扫描找配对端口（ROM 不广播 pairing 时）。"""
+        if not self._waiting or self._pairing_in_progress:
+            return
+        if self._scan_thread is not None:
+            return
+        ips, known = self._候选设备ip()
+        if not ips:
+            self._log_scan(
+                "⚠️ 未收到任何设备的 mDNS 广播，无法定位手机 IP。"
+                "请改用「配对码连接」页：手机端「使用配对码配对设备」"
+                "会直接显示 IP:端口 + 6 位配对码，不依赖 mDNS。")
+            return
+        self._log_scan(
+            f"🔎 未收到 {self._service_name} 的配对广播，启动端口扫描兜底。"
+            f"候选设备取自本机 mDNS 已发现的无线调试设备：{', '.join(ips)}"
+            f"（含局域网内其他已开无线调试的手机，出现陌生 IP 属正常现象）。")
+        self.wait_status.setText(
+            "状态：未收到配对广播，正在扫描手机配对端口兜底…\n"
+            f"候选设备：{', '.join(ips)}（请保持手机停留在扫码后的等待界面）")
+        self._scan_worker = _PortScanWorker(ips, self._code)
+        # 排除集合：各 IP 已知的调试端口（常驻，避免对它们做无效 TLS 握手）
+        self._scan_worker.按ip排除 = {ip: set(known) for ip in ips}
+        self._scan_thread = QThread(self)
+        self._scan_worker.moveToThread(self._scan_thread)
+        self._scan_thread.started.connect(self._scan_worker.run)
+        self._scan_worker.log.connect(self._log_scan)
+        # 命中后保留端口扫描实际发现的服务名（不伪造为本机二维码服务名），
+        # 否则解密失败时无法区分「兜底命中」与「名称匹配命中」，归因会失真。
+        # 用【绑定方法】连接：found 由工作线程 emit，绑定方法按 self 线程亲和性
+        # 走 QueuedConnection 回主线程执行 _on_discovered，避免在工作线程访问
+        # Qt 控件原生崩溃。_PortScanWorker.found 签名为 (name, ip, port)，
+        # 与 _on_discovered(self, name, ip, port) 完全匹配，无需 lambda 转接。
+        self._scan_worker.found.connect(self._on_discovered)
+        self._scan_thread.start()
+
+    def _retire_thread(self, t):
+        """把线程移入退役池并登记 finished 回收，绝不阻塞 UI 线程等待。
+
+        背景：置停止标志后线程仍需短暂收尾（mDNS 查询 / 端口探测 / 配对尝试
+        最多数秒），若在主线程同步等待会卡住界面。这里保留引用防止
+        QThread 运行中被 Python GC 销毁崩溃，线程自然结束后再 deleteLater 释放。
+        """
+        if t is None:
+            return
+        # 非阻塞请求退出事件循环：started.connect(run) 型线程在 run() 返回后
+        # 仍停留在 exec()，只置 stop 标志线程不会结束，必须 quit() 才能收尾
+        try:
+            t.quit()
+        except Exception:
+            pass
+        if t.isFinished():
+            try:
+                t.deleteLater()
+            except Exception:
+                pass
+            return
+        if t not in self._retired_threads:
+            self._retired_threads.append(t)
+        try:
+            t.finished.connect(lambda th=t: self._drop_retired(th))
+        except Exception:
+            pass
+
+    def _drop_retired(self, th):
+        """线程自然结束后从退役池移除并释放（幂等）。"""
+        try:
+            if th in self._retired_threads:
+                self._retired_threads.remove(th)
+        except Exception:
+            pass
+        try:
+            th.deleteLater()
+        except Exception:
+            pass
+
+    def _stop_scan(self):
+        """停止端口扫描兜底线程与基线扫描线程（置标志后非阻塞回收）。"""
+        for attr_w, attr_t in (('_scan_worker', '_scan_thread'),):
+            w = getattr(self, attr_w, None)
+            t = getattr(self, attr_t, None)
+            if w is not None:
+                try:
+                    w.stop()
+                except Exception:
+                    pass
+                setattr(self, attr_w, None)
+            if t is not None:
+                self._retire_thread(t)
+                setattr(self, attr_t, None)
+
     def _stop_waiting(self):
         """停止监听（反注册回调；全局浏览器由 mdns发现 单例统一管理）。"""
         self._waiting = False
         self.btn_stop_wait.setEnabled(False)
-        # 恢复「生成二维码」按钮（等待结束：点停止 / 配对成功 / 配对失败都会走这里）
+        # 恢复「生成二维码」按钮（等待结束 —— 用户点停止 / 配对成功 / 配对失败都会走这里）
         self.btn_gen_qr.setEnabled(True)
         self.btn_gen_qr.setText("✨ 生成二维码并开始等待")
+        self._stop_scan()
         if self._mdns_bridge is not None:
             try:
                 from 工具.自研adb.mdns发现 import unregister_pairing_listener
@@ -714,22 +962,22 @@ class 二维码连接页(QWidget):
                 pass
         self._listener = None
         self._mdns_bridge = None
-        # 停止主动轮询线程
-        if self._poll_thread is not None:
+        # 停止主动轮询线程（非阻塞：置标志后由线程自然退出）
+        if self._poll_worker is not None:
             try:
                 self._poll_worker.stop()
-                self._poll_thread.quit()
-                self._poll_thread.wait(2000)
             except Exception:
                 pass
-            self._poll_thread = None
             self._poll_worker = None
+        if self._poll_thread is not None:
+            self._retire_thread(self._poll_thread)
+            self._poll_thread = None
         # 不再自建 zeroconf 实例（全局单例统一持有，避免多实例争夺 5353）
         self._zc = None
         self._browser = None
 
     def _cleanup_gen_thread(self):
-        """清理二维码生成后台线程。"""
+        """清理二维码生成后台线程（非阻塞）。"""
         if self._qr_gen_worker is not None:
             try:
                 self._qr_gen_worker.deleteLater()
@@ -737,27 +985,54 @@ class 二维码连接页(QWidget):
                 pass
             self._qr_gen_worker = None
         if self._qr_gen_thread is not None:
+            self._retire_thread(self._qr_gen_thread)
+            self._qr_gen_thread = None
+
+    def _cleanup_pair_thread(self):
+        """清理上一次二维码配对的后台线程（避免反复扫码时线程堆积）。
+
+        必须在【主线程】调用：本方法由 _on_discovered / _on_qr_pair_done
+        触发，二者均已通过绑定方法连接回到主线程执行。
+        """
+        if self._qr_pair_worker is not None:
             try:
-                self._qr_gen_thread.quit()
-                self._qr_gen_thread.wait(2000)
-                self._qr_gen_thread.deleteLater()
+                self._qr_pair_worker.deleteLater()
             except Exception:
                 pass
-            self._qr_gen_thread = None
+            self._qr_pair_worker = None
+        if self._qr_pair_thread is not None:
+            self._retire_thread(self._qr_pair_thread)
+            self._qr_pair_thread = None
 
     def _on_discovered(self, name, ip, port):
         """mDNS 发现手机配对服务 → 停止监听 → 后台执行 adb pair。"""
+        # 清理上一次可能残留的配对线程（反复扫码时避免堆积）
+        self._cleanup_pair_thread()
         if not self._waiting:
-            return
-        if self._service_name not in name:
-            # 全局浏览器会回调所有配对服务，只处理本次生成的二维码服务名
             return
         if self._pairing_in_progress:
             self._log_scan(f"⚠️ 忽略重复发现：{name} @ {ip}:{port}（配对已在进行中）")
             return
+        # 服务名匹配：不区分大小写（部分 ROM 注册 mDNS 时会改写大小写）
+        name_matched = self._service_name.lower() in name.lower()
+        if not name_matched:
+            # 兜底：部分 ROM 扫描二维码后不沿用二维码里的服务名，而是用自生成
+            # 的实例名广播，精确匹配会永远等不到（手机一直转圈）。
+            # 等待超过阈值后接受任意 pairing 服务，配对码由 SPAKE2 校验把关。
+            已等 = time.time() - self._wait_start
+            if 已等 < 宽松兜底等待秒:
+                return
+            self._log_scan(
+                f"⚠️ 已等 {int(已等)} 秒仍未发现服务名匹配的广播，"
+                f"启用宽松兜底配对：{name} @ {ip}:{port}\n"
+                f"   （二维码服务名={self._service_name}；若手机扫码后自生成了配对码，"
+                f"此兜底可能因配对码不符而失败）")
         self._pairing_in_progress = True
         self._stop_waiting()
-        self._log_scan(f"📱 已发现手机配对服务：{name} @ {ip}:{port}")
+        self._log_scan(
+            f"📱 已发现手机配对服务：{name} @ {ip}:{port}"
+            f"（二维码服务名={self._service_name}，"
+            f"{'名称匹配' if name_matched else '名称不匹配→走宽松兜底'}）")
         self.wait_status.setText(
             f"状态：已发现手机 {ip}:{port}，正在执行 adb pair …")
 
@@ -773,13 +1048,17 @@ class 二维码连接页(QWidget):
         self._qr_pair_worker.moveToThread(self._qr_pair_thread)
         self._qr_pair_thread.started.connect(self._qr_pair_worker.run)
         self._qr_pair_worker.log.connect(self._log_scan)
-        # ★ 必须用【绑定方法】连接（绝不能用 lambda）。done 信号由工作线程 emit，
-        #   lambda 连接会被当作 DirectConnection 在工作线程同步执行 _on_qr_pair_done，
-        #   进而在非 GUI 线程访问 Qt 控件（ip_edit / _start_connect 等）→ 原生崩溃
-        #   (0xC0000005)。绑定方法按 self 线程亲和性走 QueuedConnection 回主线程执行。
-        #   发现上下文存 self 传递，避免 lambda 闭包。
+        # ★ 把「发现的服务名」与「是否名称匹配」透传给结果处理，
+        #   便于在解密失败时精准归因（见 _on_qr_pair_done / _诊断二维码配对失败）。
+        #   注意：必须用【绑定方法】连接（绝不能用 lambda）。done 信号由工作线程
+        #   emit，lambda 连接会被当作 DirectConnection 在工作线程里同步执行
+        #   _on_qr_pair_done，进而在非 GUI 线程访问 Qt 控件（ip_edit / _start_connect
+        #   等）→ 原生崩溃(0xC0000005)。绑定方法按 self 的线程亲和性走
+        #   QueuedConnection，确保回主线程执行。额外参数改存 self 上传递。
         self._discovered_ip = ip
         self._discovered_port = port
+        self._discovered_name = name
+        self._discovered_name_matched = name_matched
         self._qr_pair_worker.done.connect(self._on_qr_pair_done)
         self._qr_pair_thread.start()
 
@@ -787,11 +1066,13 @@ class 二维码连接页(QWidget):
         """adb pair 结果处理：配对成功后自动连接调试端口。
 
         本方法通过绑定方法连接（见 _on_discovered），由 Qt 按 self 的线程亲和性
-        调度到【主线程】执行；发现时的上下文（ip/port）存于 self._discovered_*，
-        避免用 lambda 连接导致在工作线程访问 Qt 控件崩溃。
+        调度到【主线程】执行；发现时的上下文（ip/port/name/name_matched）存于
+        self._discovered_*，避免用 lambda 连接导致在工作线程访问 Qt 控件崩溃。
         """
         ip = getattr(self, '_discovered_ip', '')
         port = getattr(self, '_discovered_port', 0)
+        discovered_name = getattr(self, '_discovered_name', '')
+        name_matched = getattr(self, '_discovered_name_matched', False)
         self._pairing_in_progress = False
         self._log_scan(msg)
         if ok:
@@ -836,6 +1117,36 @@ class 二维码连接页(QWidget):
                     self._log_scan(f"⚠️ 自动连接失败: {e}")
             # 不自动切换标签页（避免 UI 卡死），用户手动切换即可
             # 连接成功后 _on_connect_done 会自动调用 _on_pair_success 刷新设备列表
+        else:
+            self._诊断二维码配对失败(msg, ip, port, discovered_name, name_matched)
+        # 配对线程已结束（done 已 emit），释放之（必须在主线程，本方法已回主线程）
+        self._cleanup_pair_thread()
+
+    def _诊断二维码配对失败(self, msg, ip, port, discovered_name, name_matched):
+        """二维码自动配对失败时的精准归因。
+
+        已知事实：本机 SPAKE2/HKDF/AES/TLS 实现已端到端验证正确——手动配对码路径
+        在 .37 等机型可成功、荣耀 QR 路径可成功。因此 QR 路径的 InvalidTag 几乎
+        必然不是加密层问题，而是「扫码后 PC 用的配对码 ≠ 手机实际期望的配对码」。
+        典型于部分 ROM 扫码后自生成配对码、不回显二维码里的 P 字段；宽松兜底又拿
+        二维码里的码去配一个名字/码都不对的配对服务，于是 SPAKE2 共享密钥偏差 →
+        PeerInfo AES-GCM InvalidTag。
+        """
+        m = (msg or '').lower()
+        is_auth_fail = (
+            'peerinfo解密失败' in m or 'invalidtag' in m or 'spake2' in m
+        )
+        if is_auth_fail and not name_matched:
+            self.wait_status.setText("❌ 二维码配对失败：该手机可能不支持「扫码自动配对」")
+            self._log_scan(
+                "🔍 诊断：失败发生在对端 PeerInfo 解密阶段（AES-GCM InvalidTag）。\n"
+                "   根因几乎可以确定是「手机扫描二维码后未使用二维码里的配对码」——"
+                "部分 ROM 扫码会自生成一套配对码，导致 PC 用二维码里的码去配，对端校验不过。\n"
+                f"   本次发现的服务名={discovered_name!r}，与二维码服务名 "
+                f"{self._service_name!r} 不匹配，正是走宽松兜底命中的佐证。\n"
+                "👉 建议：这台手机请改用「配对码连接」页，手动输入手机"
+                "「无线调试 → 使用配对码配对设备」弹窗里的 IP:端口 + 6 位码"
+                "（手动路径不依赖手机回显二维码配对码，本机已验证可用，成功率更高）。")
         else:
             self.wait_status.setText(f"❌ 配对失败：{msg[:120]}")
             self._log_scan(
@@ -955,14 +1266,17 @@ class 二维码连接页(QWidget):
         """停止 mDNS 监听与后台配对线程（嵌入统一面板时由父窗口调用）。"""
         self._stop_waiting()
         self._cleanup_gen_thread()
-        if self._qr_pair_thread is not None and self._qr_pair_thread.isRunning():
-            try:
-                self._qr_pair_thread.quit()
-                self._qr_pair_thread.wait(2000)
-            except Exception:
-                pass
-        self._qr_pair_thread = None
-        self._qr_pair_worker = None
+        self._cleanup_pair_thread()
+        # 关闭路径：有限等待退役线程收尾（窗口即将销毁，短暂等待可接受），
+        # 避免页面销毁时线程仍在运行导致 QThread 崩溃
+        _dl = time.time() + 3.0
+        while self._retired_threads and time.time() < _dl:
+            for _t in list(self._retired_threads):
+                if _t.isFinished():
+                    self._drop_retired(_t)
+            if not self._retired_threads:
+                break
+            time.sleep(0.02)
 
 
 if __name__ == "__main__":

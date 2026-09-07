@@ -238,6 +238,8 @@ class 二维码连接页(QWidget):
         self._qr_gen_thread = None
         self._poll_worker = None
         self._poll_thread = None
+        # 已停止线程的引用池：置停止标志后线程仍在收尾，保留引用防止运行中被 GC 销毁崩溃
+        self._retired_threads = []
 
         # 扫码结果回填状态
         self._last_scan_ip = ''
@@ -699,6 +701,46 @@ class 二维码连接页(QWidget):
             f"正在监听服务名 {self._service_name} 的 mDNS 广播（_adb-tls-pairing._tcp）")
         self._log_scan("👂 已启动 mDNS 监听，等待手机扫描二维码后广播配对服务…")
 
+    def _retire_thread(self, t):
+        """把线程移入退役池并登记 finished 回收，绝不阻塞 UI 线程等待。
+
+        背景：置停止标志后线程仍需短暂收尾（mDNS 查询 / 配对尝试最多数秒），
+        若在主线程同步等待会卡住界面。这里保留引用防止 QThread 运行中被
+        Python GC 销毁崩溃，线程自然结束后再 deleteLater 释放。
+        """
+        if t is None:
+            return
+        # 非阻塞请求退出事件循环：started.connect(run) 型线程在 run() 返回后
+        # 仍停留在 exec()，只置 stop 标志线程不会结束，必须 quit() 才能收尾
+        try:
+            t.quit()
+        except Exception:
+            pass
+        if t.isFinished():
+            try:
+                t.deleteLater()
+            except Exception:
+                pass
+            return
+        if t not in self._retired_threads:
+            self._retired_threads.append(t)
+        try:
+            t.finished.connect(lambda th=t: self._drop_retired(th))
+        except Exception:
+            pass
+
+    def _drop_retired(self, th):
+        """线程自然结束后从退役池移除并释放（幂等）。"""
+        try:
+            if th in self._retired_threads:
+                self._retired_threads.remove(th)
+        except Exception:
+            pass
+        try:
+            th.deleteLater()
+        except Exception:
+            pass
+
     def _stop_waiting(self):
         """停止监听（反注册回调；全局浏览器由 mdns发现 单例统一管理）。"""
         self._waiting = False
@@ -714,22 +756,22 @@ class 二维码连接页(QWidget):
                 pass
         self._listener = None
         self._mdns_bridge = None
-        # 停止主动轮询线程
-        if self._poll_thread is not None:
+        # 停止主动轮询线程（非阻塞：置标志后由线程自然退出）
+        if self._poll_worker is not None:
             try:
                 self._poll_worker.stop()
-                self._poll_thread.quit()
-                self._poll_thread.wait(2000)
             except Exception:
                 pass
-            self._poll_thread = None
             self._poll_worker = None
+        if self._poll_thread is not None:
+            self._retire_thread(self._poll_thread)
+            self._poll_thread = None
         # 不再自建 zeroconf 实例（全局单例统一持有，避免多实例争夺 5353）
         self._zc = None
         self._browser = None
 
     def _cleanup_gen_thread(self):
-        """清理二维码生成后台线程。"""
+        """清理二维码生成后台线程（非阻塞）。"""
         if self._qr_gen_worker is not None:
             try:
                 self._qr_gen_worker.deleteLater()
@@ -737,12 +779,7 @@ class 二维码连接页(QWidget):
                 pass
             self._qr_gen_worker = None
         if self._qr_gen_thread is not None:
-            try:
-                self._qr_gen_thread.quit()
-                self._qr_gen_thread.wait(2000)
-                self._qr_gen_thread.deleteLater()
-            except Exception:
-                pass
+            self._retire_thread(self._qr_gen_thread)
             self._qr_gen_thread = None
 
     def _on_discovered(self, name, ip, port):
@@ -955,14 +992,20 @@ class 二维码连接页(QWidget):
         """停止 mDNS 监听与后台配对线程（嵌入统一面板时由父窗口调用）。"""
         self._stop_waiting()
         self._cleanup_gen_thread()
-        if self._qr_pair_thread is not None and self._qr_pair_thread.isRunning():
-            try:
-                self._qr_pair_thread.quit()
-                self._qr_pair_thread.wait(2000)
-            except Exception:
-                pass
-        self._qr_pair_thread = None
-        self._qr_pair_worker = None
+        if self._qr_pair_thread is not None:
+            self._retire_thread(self._qr_pair_thread)
+            self._qr_pair_thread = None
+            self._qr_pair_worker = None
+        # 关闭路径：有限等待退役线程收尾（窗口即将销毁，短暂等待可接受），
+        # 避免页面销毁时线程仍在运行导致 QThread 崩溃
+        _dl = time.time() + 3.0
+        while self._retired_threads and time.time() < _dl:
+            for _t in list(self._retired_threads):
+                if _t.isFinished():
+                    self._drop_retired(_t)
+            if not self._retired_threads:
+                break
+            time.sleep(0.02)
 
 
 if __name__ == "__main__":

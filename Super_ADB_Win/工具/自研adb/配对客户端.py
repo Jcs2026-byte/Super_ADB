@@ -380,15 +380,28 @@ def 读取数据包(sock) -> Tuple[int, bytes]:
 def _精确接收(sock, size: int) -> bytes:
     """从 socket 精确读取 size 字节。"""
     data = b''
+    _t0 = time.time()
+    print(f'[配对客户端][{time.strftime("%H:%M:%S")}] _精确接收 开始 期望={size}B', flush=True)
     while len(data) < size:
         try:
             chunk = sock.recv(size - len(data))
         except ssl.SSLWantReadError:
             time.sleep(0.01)
             continue
+        except (socket.timeout, TimeoutError):
+            # 透传 timeout，让外层 except socket.timeout 返回"连接超时"
+            # (SSLSocket 在底层 socket 超时时可能抛 socket.timeout / TimeoutError，
+            #  不交出去会让进程卡到程序被杀)
+            print(f'[配对客户端][{time.strftime("%H:%M:%S")}] _精确接收 超时 '
+                  f'期望={size}B 已收={len(data)}B 用时={time.time()-_t0:.2f}s', flush=True)
+            raise
         if not chunk:
+            print(f'[配对客户端][{time.strftime("%H:%M:%S")}] _精确接收 远端关闭 '
+                  f'期望={size}B 已收={len(data)}B 用时={time.time()-_t0:.2f}s', flush=True)
             break
         data += chunk
+    print(f'[配对客户端][{time.strftime("%H:%M:%S")}] _精确接收 完成 '
+          f'期望={size}B 实收={len(data)}B 用时={time.time()-_t0:.2f}s', flush=True)
     return data
 
 
@@ -481,6 +494,11 @@ class WirelessPairingClient:
             if not self._auth.初始化加密器(their_msg):
                 return False, "SPAKE2 密钥协商失败 (配对码错误或连接被窃取)"
             self._日志("加密器初始化成功 (SPAKE2 + HKDF + AES-128-GCM)")
+            # ★ 防御性断言：_cipher 必须已初始化成功。历史上曾因
+            #   初始化加密器 silent 吞掉异常（_cipher 仍为 None）但返回 True，
+            #   导致后续 self._auth.加密() 抛 RuntimeError 表现为"闪退"。
+            assert self._auth._cipher is not None, (
+                "PairingAuth._cipher 为 None 但 初始化加密器 返回 True（上游 bug）")
             if hasattr(self._auth, '_cipher') and self._auth._cipher is not None:
                 self._日志(f"  AES密钥前8字节: {self._auth._cipher._aes_key[:8].hex()}")
 
@@ -491,8 +509,13 @@ class WirelessPairingClient:
             self._日志(f"PeerInfo 构造完成 ({len(peer_info)} 字节, 公钥 {len(self.adb_public_key)} 字节)")
             写入数据包(self._sock, TYPE_PEER_INFO, encrypted)
             self._日志(f"已发送加密的 PeerInfo ({len(encrypted)} 字节), 前16字节: {encrypted[:16].hex()}")
-
+            self._日志(f"⏳ 等待手机返回服务端 PeerInfo (timeout={self.timeout}s) …")
+            print(f'[配对客户端][{time.strftime("%H:%M:%S")}] 进入 读取数据包 等待服务端 PeerInfo '
+                  f'(timeout={self.timeout}s)', flush=True)
             pkt_type, their_encrypted = 读取数据包(self._sock)
+            print(f'[配对客户端][{time.strftime("%H:%M:%S")}] 读取数据包 返回 '
+                  f'type={pkt_type} payload_len={len(their_encrypted)}', flush=True)
+            self._日志(f"✅ 收到响应包: type={pkt_type}, payload_len={len(their_encrypted)}")
             if pkt_type != TYPE_PEER_INFO:
                 return False, f"期望 PEER_INFO (type={TYPE_PEER_INFO}), 实际 type={pkt_type}"
             self._日志(f"收到服务端响应 (type={pkt_type}, payload_len={len(their_encrypted)})")
@@ -545,7 +568,10 @@ class WirelessPairingClient:
             key_file.close()
             ctx.load_cert_chain(cert_file.name, key_file.name)
             self._sock = ctx.wrap_socket(self._raw_sock, server_hostname=None)
-            self._日志(f"TLS 握手成功, 版本: {self._sock.version()}")
+            # ★ wrap_socket() 在不同 Python/OpenSSL 版本上对 timeout 的继承行为不一致，
+            #   显式再设一次，确保 PeerInfo 阶段的 recv 不会永久阻塞。
+            self._sock.settimeout(self.timeout)
+            self._日志(f"TLS 握手成功, 版本: {self._sock.version()}, timeout={self.timeout}s")
         finally:
             try:
                 os.unlink(cert_file.name)

@@ -460,8 +460,13 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
 
         if not self.adb.检查adb():
             self.status_bar.showMessage('adb 不可用（点击右上角「环境配置」一键添加 PATH）', 0)
-        else:
+        elif 加载json配置(CONFIG_NAME).get('adb', {}).get('auto_connect', False):
+            # 配置「启动时自动连接 ADB 设备」为勾选时才自动扫描设备
             self.刷新设备()
+        else:
+            self.status_bar.showMessage(
+                '启动时不自动扫描 ADB 设备（可在「环境配置」勾选「启动时自动连接 ADB 设备」）', 0
+            )
 
         # 点击设备下拉框自动刷新：记录三处 combo 集合与冷却时间戳
         self._device_combos = {

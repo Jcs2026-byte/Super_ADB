@@ -128,17 +128,23 @@ class PairingAuth:
         return self._msg
 
     def 初始化加密器(self, their_msg: bytes) -> bool:
-        """用对端 SPAKE2 消息初始化 AES-128-GCM 加密器。"""
+        """用对端 SPAKE2 消息初始化 AES-128-GCM 加密器。
+
+        失败原因（their_msg 非合法 SPAKE2 点 / shared_key 派生失败等）
+        必须向上传递，由调用方记录 + 排查。**绝不能 silent 返回 True**
+        ——历史上曾因 except 吞掉导致 _cipher=None 但本函数返回 True，
+配对客户端误判"成功"，后续 self._auth.加密() 才抛 RuntimeError，
+        表现成"卡死/闪退"，无法定位真正的协议层错误。
+        """
         if self._cipher is not None:
             raise RuntimeError("init_cipher 只能调用一次")
         if not their_msg or len(their_msg) != 32:
             return False
-        try:
-            shared_key = self._spake2.处理消息(their_msg)
-            self._cipher = Aes128Gcm(shared_key)
-            return True
-        except Exception:
-            return False
+        # 不再吞异常：SPAKE2 点校验失败 / HKDF derive 失败 / AESGCM 构造失败
+        # 都会自然向上抛，由配对客户端 except Exception 捕获并显示真实原因。
+        shared_key = self._spake2.处理消息(their_msg)
+        self._cipher = Aes128Gcm(shared_key)
+        return True
 
     def 加密(self, data: bytes) -> bytes:
         if self._cipher is None:

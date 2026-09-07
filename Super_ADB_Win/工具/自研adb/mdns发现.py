@@ -107,11 +107,9 @@ class _CollectListener:
             return
         with self._cache._lock:
             if type_ == CONNECT_TYPE:
-                # ★ 不写入 _connect_ports：被动监听提取的 IP 归属在多设备时不可靠
-                #   （A 记录可能被错误归属到别的手机 IP，导致把其他手机的调试端口
-                #   记到目标 IP 上 → get_connect_port 返回错端口 → 连接被拒）。
-                #   真实调试端口一律由 get_connect_port 的主动单播查询
-                #   （响应源地址即手机 IP）解析并写入缓存。
+                # 实例名 -> (ip, 端口)：供「端口扫描兜底」取候选手机 IP
+                # （不写入 _connect_ports 的原因见下：被动监听的 IP 归属在多设备时不可靠）
+                self._cache._connect_services[name] = (ip, info.port)
                 _debug_log(f'[listener] connect 服务: {name} ip={ip} port={info.port}')
             elif type_ == PAIRING_TYPE:
                 self._cache._pairing_ports[name] = (ip, info.port)
@@ -129,6 +127,7 @@ class _AdbMdnsCache:
         self._listeners = []
         self._connect_ports = {}   # ip -> 真实调试端口
         self._pairing_ports = {}   # 服务实例名 -> (ip, 配对端口)
+        self._connect_services = {}   # 服务实例名 -> (ip, 调试端口)（供端口扫描兜底取候选 IP）
         self._pairing_callbacks = []   # 配对服务发现回调
 
     def ensure_running(self):
@@ -201,6 +200,15 @@ class _AdbMdnsCache:
         with self._lock:
             return self._connect_ports.get(ip)
 
+    def get_connect_services(self):
+        """返回已发现的 _adb-tls-connect 服务 {实例名: (ip, 端口)}。
+
+        用途：某些 ROM 扫描二维码后不广播 _adb-tls-pairing（表现为手机一直转圈），
+        mDNS 路径失效时，可依据这里的手机 IP 走「端口扫描 + 配对码」兜底。
+        """
+        with self._lock:
+            return dict(self._connect_services)
+
     def get_connect_port(self, ip, timeout=0.0):
         """返回 ip 的 _adb-tls-connect 调试端口；无缓存且 timeout>0 时等待解析。"""
         if not ip:
@@ -264,3 +272,12 @@ def register_pairing_listener(cb):
 def unregister_pairing_listener(cb):
     """反注册配对服务发现回调。"""
     _ADB_MDNS.unregister_pairing_listener(cb)
+
+
+def get_connect_services():
+    """已发现的 _adb-tls-connect 服务 {实例名: (ip, 端口)}。
+
+    用途：部分 ROM 扫描二维码后不广播 _adb-tls-pairing（手机一直转圈），
+    mDNS 路径失效时可据此取到手机 IP，走「端口扫描 + 配对码」兜底。
+    """
+    return _ADB_MDNS.get_connect_services()

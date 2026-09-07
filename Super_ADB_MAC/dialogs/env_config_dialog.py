@@ -102,15 +102,29 @@ def 读取系统adb设置() -> bool:
     return adb_cfg.get('system_adb', False)
 
 
-def 保存adb设置(socket_direct: bool, self_built: bool, system_adb: bool):
-    """保存 ADB 配置到 JSON 文件。三个选项互斥。
+def 读取启动自动连接设置() -> bool:
+    """读取是否在启动时自动连接/扫描 ADB 设备（默认不勾选）。"""
+    cfg = 加载json配置(CONFIG_NAME)
+    adb_cfg = cfg.get(ADB_CONFIG_KEY, {})
+    return bool(adb_cfg.get('auto_connect', False))
+
+
+def 保存adb设置(socket_direct: bool, self_built: bool, system_adb: bool,
+               auto_connect: bool = None):
+    """保存 ADB 配置到 JSON 文件。三个模式选项互斥，auto_connect 独立。
 
     优先级: system_adb > socket_direct > self_built
     同时勾选多个时，只保留优先级最高的那个。
+    auto_connect 为 None 时保留配置文件中的原值（避免模式切换误重置）。
     """
     cfg = 加载json配置(CONFIG_NAME)
     if not isinstance(cfg, dict):
         cfg = {}
+    old_adb = cfg.get(ADB_CONFIG_KEY, {})
+    if not isinstance(old_adb, dict):
+        old_adb = {}
+    if auto_connect is None:
+        auto_connect = bool(old_adb.get('auto_connect', False))
     # 互斥：三个选项只能选一个
     if system_adb:
         socket_direct = False
@@ -122,7 +136,9 @@ def 保存adb设置(socket_direct: bool, self_built: bool, system_adb: bool):
         'socket_direct': socket_direct,
         'self_built': self_built,
         'system_adb': system_adb,
+        'auto_connect': auto_connect,
     }
+    保存json配置(CONFIG_NAME, cfg)
     保存json配置(CONFIG_NAME, cfg)
 
 
@@ -141,14 +157,14 @@ class 环境配置对话框(QDialog):
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(760, 560)
+        self.setFixedSize(760, 604)
         self.setWindowTitle('环境配置')
         self.setWindowIcon(QIcon(':/Super_ADB.png'))
 
         # ── 容器（圆角卡片）───────────────────────────────────────
         self.card = QWidget(self)
         self.card.setObjectName('envCard')
-        self.card.setGeometry(10, 10, 740, 540)
+        self.card.setGeometry(10, 10, 740, 584)
 
         layout = QVBoxLayout(self.card)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -228,6 +244,16 @@ class 环境配置对话框(QDialog):
         self.selfbuilt_chk.setChecked(读取自研adb设置())
         self.selfbuilt_chk.stateChanged.connect(self._on_selfbuilt_toggle)
         content.addWidget(self.selfbuilt_chk)
+        # 启动行为：启动时自动连接/扫描 ADB 设备（独立开关，默认不勾选）
+        self.auto_connect_chk = QCheckBox('启动时自动连接 ADB 设备')
+        self.auto_connect_chk.setObjectName('socketChk')
+        self.auto_connect_chk.setChecked(读取启动自动连接设置())
+        self.auto_connect_chk.setToolTip(
+            '勾选后，打开软件时自动扫描并连接已连接的 ADB 设备；\n'
+            '不勾选则打开时不自动扫描设备。'
+        )
+        self.auto_connect_chk.stateChanged.connect(self._on_auto_connect_toggle)
+        content.addWidget(self.auto_connect_chk)
 
         # 版本 + 路径（改 QPlainTextEdit，长内容可滚动完整展示）
         self.version_lbl = self._make_mono_edit('版本：—')
@@ -772,6 +798,14 @@ class 环境配置对话框(QDialog):
         self._重启adb进程('socket' if enabled else 'none')
         self.设置变更.emit()
 
+    def _on_auto_connect_toggle(self, state):
+        """「启动时自动连接 ADB 设备」开关：仅写入配置，不影响当前会话。"""
+        保存adb设置(
+            socket_direct=self.socket_chk.isChecked(),
+            self_built=self.selfbuilt_chk.isChecked(),
+            system_adb=self.system_chk.isChecked(),
+            auto_connect=state == Qt.CheckState.Checked.value,
+        )
     def _on_selfbuilt_toggle(self, state):
         """自研 adb 开关切换（与其他两个互斥）。"""
         enabled = state == Qt.CheckState.Checked.value

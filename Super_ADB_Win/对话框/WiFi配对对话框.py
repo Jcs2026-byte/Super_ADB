@@ -15,6 +15,7 @@ WiFi 配对连接弹窗
 """
 
 import re
+import socket
 import subprocess
 import sys
 import time
@@ -191,6 +192,7 @@ class WiFi配对对话框(QDialog):
         self._connect_worker = None
         self._reconnect_thread = None
         self._reconnect_worker = None
+        self._reconnect_entry = None
         self._paired = []
         self._closing = False
         self._connect_enabled = False   # 配对成功后才允许 connect
@@ -207,8 +209,11 @@ class WiFi配对对话框(QDialog):
             pass
         self._refresh_paired_list()
         # 自动重连最近一台已配对设备（WiFi 重连后某些 ROM 调试端口仍有效）
+        # ★ 仅在与本机同网段时自动重连：换 Wi-Fi 后旧记录（如 192.168.1.x）
+        #   必然超时，无条件重连会白白占用 8 秒超时并污染历史记录。
         if self._paired:
-            QTimer.singleShot(600, lambda: self._reconnect_saved(self._paired[0]))
+            QTimer.singleShot(
+                600, lambda: self._reconnect_saved(self._paired[0], auto=True))
 
     # ══════════════════════════════════════════════════════════
     # UI
@@ -632,11 +637,57 @@ class WiFi配对对话框(QDialog):
             container.setLayout(row)
             self.paired_group_layout.addWidget(container)
 
-    def _reconnect_saved(self, entry):
+    @staticmethod
+    def _本机网段前缀():
+        """本机所有局域网网段前缀（如 {'192.168.75'}），跳过回环与 169.254 自动地址。"""
+        subs = set()
+        try:
+            for info in socket.getaddrinfo(socket.gethostname(), None,
+                                           socket.AF_INET):
+                ip = info[4][0]
+                if ip.startswith('127.') or ip.startswith('169.254.'):
+                    continue
+                subs.add('.'.join(ip.split('.')[:3]))
+        except Exception:
+            pass
+        # 兜底：默认出口 IP 所在网段
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(('8.8.8.8', 80))
+            ip = s.getsockname()[0]
+            if not ip.startswith('127.'):
+                subs.add('.'.join(ip.split('.')[:3]))
+        except Exception:
+            pass
+        finally:
+            try:
+                s.close()
+            except Exception:
+                pass
+        return subs
+
+    def _与本机同网段(self, ip):
+        """判断目标 IP 是否与本机任一局域网网卡同网段。"""
+        if not ip or '.' not in ip:
+            return False
+        return '.'.join(ip.split('.')[:3]) in self._本机网段前缀()
+
+    def _reconnect_saved(self, entry, auto=False):
         ip = entry.get('ip')
         debug_port = entry.get('debug_port', 5555)
         if not ip:
             return
+        if auto:
+            # 自动重连（打开面板时触发）前置校验，避免无意义的超时等待
+            if not self._与本机同网段(ip):
+                self._log(f"⚠️ 已保存设备 {ip} 与本机不在同一网段，已跳过自动重连")
+                return
+            失败次数 = int(entry.get('fail_count', 0) or 0)
+            if 失败次数 >= 3:
+                self._log(f"⚠️ {ip} 已连续 {失败次数} 次重连失败，"
+                          "跳过自动重连（可手动点「重连」重试）")
+                return
+        self._reconnect_entry = entry
         self._reconnect_target = f"{ip}:{debug_port}"
         self._set_buttons_busy(True)
         self._log(f"⟳ 正在重连已配对设备 {ip}:{debug_port} …")
@@ -648,11 +699,33 @@ class WiFi配对对话框(QDialog):
         self._reconnect_worker.done.connect(self._on_reconnect_done)
         self._reconnect_thread.start()
 
+    def _更新配对记录(self, entry):
+        """按 IP 更新一条已配对记录并持久化（用于累计重连失败次数）。"""
+        paired = self._load_paired()
+        for i, p in enumerate(paired):
+            if p.get('ip') == entry.get('ip'):
+                paired[i] = entry
+                break
+        else:
+            paired.insert(0, entry)
+        self._save_paired(paired)
+        self._paired = paired
+
     def _on_reconnect_done(self, ok, msg, tried_ports):
         self._set_buttons_busy(False)
         self._log(msg)
         target = getattr(self, '_reconnect_target', '')
         self._add_history('重连', target, ok, msg)
+        # 记录失败次数：连续失败 3 次后不再自动重连（手动点「重连」不受影响）
+        entry = getattr(self, '_reconnect_entry', None)
+        if entry is not None:
+            if ok:
+                if int(entry.get('fail_count', 0) or 0):
+                    entry['fail_count'] = 0
+                    self._更新配对记录(entry)
+            else:
+                entry['fail_count'] = int(entry.get('fail_count', 0) or 0) + 1
+                self._更新配对记录(entry)
         if ok:
             self._log(f"✅ 已重连 {msg[:60]}")
             self.status_lbl.setText(f"✅ 已重连 {msg[:60]}")

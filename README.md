@@ -2,7 +2,7 @@
 
 > 一款跨平台的 ADB 集成调试工具，集设备连接、应用管理、文件传输、日志抓取、性能监控、网络抓包等功能于一体。
 
-![主界面](docs/screenshots/主界面.png)
+![主界面](项目说明/截图/主界面.png)
 
 ## ✨ 功能特性
 
@@ -78,12 +78,21 @@ pip install -r requirements.txt
 
 # 运行（以 Windows 为例）
 cd Super_ADB_Win
-python app/main.py
+python 项目启动入口/main.py
 ```
 
 ### 下载安装包
 
-前往 [Releases](https://github.com/Jcs2026-byte/Super_ADB/releases) 下载对应平台的预编译版本，或关注公众号获取最新下载链接。
+三平台安装包由 CI（打标签后）自动构建发布，提供两个下载渠道：
+夸克网盘：https://pan.quark.cn/s/2b7b11ebe1e5?pwd=fAXN#/list/share
+- **GitHub Releases**（主选ci自动打包）：https://github.com/Jcs2026-byte/Super_ADB/releases
+- **Gitee 发行版**（GitHub跨界不一定能同步过来）：https://gitee.com/Jcs2026/super_adb/releases
+
+| 平台 | 产物 |
+|------|------|
+| Linux x86_64 | `Super_ADB-linux-x86_64.tar.gz` |
+| Windows x64 | `Super_ADB-windows-x64.zip` |
+| macOS arm64 | `Super_ADB-macos-arm64.zip` |
 
 ## 📁 项目结构
 
@@ -93,20 +102,21 @@ Super_ADB/
 ├── Super_ADB_MAC/          # macOS 平台源码
 ├── Super_ADB_Linux/        # Linux 平台源码
 ├── ui/                     # 通用 UI 资源
-├── docs/                   # 项目文档与截图
+├── 安装包/                  # 各平台预编译安装包
+├── 项目说明/                # 项目文档与截图
+├── 功能介绍与使用说明.md     # 详细功能说明
 ├── requirements.txt        # Python 依赖
 └── LICENSE                 # MIT 许可证
 ```
 
 ## 📖 文档
 
-- [功能介绍与使用说明](docs/USAGE.md) — 全部功能的详细介绍与操作步骤
-- [安装说明](docs/INSTALL.md) — 安装包解压与使用说明
+- [功能介绍与使用说明](功能介绍与使用说明.md) — 全部功能的详细介绍与操作步骤
+- [项目全景文档](项目全景文档.html) — 项目架构与设计全景
 
 ## 🔗 开源地址
 
 - **GitHub**：https://github.com/Jcs2026-byte/Super_ADB.git
-- **Gitee**：https://gitee.com/Jcs2026/super_adb.git
 
 ## 🤝 贡献
 
@@ -120,4 +130,4 @@ Super_ADB/
 
 扫码关注公众号 **Super_ADB**，获取最新版本更新、使用教程和技术分享。
 
-![公众号](ui/wechat_qrcode.jpg)
+![公众号](Super_ADB_Win/资源/公众号.jpg)

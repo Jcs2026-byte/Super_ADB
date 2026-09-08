@@ -97,7 +97,7 @@ except ImportError:
 
 a = Analysis(
     [_ENTRY],
-    pathex=[_PROJECT_ROOT],
+    pathex=[_PROJECT_ROOT, os.path.join(_PROJECT_ROOT, '项目UI')],
     binaries=_extra_binaries,
     datas=_datas,
     hiddenimports=_hiddenimports,

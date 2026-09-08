@@ -141,6 +141,13 @@ info "构建后裁剪 Qt 无用插件/翻译（减小体积）..."
 export TRIM_MOVE=1
 ( cd "$PROJECT_ROOT" && "$PYTHON" -c "import sys; sys.path.insert(0, r'$PROJECT_ROOT/打包'); import 裁剪_qt; 裁剪_qt.main()" )
 
+# ── 4.5 修复断链兼容符号链接（签名前）──────────────────────────────────────
+# PySide6 6.11 在 Python 3.14 打包下：Resources/Qt*、Resources/Python
+# 兼容符号链接目标缺 ../Frameworks/ 前缀导致断链（连带 _struct 崩溃）。
+# 必须在签名前修复，保证签名的是最终结构。
+info "修复断链兼容符号链接..."
+"$PYTHON" "$SCRIPT_DIR/fix_symlinks.py" "$APP_PATH"
+
 # ── 5. ad-hoc 深度签名 ──────────────────────────────────────────────────────
 info "执行 ad-hoc 深度签名（递归签名 .app 内所有二进制，含 adb/scrcpy/libusb）..."
 codesign --force --deep --sign - "$APP_PATH"

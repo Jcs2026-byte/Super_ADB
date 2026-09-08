@@ -386,7 +386,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self.splitter_3.setCollapsible(1, True)
         self.splitter_3.setStretchFactor(0, 0)
         self.splitter_3.setStretchFactor(1, 1)
-        self._恢复分割条3()  # 从配置读，否则用默认 [0, 1]（上方折叠）
+        self._恢复分割条3()  # 从配置读，否则用默认 [1, 1]（不折叠）
         self.splitter_3.splitterMoved.connect(self._防抖保存分割条3)
         # 压小设备下拉框最小宽度，让右栏可以缩得更窄而不裁剪控件
         self.deviceCombo.setMinimumWidth(160)
@@ -1750,14 +1750,13 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
     # ------------------------------------------------------------------
     def _恢复分割条3(self):
         """从配置恢复 splitter_3 的两个面板高度。
-        缺失或损坏时使用默认 [0, 1]（上方折叠，adb 调试模块隐藏）。"""
+        缺失或损坏时使用默认 [1, 1]（不折叠，上下面板均可见）。"""
         sizes = 加载json配置(CONFIG_NAME).get('splitter_3_sizes')
         if isinstance(sizes, list) and len(sizes) == 2 and all(isinstance(s, int) and s >= 0 for s in sizes):
             self.splitter_3.setSizes(sizes)
         else:
-            # 默认：上方 0 像素（折叠），下方占全部。
-            # 上方可折叠已 setCollapsible(0, True)，size=0 等效收起。
-            self.splitter_3.setSizes([0, 1])
+            # 默认：不折叠，上下面板均可见；[1, 1] 表示各占一半高度。
+            self.splitter_3.setSizes([1, 1])
 
     def _保存分割条3(self):
         """把当前 splitter_3 的两个面板高度写入配置。"""

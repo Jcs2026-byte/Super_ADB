@@ -209,24 +209,9 @@ jobs:
           python 打包/make_zip.py 打包/dist/Super_ADB_MAC.app 打包/dist/Super_ADB_mac.zip
 
       - name: Verify zip symlinks before smoke
-        working-directory: Super_ADB_MAC/打包/dist
+        working-directory: Super_ADB_MAC
         run: |
-          rm -rf _verify && mkdir -p _verify && unzip -q Super_ADB_mac.zip -d _verify
-          python - <<'EOF'
-import os
-app = '_verify/Super_ADB_MAC.app'
-broken = []
-for dp, dn, fn in os.walk(app):
-    for n in dn + fn:
-        p = os.path.join(dp, n)
-        if os.path.islink(p) and not os.path.exists(p):
-            broken.append(os.path.relpath(p, app))
-print('verify broken symlinks:', len(broken))
-for b in broken[:15]:
-    print('   ', b)
-if broken:
-    raise SystemExit(1)
-EOF
+          python 打包/verify_zip_symlinks.py 打包/dist/Super_ADB_mac.zip
 
       - name: Rename artifact
         working-directory: Super_ADB_MAC/打包/dist

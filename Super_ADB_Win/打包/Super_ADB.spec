@@ -5,7 +5,9 @@ import os
 # 打包目录 = 本 spec 所在目录；项目根 = 打包目录的上一级
 # （2026-09 适配 CI：原先硬编码本机绝对路径，
 #  在 GitHub Actions runner 上不存在，Windows 构建必挂）
-_打包目录 = os.path.dirname(os.path.abspath(__file__))
+# 注：PyInstaller ≥6.21 执行 spec 时不再注入 __file__（NameError），
+#  必须使用 PyInstaller 提供的 SPEC（spec 绝对路径）变量，与 Linux/macOS spec 一致。
+_打包目录 = os.path.dirname(os.path.abspath(SPEC))
 _项目根 = os.path.dirname(_打包目录)
 
 

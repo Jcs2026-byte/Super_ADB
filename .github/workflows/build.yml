@@ -206,6 +206,10 @@ jobs:
           echo "--- after fix: Versions/Current ---"
           ls -la 打包/dist/Super_ADB_MAC.app/Contents/Frameworks/PySide6/Qt/lib/QtCore.framework/Versions/ 2>/dev/null || true
           codesign --force --deep --sign - 打包/dist/Super_ADB_MAC.app
+          echo "--- codesign verify after fix (rc matters) ---"
+          codesign --verify --deep --strict 打包/dist/Super_ADB_MAC.app 2>&1 || true
+          echo "--- first unsigned mach-o candidates ---"
+          find 打包/dist/Super_ADB_MAC.app -type f \( -name '*.dylib' -o -name '*.so' \) -exec codesign -v {} \; 2>&1 | grep -v 'satisfies its Designated Requirement' | head -20 || true
           python 打包/make_zip.py 打包/dist/Super_ADB_MAC.app 打包/dist/Super_ADB_mac.zip
 
       - name: Verify zip symlinks before smoke

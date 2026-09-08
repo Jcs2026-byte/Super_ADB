@@ -52,13 +52,29 @@ try:
             os.path.dirname(_libusb.__file__), '_platform', 'macos', '*', 'libusb-1.0.dylib'))
         _libusb_dylib = _cands[0] if _cands else ''
     if _libusb_dylib and os.path.isfile(_libusb_dylib):
-        _extra_binaries = [(_libusb_dylib, '.')]  # 落到 .app/Contents/MacOS
+        _extra_binaries = [(_libusb_dylib, '.')]  # 落到 .app/Contents/Frameworks（BUNDLE binaries 根）
         print('[build] 内置 libusb dylib:', _libusb_dylib)
     else:
         print('[build][WARN] 未找到 libusb-1.0.dylib，USB 直连在打包版将不可用'
               '（请在构建环境 pip install libusb）')
 except Exception as _e:
     print('[build][WARN] 定位 libusb 失败:', _e)
+
+# ── offscreen QPA 平台插件（必须以 binary 进 Frameworks，不能走 datas）───────
+# GitHub Actions macOS runner 无 GUI，smoke 用 QT_QPA_PLATFORM=offscreen 启动；
+# PySide6 的 hook 在 macOS 只收集 cocoa，故显式补收 libqoffscreen.dylib。
+# 注意必须走 binaries（目标 Contents/Frameworks/PySide6/Qt/plugins/platforms），
+# 若走 datas 会落到 Contents/Resources，Qt 的插件搜索路径找不到它，
+# 运行时仍报 'Could not find the Qt platform plugin "offscreen"'。
+try:
+    import PySide6 as _pyside6
+    _offscreen_plugin = os.path.join(
+        os.path.dirname(_pyside6.__file__), 'Qt', 'plugins', 'platforms', 'libqoffscreen.dylib')
+    if os.path.isfile(_offscreen_plugin):
+        _extra_binaries.append((_offscreen_plugin, 'PySide6/Qt/plugins/platforms'))
+        print('[build] offscreen QPA plugin as binary:', _offscreen_plugin)
+except Exception:
+    pass
 
 # ── datas：资源 + 外部扩展 ─────────────────────────────────────────────────
 # 注意：目标路径不要带前导 '/'，否则 macOS 下会被当成绝对路径导致文件丢失。
@@ -69,20 +85,6 @@ _datas = [
 ]
 if os.path.isdir(_EXT_DIR):
     _datas.append((_EXT_DIR, '外部扩展'))
-
-# ── offscreen QPA 平台插件 ──────────────────────────────────────────────────
-# GitHub Actions macOS runner 无 GUI，smoke 用 QT_QPA_PLATFORM=offscreen 启动；
-# PyInstaller 的 PySide6 hook 在 macOS 上只收集 cocoa 插件，offscreen 不会随包，
-# 缺它就会报 "Could not find the Qt platform plugin" 启动即崩。这里显式补收。
-try:
-    import PySide6 as _pyside6
-    _offscreen_plugin = os.path.join(
-        os.path.dirname(_pyside6.__file__), 'Qt', 'plugins', 'platforms', 'libqoffscreen.dylib')
-    if os.path.isfile(_offscreen_plugin):
-        _datas.append((_offscreen_plugin, 'PySide6/Qt/plugins/platforms'))
-        print('[build] offscreen QPA plugin collected:', _offscreen_plugin)
-except Exception:
-    pass
 
 # ── 隐藏依赖（与 Win spec / 精简打包exe.py 同步，缺一不可）──────────────────
 # 自研 ADB 配对链路硬依赖 cryptography：配对客户端顶层 `from cryptography import

@@ -272,7 +272,7 @@ log_step "6/7 执行打包 (PyInstaller)"
 
 if [[ -f "$SPEC_FILE" ]]; then
     log_info "使用 spec 文件: $SPEC_FILE"
-    $PYTHON -m PyInstaller --clean --noconfirm "$SPEC_FILE"
+    $PYTHON -m PyInstaller --clean --noconfirm --distpath "$SCRIPT_DIR/dist" --workpath "$SCRIPT_DIR/build" "$SPEC_FILE"
 else
     log_warn "未找到 spec 文件，使用精简打包脚本"
     $PYTHON "$SCRIPT_DIR/精简打包exe.py"

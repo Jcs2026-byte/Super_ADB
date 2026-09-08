@@ -430,6 +430,10 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self._连接信号()
         self._添加状态栏()
         self._初始化页面()
+        # ── 默认页持久化：启动恢复上次打开的页，切换时 300ms 防抖写盘 ──
+        self._恢复默认页()  # 从配置读，否则保持 .ui 默认（左侧=工具[1]）
+        self.tabWidget.currentChanged.connect(self._防抖保存默认页)
+        self.tabWidget_2.currentChanged.connect(self._防抖保存默认页)
         self._更新命令行按钮文字()
         # 启用半透明背景以支持圆角窗口
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -1775,6 +1779,35 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             self._splitter3_timer.timeout.connect(self._保存分割条3)
         self._splitter3_timer.start(300)
 
+    # ------------------------------------------------------------------
+    # 默认页持久化：启动读、切换写、退出再写
+    # 与 _恢复几何 / _保存几何 同样套路；key 用 'default_pages'，
+    # 值 [左侧页签索引, 右侧页签索引]（tabWidget / tabWidget_2）。
+    # ------------------------------------------------------------------
+    def _恢复默认页(self):
+        """从配置恢复两个页签的默认页。
+        缺失或越界时保持 .ui 默认（左侧=工具[1]，右侧=文件管理与日志[0]）。"""
+        pages = 加载json配置(CONFIG_NAME).get('default_pages')
+        if isinstance(pages, list) and len(pages) == 2 and all(isinstance(i, int) for i in pages):
+            if 0 <= pages[0] < self.tabWidget.count():
+                self.tabWidget.setCurrentIndex(pages[0])
+            if 0 <= pages[1] < self.tabWidget_2.count():
+                self.tabWidget_2.setCurrentIndex(pages[1])
+
+    def _保存默认页(self):
+        """把两个页签的当前索引写入配置。"""
+        cfg = 加载json配置(CONFIG_NAME)
+        cfg['default_pages'] = [self.tabWidget.currentIndex(), self.tabWidget_2.currentIndex()]
+        保存json配置(CONFIG_NAME, cfg)
+
+    def _防抖保存默认页(self, *_):
+        """currentChanged 防抖：切换结束后 300ms 才写盘，避免高频 IO。"""
+        if not hasattr(self, '_page_save_timer'):
+            self._page_save_timer = QTimer(self)
+            self._page_save_timer.setSingleShot(True)
+            self._page_save_timer.timeout.connect(self._保存默认页)
+        self._page_save_timer.start(300)
+
     def showEvent(self, ev):
         super().showEvent(ev)
         # 仅在首次显示时还原窗口位置/大小；之后从托盘恢复时不再跳回记录位置
@@ -1876,11 +1909,13 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         """点 ✕ 直接关闭窗口并退出程序。"""
         self._保存几何()
         self._保存分割条3()
+        self._保存默认页()
         ev.accept()
 
     def _隐藏到托盘(self):
         self._保存几何()
         self._保存分割条3()
+        self._保存默认页()
         self.hide()
         self.tray_icon.showMessage(
             'Super_ADB', '已隐藏到托盘，单击托盘图标恢复，右键"退出"可彻底关闭。',
@@ -1966,6 +2001,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         """托盘退出：先保存窗口几何，再退出程序。"""
         self._保存几何()
         self._保存分割条3()
+        self._保存默认页()
         QApplication.instance().quit()
 
     # ------------------------------------------------------------------

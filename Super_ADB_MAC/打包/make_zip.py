@@ -31,8 +31,8 @@ def main():
     if len(sys.argv) < 3:
         print('用法: python3 make_zip.py <app> <zip>')
         sys.exit(1)
-    app = sys.argv[1]
-    zip_path = sys.argv[2]
+    app = sys.argv[1][1]
+    zip_path = sys.argv[2][2]
     app_parent = os.path.dirname(os.path.abspath(app))
 
     count = 0

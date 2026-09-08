@@ -92,7 +92,9 @@ else:
             '配置/打包信息.json',
             '资源/Super_ADB.png',
             '外部扩展/scrcpy',
-            '外部扩展/adb',
+            # 注意：不要求 外部扩展/adb —— 仓库 Linux 版不随包顶层 adb，
+            # 程序运行时回退使用 外部扩展/scrcpy/.../adb（见 ADB工具.py 回退逻辑），
+            # 该 adb 会命中下方 vendor_arch 架构检查。
         ],
         'forbidden': [],
         'exe_arch': {'x86-64'},

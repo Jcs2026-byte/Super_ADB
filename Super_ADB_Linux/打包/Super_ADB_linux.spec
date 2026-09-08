@@ -30,12 +30,12 @@ _EXT_DIR = os.path.join(_PROJECT_ROOT, '外部扩展')
 # 图标：Linux 用 .png
 _ICON = os.path.join(_PROJECT_ROOT, '资源', 'Super_ADB.png')
 
-# datas：资源 + 外部扩展（Linux 用 ':' 作为 SRC:DST 分隔符）
+# datas：资源 + 外部扩展（目标必须相对路径；PyInstaller >=6.22 对前导 / 直接报错）
 _datas = [
     (_RES_DIR, '资源'),
 ]
 if os.path.isdir(_EXT_DIR):
-    _datas.append((_EXT_DIR, '/外部扩展'))
+    _datas.append((_EXT_DIR, '外部扩展'))
 
 a = Analysis(
     [_ENTRY],

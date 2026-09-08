@@ -41,7 +41,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r Super_ADB_Linux/打包/requirements_linux.txt
-          pip install pyinstaller cryptography pyusb brotli
+          pip install "pyinstaller==6.21.0" cryptography pyusb brotli
 
       - name: Build
         working-directory: Super_ADB_Linux
@@ -111,7 +111,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller cryptography pyusb pyzbar brotli
+          pip install "pyinstaller==6.21.0" cryptography pyusb pyzbar brotli
 
       - name: Build
         working-directory: Super_ADB_Win
@@ -189,7 +189,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller cryptography pyusb libusb1 brotli
+          pip install "pyinstaller==6.21.0" cryptography pyusb libusb1 brotli
 
       - name: Build
         working-directory: Super_ADB_MAC

@@ -379,6 +379,15 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self.splitter_main.setStretchFactor(1, 0)
         self.splitter_main.setSizes([1, 0])
         self.splitter_main.splitterMoved.connect(self._分割条移动时)
+        # ── splitter_3：默认折叠上方（adb 调试模块），下方 便捷工具/输出 占满 ──
+        # 上下两个子面板都可折叠（让用户能拖手柄再次展开）；
+        # 拉伸因子给下方 1，上方 0，保证窗口缩放时下方跟着伸缩。
+        self.splitter_3.setCollapsible(0, True)
+        self.splitter_3.setCollapsible(1, True)
+        self.splitter_3.setStretchFactor(0, 0)
+        self.splitter_3.setStretchFactor(1, 1)
+        self._恢复分割条3()  # 从配置读，否则用默认 [0, 1]（上方折叠）
+        self.splitter_3.splitterMoved.connect(self._防抖保存分割条3)
         # 压小设备下拉框最小宽度，让右栏可以缩得更窄而不裁剪控件
         self.deviceCombo.setMinimumWidth(160)
         self.fileMgr_deviceCombo.setMinimumWidth(160)
@@ -1731,6 +1740,41 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             self._geo_timer.timeout.connect(self._保存几何)
         self._geo_timer.start(300)
 
+    # ------------------------------------------------------------------
+    # splitter_3 持久化：启动读、拖动写、关闭再写
+    # 与 _恢复几何 / _保存几何 同样套路；key 用 'splitter_3_sizes'。
+    # ------------------------------------------------------------------
+    def _恢复分割条3(self):
+        """从配置恢复 splitter_3 的两个面板高度。
+        缺失或损坏时使用默认 [0, 1]（上方折叠，adb 调试模块隐藏）。"""
+        sizes = 加载json配置(CONFIG_NAME).get('splitter_3_sizes')
+        if isinstance(sizes, list) and len(sizes) == 2 and all(isinstance(s, int) and s >= 0 for s in sizes):
+            self.splitter_3.setSizes(sizes)
+        else:
+            # 默认：上方 0 像素（折叠），下方占全部。
+            # 上方可折叠已 setCollapsible(0, True)，size=0 等效收起。
+            self.splitter_3.setSizes([0, 1])
+
+    def _保存分割条3(self):
+        """把当前 splitter_3 的两个面板高度写入配置。"""
+        sizes = self.splitter_3.sizes()
+        # 防御：极端 resize 后 sizes 偶尔会返回 [-1]，跳过保存避免污染配置
+        if any(s < 0 for s in sizes) or len(sizes) != 2:
+            return
+        cfg = 加载json配置(CONFIG_NAME)
+        cfg['splitter_3_sizes'] = list(sizes)
+        保存json配置(CONFIG_NAME, cfg)
+
+    def _防抖保存分割条3(self, *_):
+        """splitterMoved 防抖：拖动结束后 300ms 才写盘，避免高频 IO。
+        注意：折叠/展开（sizes 从 [N, M] 变 [0, M]）时 splitterMoved 也会触发，
+        会被这条路径捕获，下次启动即还原。"""
+        if not hasattr(self, '_splitter3_timer'):
+            self._splitter3_timer = QTimer(self)
+            self._splitter3_timer.setSingleShot(True)
+            self._splitter3_timer.timeout.connect(self._保存分割条3)
+        self._splitter3_timer.start(300)
+
     def showEvent(self, ev):
         super().showEvent(ev)
         # 仅在首次显示时还原窗口位置/大小；之后从托盘恢复时不再跳回记录位置
@@ -1831,10 +1875,12 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
     def closeEvent(self, ev):
         """点 ✕ 直接关闭窗口并退出程序。"""
         self._保存几何()
+        self._保存分割条3()
         ev.accept()
 
     def _隐藏到托盘(self):
         self._保存几何()
+        self._保存分割条3()
         self.hide()
         self.tray_icon.showMessage(
             'Super_ADB', '已隐藏到托盘，单击托盘图标恢复，右键"退出"可彻底关闭。',
@@ -1919,6 +1965,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
     def _退出应用(self):
         """托盘退出：先保存窗口几何，再退出程序。"""
         self._保存几何()
+        self._保存分割条3()
         QApplication.instance().quit()
 
     # ------------------------------------------------------------------

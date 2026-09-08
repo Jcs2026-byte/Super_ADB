@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'Super_ADB.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.11.2
+## Created by: Qt User Interface Compiler version 6.11.1
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComb
     QSpacerItem, QSplitter, QStatusBar, QTabWidget,
     QTextEdit, QTreeView, QVBoxLayout, QWidget)
 
-from tools.favorite_combobox import 收藏下拉框
+from 工具.收藏下拉框 import 收藏下拉框
 import png_rc
 
 class Ui_MainWindow(object):
@@ -219,12 +219,13 @@ class Ui_MainWindow(object):
 
         self.sysScrollArea = QScrollArea(self.sysGroup)
         self.sysScrollArea.setObjectName(u"sysScrollArea")
+        self.sysScrollArea.setFrameShape(QFrame.Shape.NoFrame)
+        self.sysScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.sysScrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.sysScrollArea.setWidgetResizable(True)
-        self.sysScrollArea.setMaximumHeight(72)
-        self.sysScrollArea.setFrameShape(QFrame.NoFrame)
-        self.sysScrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.sysScrollContent = QWidget()
         self.sysScrollContent.setObjectName(u"sysScrollContent")
+        self.sysScrollContent.setGeometry(QRect(0, 0, 594, 110))
         self.gridLayout = QGridLayout(self.sysScrollContent)
         self.gridLayout.setObjectName(u"gridLayout")
         self.btnDeviceInfo = QPushButton(self.sysScrollContent)
@@ -320,63 +321,79 @@ class Ui_MainWindow(object):
 
         self.appGroup = QGroupBox(self.leftPanelWidget)
         self.appGroup.setObjectName(u"appGroup")
-        self.gridLayout_2 = QGridLayout(self.appGroup)
+        self.appGroupLayout = QVBoxLayout(self.appGroup)
+        self.appGroupLayout.setObjectName(u"appGroupLayout")
+        self.appScrollArea = QScrollArea(self.appGroup)
+        self.appScrollArea.setObjectName(u"appScrollArea")
+        self.appScrollArea.setFrameShape(QFrame.Shape.NoFrame)
+        self.appScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.appScrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.appScrollArea.setWidgetResizable(True)
+        self.appScrollContent = QWidget()
+        self.appScrollContent.setObjectName(u"appScrollContent")
+        self.appScrollContent.setGeometry(QRect(0, 0, 594, 76))
+        self.gridLayout_2 = QGridLayout(self.appScrollContent)
+        self.gridLayout_2.setSpacing(6)
         self.gridLayout_2.setObjectName(u"gridLayout_2")
-        self.btnMeminfo = QPushButton(self.appGroup)
+        self.btnMeminfo = QPushButton(self.appScrollContent)
         self.btnMeminfo.setObjectName(u"btnMeminfo")
 
         self.gridLayout_2.addWidget(self.btnMeminfo, 1, 5, 1, 1)
 
-        self.btnStopApp = QPushButton(self.appGroup)
+        self.btnStopApp = QPushButton(self.appScrollContent)
         self.btnStopApp.setObjectName(u"btnStopApp")
 
         self.gridLayout_2.addWidget(self.btnStopApp, 0, 4, 1, 1)
 
-        self.btnpm = QPushButton(self.appGroup)
+        self.btnpm = QPushButton(self.appScrollContent)
         self.btnpm.setObjectName(u"btnpm")
 
         self.gridLayout_2.addWidget(self.btnpm, 1, 4, 1, 1)
 
-        self.lblPkg = QLabel(self.appGroup)
+        self.lblPkg = QLabel(self.appScrollContent)
         self.lblPkg.setObjectName(u"lblPkg")
         self.lblPkg.setMaximumSize(QSize(30, 50))
 
         self.gridLayout_2.addWidget(self.lblPkg, 0, 0, 1, 1)
 
-        self.btnAppInfo = QPushButton(self.appGroup)
+        self.btnAppInfo = QPushButton(self.appScrollContent)
         self.btnAppInfo.setObjectName(u"btnAppInfo")
 
         self.gridLayout_2.addWidget(self.btnAppInfo, 1, 2, 1, 1)
 
-        self.btnClearApp = QPushButton(self.appGroup)
+        self.btnClearApp = QPushButton(self.appScrollContent)
         self.btnClearApp.setObjectName(u"btnClearApp")
 
         self.gridLayout_2.addWidget(self.btnClearApp, 0, 6, 1, 1)
 
-        self.btnStartApp = QPushButton(self.appGroup)
+        self.btnStartApp = QPushButton(self.appScrollContent)
         self.btnStartApp.setObjectName(u"btnStartApp")
 
         self.gridLayout_2.addWidget(self.btnStartApp, 0, 5, 1, 1)
 
-        self.pkgInput = QLineEdit(self.appGroup)
+        self.pkgInput = QLineEdit(self.appScrollContent)
         self.pkgInput.setObjectName(u"pkgInput")
 
         self.gridLayout_2.addWidget(self.pkgInput, 0, 1, 1, 2)
 
-        self.btnRunningApps_2 = QPushButton(self.appGroup)
+        self.btnRunningApps_2 = QPushButton(self.appScrollContent)
         self.btnRunningApps_2.setObjectName(u"btnRunningApps_2")
 
         self.gridLayout_2.addWidget(self.btnRunningApps_2, 1, 6, 1, 1)
 
-        self.btnUninstall = QPushButton(self.appGroup)
+        self.btnUninstall = QPushButton(self.appScrollContent)
         self.btnUninstall.setObjectName(u"btnUninstall")
 
         self.gridLayout_2.addWidget(self.btnUninstall, 1, 1, 1, 1)
 
-        self.btninstallzip = QPushButton(self.appGroup)
+        self.btninstallzip = QPushButton(self.appScrollContent)
         self.btninstallzip.setObjectName(u"btninstallzip")
 
         self.gridLayout_2.addWidget(self.btninstallzip, 1, 0, 1, 1)
+
+        self.appScrollArea.setWidget(self.appScrollContent)
+
+        self.appGroupLayout.addWidget(self.appScrollArea)
 
 
         self.verticalLayout_2.addWidget(self.appGroup)
@@ -389,42 +406,58 @@ class Ui_MainWindow(object):
         self.verticalLayout_6.setContentsMargins(0, 0, 0, 0)
         self.toolsGroup = QGroupBox(self.toolsPanelWidget)
         self.toolsGroup.setObjectName(u"toolsGroup")
-        self.gridLayout_tools = QGridLayout(self.toolsGroup)
+        self.gridLayout_3 = QGridLayout(self.toolsGroup)
+        self.gridLayout_3.setObjectName(u"gridLayout_3")
+        self.toolsScrollArea = QScrollArea(self.toolsGroup)
+        self.toolsScrollArea.setObjectName(u"toolsScrollArea")
+        self.toolsScrollArea.setFrameShape(QFrame.Shape.NoFrame)
+        self.toolsScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.toolsScrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.toolsScrollArea.setWidgetResizable(True)
+        self.toolsScrollContent = QWidget()
+        self.toolsScrollContent.setObjectName(u"toolsScrollContent")
+        self.toolsScrollContent.setGeometry(QRect(0, -50, 594, 108))
+        self.gridLayout_tools = QGridLayout(self.toolsScrollContent)
+        self.gridLayout_tools.setSpacing(6)
         self.gridLayout_tools.setObjectName(u"gridLayout_tools")
-        self.cmdBtn = QPushButton(self.toolsGroup)
-        self.cmdBtn.setObjectName(u"cmdBtn")
-
-        self.gridLayout_tools.addWidget(self.cmdBtn, 0, 0, 1, 1)
-
-        self.jsonToolBtn = QPushButton(self.toolsGroup)
+        self.jsonToolBtn = QPushButton(self.toolsScrollContent)
         self.jsonToolBtn.setObjectName(u"jsonToolBtn")
 
         self.gridLayout_tools.addWidget(self.jsonToolBtn, 0, 1, 1, 1)
 
-        self.md5Btn = QPushButton(self.toolsGroup)
-        self.md5Btn.setObjectName(u"md5Btn")
-
-        self.gridLayout_tools.addWidget(self.md5Btn, 0, 2, 1, 1)
-
-        self.timestampBtn = QPushButton(self.toolsGroup)
-        self.timestampBtn.setObjectName(u"timestampBtn")
-
-        self.gridLayout_tools.addWidget(self.timestampBtn, 0, 3, 1, 1)
-
-        self.wifiBtn = QPushButton(self.toolsGroup)
+        self.wifiBtn = QPushButton(self.toolsScrollContent)
         self.wifiBtn.setObjectName(u"wifiBtn")
 
-        self.gridLayout_tools.addWidget(self.wifiBtn, 0, 4, 1, 1)
+        self.gridLayout_tools.addWidget(self.wifiBtn, 2, 1, 1, 1)
 
-        self.pcapParserBtn = QPushButton(self.toolsGroup)
+        self.cmdBtn = QPushButton(self.toolsScrollContent)
+        self.cmdBtn.setObjectName(u"cmdBtn")
+
+        self.gridLayout_tools.addWidget(self.cmdBtn, 0, 0, 1, 1)
+
+        self.timestampBtn = QPushButton(self.toolsScrollContent)
+        self.timestampBtn.setObjectName(u"timestampBtn")
+
+        self.gridLayout_tools.addWidget(self.timestampBtn, 1, 1, 1, 1)
+
+        self.pcapParserBtn = QPushButton(self.toolsScrollContent)
         self.pcapParserBtn.setObjectName(u"pcapParserBtn")
 
-        self.gridLayout_tools.addWidget(self.pcapParserBtn, 0, 5, 1, 1)
+        self.gridLayout_tools.addWidget(self.pcapParserBtn, 0, 3, 1, 1)
 
-        self.ipScanBtn = QPushButton(self.toolsGroup)
+        self.md5Btn = QPushButton(self.toolsScrollContent)
+        self.md5Btn.setObjectName(u"md5Btn")
+
+        self.gridLayout_tools.addWidget(self.md5Btn, 1, 0, 1, 1)
+
+        self.ipScanBtn = QPushButton(self.toolsScrollContent)
         self.ipScanBtn.setObjectName(u"ipScanBtn")
 
-        self.gridLayout_tools.addWidget(self.ipScanBtn, 0, 6, 1, 1)
+        self.gridLayout_tools.addWidget(self.ipScanBtn, 1, 3, 1, 1)
+
+        self.toolsScrollArea.setWidget(self.toolsScrollContent)
+
+        self.gridLayout_3.addWidget(self.toolsScrollArea, 0, 0, 1, 1)
 
 
         self.verticalLayout_6.addWidget(self.toolsGroup)
@@ -514,7 +547,6 @@ class Ui_MainWindow(object):
         self.fileMgr_btnDeviceMgr.setChecked(False)
 
         self.horizontalLayout.addWidget(self.fileMgr_btnDeviceMgr)
-
 
         self.horizontalSpacer_5 = QSpacerItem(40, 20, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
 
@@ -817,29 +849,29 @@ class Ui_MainWindow(object):
         self.btninstallzip.setText(QCoreApplication.translate("MainWindow", u"\u5b89\u88c5", None))
         self.toolsGroup.setTitle(QCoreApplication.translate("MainWindow", u"\u4fbf\u6377\u5de5\u5177", None))
 #if QT_CONFIG(tooltip)
-        self.cmdBtn.setToolTip(QCoreApplication.translate("MainWindow", u"\u6253\u5f00\u7cfb\u7edf PowerShell\uff08Windows\uff09/ \u7ec8\u7aef\uff08macOS, Linux\uff09", None))
-#endif // QT_CONFIG(tooltip)
-        self.cmdBtn.setText(QCoreApplication.translate("MainWindow", u"\u547d\u4ee4\u884c", None))
-#if QT_CONFIG(tooltip)
         self.jsonToolBtn.setToolTip(QCoreApplication.translate("MainWindow", u"JSON \u683c\u5f0f\u5316/\u538b\u7f29 + \u5dee\u5f02\u5bf9\u6bd4", None))
 #endif // QT_CONFIG(tooltip)
         self.jsonToolBtn.setText(QCoreApplication.translate("MainWindow", u"JSON\u5de5\u5177", None))
-#if QT_CONFIG(tooltip)
-        self.md5Btn.setToolTip(QCoreApplication.translate("MainWindow", u"\u6587\u4ef6 MD5 / SHA1 / SHA256 \u6821\u9a8c\uff08\u62d6\u5165\u6587\u4ef6\u5373\u53ef\uff09", None))
-#endif // QT_CONFIG(tooltip)
-        self.md5Btn.setText(QCoreApplication.translate("MainWindow", u"\u54c8\u5e0c\u6821\u9a8c", None))
-#if QT_CONFIG(tooltip)
-        self.timestampBtn.setToolTip(QCoreApplication.translate("MainWindow", u"Unix \u65f6\u95f4\u6233 \u2194 \u5317\u4eac\u65f6\u95f4 \u4e92\u8f6c", None))
-#endif // QT_CONFIG(tooltip)
-        self.timestampBtn.setText(QCoreApplication.translate("MainWindow", u"\u65f6\u95f4\u6233", None))
 #if QT_CONFIG(tooltip)
         self.wifiBtn.setToolTip(QCoreApplication.translate("MainWindow", u"\u67e5\u770b\u672c\u673a\u5df2\u4fdd\u5b58\u7684 WiFi \u53ca\u5bc6\u7801", None))
 #endif // QT_CONFIG(tooltip)
         self.wifiBtn.setText(QCoreApplication.translate("MainWindow", u"WiFi", None))
 #if QT_CONFIG(tooltip)
+        self.cmdBtn.setToolTip(QCoreApplication.translate("MainWindow", u"\u6253\u5f00\u7cfb\u7edf PowerShell\uff08Windows\uff09/ \u7ec8\u7aef\uff08macOS, Linux\uff09", None))
+#endif // QT_CONFIG(tooltip)
+        self.cmdBtn.setText(QCoreApplication.translate("MainWindow", u"\u547d\u4ee4\u884c", None))
+#if QT_CONFIG(tooltip)
+        self.timestampBtn.setToolTip(QCoreApplication.translate("MainWindow", u"Unix \u65f6\u95f4\u6233 \u2194 \u5317\u4eac\u65f6\u95f4 \u4e92\u8f6c", None))
+#endif // QT_CONFIG(tooltip)
+        self.timestampBtn.setText(QCoreApplication.translate("MainWindow", u"\u65f6\u95f4\u6233", None))
+#if QT_CONFIG(tooltip)
         self.pcapParserBtn.setToolTip(QCoreApplication.translate("MainWindow", u"PCAP \u6293\u5305\u6587\u4ef6\u89e3\u6790\uff0c\u7c7b Charles \u5c55\u793a HTTP/HTTPS/DNS \u8bf7\u6c42", None))
 #endif // QT_CONFIG(tooltip)
         self.pcapParserBtn.setText(QCoreApplication.translate("MainWindow", u"PCAP\u89e3\u6790", None))
+#if QT_CONFIG(tooltip)
+        self.md5Btn.setToolTip(QCoreApplication.translate("MainWindow", u"\u6587\u4ef6 MD5 / SHA1 / SHA256 \u6821\u9a8c\uff08\u62d6\u5165\u6587\u4ef6\u5373\u53ef\uff09", None))
+#endif // QT_CONFIG(tooltip)
+        self.md5Btn.setText(QCoreApplication.translate("MainWindow", u"\u54c8\u5e0c\u6821\u9a8c", None))
 #if QT_CONFIG(tooltip)
         self.ipScanBtn.setToolTip(QCoreApplication.translate("MainWindow", u"\u626b\u63cf\u5f53\u524d\u5c40\u57df\u7f51\u5185\u6240\u6709\u5728\u7ebf IP \u8bbe\u5907", None))
 #endif // QT_CONFIG(tooltip)

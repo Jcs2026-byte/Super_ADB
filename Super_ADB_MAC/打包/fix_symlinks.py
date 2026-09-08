@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-修复 .app 内两类断链符号链接
-（PyInstaller 6.21/6.22 + PySide6 6.11.2 + Python 3.14 打包产物）：
-
-1) Contents/Resources/Qt*、Contents/Resources/Python 兼容符号链接
-   目标以 PySide6/ 或 Python.framework 开头但缺 ../Frameworks/ 前缀
-   （PySide6 框架本体实际在 Contents/Frameworks/ 下）→ 重建为 ../Frameworks/<target>。
-2) Contents/Frameworks/PySide6/Qt/lib/*.framework/Versions/Current 缺失
-   （framework 标准结构要求 Versions/Current -> A）→ 创建。
-
-两类断链的后果：Qt 框架/插件加载失败、Resources/Python 断链使解释器
-stdlib 路径解析错误（_struct ModuleNotFoundError, rc=255）。
-
+修复 .app 内两类断链符号链接（PyInstaller 6.21/6.22 + PySide6 6.11.2 + Python 3.14 打包产物）：
+1) Contents/Resources/Qt*、Contents/Resources/Python 兼容符号链接，目标以 PySide6/ 或
+   Python.framework 开头但缺 ../Frameworks/ 前缀（PySide6 框架本体在 Contents/Frameworks/ 下）。
+   —— 无条件重建：无论目标当前是否解析，一律指向 ../Frameworks/<target>。
+2) Contents/Frameworks/PySide6/Qt/lib/*.framework/Versions/Current 缺失（framework 标准结构）。
 用法：python3 fix_symlinks.py <Super_ADB_MAC.app>
 """
 import os
@@ -22,7 +15,7 @@ APP = sys.argv[1]
 fixed = 0
 broken_after = []
 
-# 1) Resources 兼容链接
+# 1) Resources 兼容链接（无条件重建）
 RES = os.path.join(APP, 'Contents', 'Resources')
 if os.path.isdir(RES):
     for name in sorted(os.listdir(RES)):
@@ -32,13 +25,13 @@ if os.path.isdir(RES):
         target = os.readlink(p)
         if not (target.startswith('PySide6/') or target.startswith('Python.framework')):
             continue
-        if os.path.exists(os.path.join(RES, target)):
-            continue
+        if target.startswith('../'):
+            continue  # 已是修复形态
         new_target = os.path.join('..', 'Frameworks', target)
         os.unlink(p)
         os.symlink(new_target, p)
         fixed += 1
-        print('[fix] Resources/%s -> %s' % (name, new_target))
+        print('[fix] Resources/%s -> %s (was %s)' % (name, new_target, target))
 
 # 2) Frameworks 内 Qt framework 的 Versions/Current
 FW = os.path.join(APP, 'Contents', 'Frameworks', 'PySide6', 'Qt', 'lib')

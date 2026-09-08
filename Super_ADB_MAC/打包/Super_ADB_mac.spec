@@ -88,8 +88,8 @@ _hiddenimports = [
     'cryptography.hazmat.primitives.hashes', 'cryptography.hazmat.backends',
     '工具.自研adb.mdns发现',   # 无线调试 mDNS 发现助手（_adb-tls-connect 真实调试端口）
     'usb', 'usb.core', 'usb.util', 'usb.backend.libusb1',
-              '工具.ADB工具', '工具.AXML解码器', '工具.JSON读写', '工具.PCAP解析器', '工具.图表JS',
-              '工具.轻量PCAP解析', '工具.自研adb.adb协议',
+              '工具.android调试工具.ADB工具', '工具.android调试工具.AXML解码器', '工具.便捷工具.JSON读写', '工具.便捷工具.PCAP解析器', '工具.android调试工具.图表JS',
+              '工具.便捷工具.轻量PCAP解析', '工具.自研adb.adb协议',
               '对话框.WiFi配对对话框', '对话框.二维码连接页', '对话框.局域网扫描对话框',
               '对话框.设备信息对话框', '对话框.哈希校验对话框', '对话框.环境配置对话框',
               '对话框.JSON工具对话框', '对话框.scrcpy_设置对话框',

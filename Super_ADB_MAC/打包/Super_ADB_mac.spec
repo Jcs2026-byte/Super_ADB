@@ -70,6 +70,20 @@ _datas = [
 if os.path.isdir(_EXT_DIR):
     _datas.append((_EXT_DIR, '外部扩展'))
 
+# ── offscreen QPA 平台插件 ──────────────────────────────────────────────────
+# GitHub Actions macOS runner 无 GUI，smoke 用 QT_QPA_PLATFORM=offscreen 启动；
+# PyInstaller 的 PySide6 hook 在 macOS 上只收集 cocoa 插件，offscreen 不会随包，
+# 缺它就会报 "Could not find the Qt platform plugin" 启动即崩。这里显式补收。
+try:
+    import PySide6 as _pyside6
+    _offscreen_plugin = os.path.join(
+        os.path.dirname(_pyside6.__file__), 'Qt', 'plugins', 'platforms', 'libqoffscreen.dylib')
+    if os.path.isfile(_offscreen_plugin):
+        _datas.append((_offscreen_plugin, 'PySide6/Qt/plugins/platforms'))
+        print('[build] offscreen QPA plugin collected:', _offscreen_plugin)
+except Exception:
+    pass
+
 # ── 隐藏依赖（与 Win spec / 精简打包exe.py 同步，缺一不可）──────────────────
 # 自研 ADB 配对链路硬依赖 cryptography：配对客户端顶层 `from cryptography import
 # x509` 直接 ImportError → 配对握手不发 → 手机扫码后一直转圈。故必须显式声明。

@@ -268,7 +268,7 @@ def main():
         r = subprocess.run(['codesign', '--verify', '--deep', '--strict', app_root],
                            capture_output=True, text=True)
         check(r.returncode == 0, 'codesign --verify --deep --strict',
-              (r.stderr or r.stdout).strip().splitlines()[:3] if r.returncode else '')
+              '\n'.join((r.stderr or r.stdout).strip().splitlines()[:3]) if r.returncode else '')
 
     # ── 7. 实际启动 ──
     out = ''

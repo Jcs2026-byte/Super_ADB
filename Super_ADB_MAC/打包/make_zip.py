@@ -63,6 +63,25 @@ def main():
             zf.writestr(dinfo, b'')
             count += 1
 
+            # 显式处理 dirs 中的符号链接目录：os.walk(followlinks=False) 不会把它们
+            # 作为 root 递进来，若不处理则 Versions/Current -> A 这类目录链接永远
+            # 不进 zip，导致 QtX.framework/QtX -> Versions/Current/QtX 全部断链。
+            for dn in list(dirs):
+                dp = os.path.join(root, dn)
+                try:
+                    _dlst = os.lstat(dp)
+                except OSError:
+                    continue
+                if stat.S_ISLNK(_dlst.st_mode):
+                    _drel = os.path.relpath(dp, app_parent)
+                    _dfinfo = zipfile.ZipInfo(_drel)
+                    _dfinfo.external_attr = _mode_to_attr(_dlst.st_mode)
+                    _dfinfo.create_system = 3
+                    _dfinfo.compress_type = zipfile.ZIP_DEFLATED
+                    zf.writestr(_dfinfo, os.readlink(dp).encode('utf-8'))
+                    count += 1
+                    dirs.remove(dn)
+
             for fn in sorted(files):
                 fp = os.path.join(root, fn)
                 rel = os.path.relpath(fp, app_parent)

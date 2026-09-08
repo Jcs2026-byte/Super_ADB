@@ -201,8 +201,32 @@ jobs:
         working-directory: Super_ADB_MAC
         run: |
           python 打包/fix_symlinks.py 打包/dist/Super_ADB_MAC.app
+          echo "--- after fix: Resources/Qt* links ---"
+          ls -la 打包/dist/Super_ADB_MAC.app/Contents/Resources/QtCore 2>/dev/null || true
+          echo "--- after fix: Versions/Current ---"
+          ls -la 打包/dist/Super_ADB_MAC.app/Contents/Frameworks/PySide6/Qt/lib/QtCore.framework/Versions/ 2>/dev/null || true
           codesign --force --deep --sign - 打包/dist/Super_ADB_MAC.app
           python 打包/make_zip.py 打包/dist/Super_ADB_MAC.app 打包/dist/Super_ADB_mac.zip
+
+      - name: Verify zip symlinks before smoke
+        working-directory: Super_ADB_MAC/打包/dist
+        run: |
+          rm -rf _verify && mkdir -p _verify && unzip -q Super_ADB_mac.zip -d _verify
+          python - <<'EOF'
+import os
+app = '_verify/Super_ADB_MAC.app'
+broken = []
+for dp, dn, fn in os.walk(app):
+    for n in dn + fn:
+        p = os.path.join(dp, n)
+        if os.path.islink(p) and not os.path.exists(p):
+            broken.append(os.path.relpath(p, app))
+print('verify broken symlinks:', len(broken))
+for b in broken[:15]:
+    print('   ', b)
+if broken:
+    raise SystemExit(1)
+EOF
 
       - name: Rename artifact
         working-directory: Super_ADB_MAC/打包/dist

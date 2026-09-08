@@ -56,14 +56,19 @@ for base, prefix in ((RES, os.path.join('..', 'Frameworks')), (FW, '')):
         real = 'PIL/__dot__dylibs/' + target[len('PIL/.dylibs/'):]
         _relink(p, os.path.join(prefix, real) if prefix else real, 'pil-dot-dylibs')
 
-# 3) Resources/外部扩展/scrcpy v4.1 兼容链接（Frameworks 侧目录名转义 v4__dot__1）
-EXT = os.path.join(RES, '外部扩展', 'scrcpy', 'scrcpy-macos-aarch64-v4.1')
-if os.path.isdir(EXT):
-    for name in ('adb', 'scrcpy'):
-        p = os.path.join(EXT, name)
-        if os.path.islink(p) and not os.path.exists(p):
-            _relink(p, '../../../../Frameworks/外部扩展/scrcpy/scrcpy-macos-aarch64-v4__dot__1/' + name,
-                    'v4-dot-1-escape')
+# 3) Resources/外部扩展 下所有断链 symlink：Frameworks 侧目录名把 '.' 转义为 '__dot__'
+#    （scrcpy-macos-aarch64-v4.1 -> v4__dot__1 等），把 target 中的 v4.1 段一并转义。
+EXT_BASE = os.path.join(RES, '外部扩展')
+if os.path.isdir(EXT_BASE):
+    for _dp, _dirs, _files in os.walk(EXT_BASE):
+        for _fn in _files:
+            _p = os.path.join(_dp, _fn)
+            if not os.path.islink(_p) or os.path.exists(_p):
+                continue
+            _t = os.readlink(_p)
+            if 'v4.1' in _t:
+                _nt = _t.replace('v4.1', 'v4__dot__1')
+                _relink(_p, _nt, 'v4-dot-1-escape')
 
 # 4) Frameworks 内 Qt framework 的 Versions/Current
 QTLIB = os.path.join(FW, 'PySide6', 'Qt', 'lib')

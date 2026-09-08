@@ -123,7 +123,7 @@ jobs:
               continue
             fi
             echo "==> 上传 ${base} ($(du -h "${f}" | cut -f1)) -> release ${RID}"
-            RESP=$(curl -s --connect-timeout 30 --max-time 900 --retry 3 --retry-delay 10 \
+            RESP=$(curl -s --connect-timeout 30 --max-time 180 --retry 1 --retry-delay 5 \
               -X POST "${API}/releases/${RID}/attach_files" \
               -F "access_token=${GITEE_TOKEN}" -F "file=@${f}")
             if echo "${RESP}" | python -c "import json,sys; d=json.load(sys.stdin); assert d.get('id'); print('    uploaded id=', d.get('id'))" 2>/dev/null; then
@@ -134,7 +134,7 @@ jobs:
             fi
           done
 
-      # Linux 大包单独一步：长超时 + 5 次重试 + 上传后二次核验。
+      # Linux 大包单独一步：跨境限速，5min×1 重试快速失败 + 上传后二次核验。
       # 仍失败 → step 报红，日志给出三种补救方式（幂等重跑 / 手动上传 / Gitee Go 兜底）。
       - name: Upload Linux artifact to Gitee (large file, long timeout)
         if: steps.gitee.outputs.ready == 'true'
@@ -157,8 +157,8 @@ jobs:
             exit 0
           fi
           echo "==> 上传 ${base} ($(du -h "${f}" | cut -f1)) -> release ${RID}"
-          echo "    大文件：长超时 30min/次 × 5 次重试"
-          RESP=$(curl -s --connect-timeout 30 --max-time 1800 --retry 5 --retry-delay 30 \
+          echo "    大文件：跨境限速，5min/次 × 1 次重试，超时即快速失败"
+          RESP=$(curl -s --connect-timeout 30 --max-time 300 --retry 1 --retry-delay 5 \
             -X POST "${API}/releases/${RID}/attach_files" \
             -F "access_token=${GITEE_TOKEN}" -F "file=@${f}")
           if echo "${RESP}" | python -c "import json,sys; d=json.load(sys.stdin); assert d.get('id'); print('    uploaded id=', d.get('id'))" 2>/dev/null; then

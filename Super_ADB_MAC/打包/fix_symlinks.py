@@ -1,44 +1,79 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-修复 PyInstaller(PySide6 6.11) 在 macOS .app 里生成的「断链兼容符号链接」。
+修复 .app 内两类断链符号链接
+（PyInstaller 6.21/6.22 + PySide6 6.11.2 + Python 3.14 打包产物）：
 
-现象（Python 3.14 + PyInstaller 6.21/6.22 + PySide6 6.11.2）：
-  PySide6 框架本体落在 Contents/Frameworks/PySide6/，
-  但 PyInstaller 在 Contents/Resources/ 生成的兼容符号链接
-  (Qt* -> PySide6/Qt/lib/...、Python -> Python.framework/...) 目标缺
-  ../Frameworks/ 前缀，全部断链。
-  断链后果：Qt 插件/框架加载失败、Resources/Python 断链使解释器 stdlib
-  路径解析错误（_struct ModuleNotFoundError, rc=255）。
+1) Contents/Resources/Qt*、Contents/Resources/Python 兼容符号链接
+   目标以 PySide6/ 或 Python.framework 开头但缺 ../Frameworks/ 前缀
+   （PySide6 框架本体实际在 Contents/Frameworks/ 下）→ 重建为 ../Frameworks/<target>。
+2) Contents/Frameworks/PySide6/Qt/lib/*.framework/Versions/Current 缺失
+   （framework 标准结构要求 Versions/Current -> A）→ 创建。
 
-本脚本把 Resources 下「目标以 PySide6/ 或 Python.framework 开头且不存在」的
-符号链接重建为 ../Frameworks/<原名>，恢复可解析。
+两类断链的后果：Qt 框架/插件加载失败、Resources/Python 断链使解释器
+stdlib 路径解析错误（_struct ModuleNotFoundError, rc=255）。
+
 用法：python3 fix_symlinks.py <Super_ADB_MAC.app>
 """
 import os
 import sys
 
 APP = sys.argv[1]
-RES = os.path.join(APP, 'Contents', 'Resources')
-if not os.path.isdir(RES):
-    print('[fix_symlinks][ERROR] 不是 .app: %s' % APP)
-    sys.exit(1)
-
 fixed = 0
-for name in sorted(os.listdir(RES)):
-    p = os.path.join(RES, name)
-    if not os.path.islink(p):
-        continue
-    target = os.readlink(p)
-    if not (target.startswith('PySide6/') or target.startswith('Python.framework')):
-        continue
-    full = os.path.join(RES, target)
-    if os.path.exists(full):
-        continue
-    new_target = os.path.join('..', 'Frameworks', target)
-    os.unlink(p)
-    os.symlink(new_target, p)
-    fixed += 1
-    print('[fix_symlinks] 修复 %s: %s -> %s' % (name, target, new_target))
+broken_after = []
 
-print('[fix_symlinks] 完成，共修复 %d 个断链符号链接' % fixed)
+# 1) Resources 兼容链接
+RES = os.path.join(APP, 'Contents', 'Resources')
+if os.path.isdir(RES):
+    for name in sorted(os.listdir(RES)):
+        p = os.path.join(RES, name)
+        if not os.path.islink(p):
+            continue
+        target = os.readlink(p)
+        if not (target.startswith('PySide6/') or target.startswith('Python.framework')):
+            continue
+        if os.path.exists(os.path.join(RES, target)):
+            continue
+        new_target = os.path.join('..', 'Frameworks', target)
+        os.unlink(p)
+        os.symlink(new_target, p)
+        fixed += 1
+        print('[fix] Resources/%s -> %s' % (name, new_target))
+
+# 2) Frameworks 内 Qt framework 的 Versions/Current
+FW = os.path.join(APP, 'Contents', 'Frameworks', 'PySide6', 'Qt', 'lib')
+if os.path.isdir(FW):
+    for name in sorted(os.listdir(FW)):
+        if not name.endswith('.framework'):
+            continue
+        fwdir = os.path.join(FW, name)
+        versions = os.path.join(fwdir, 'Versions')
+        if not os.path.isdir(versions):
+            continue
+        current = os.path.join(versions, 'Current')
+        if os.path.islink(current) and os.path.exists(current):
+            continue
+        a_dir = os.path.join(versions, 'A')
+        if os.path.isdir(a_dir):
+            if os.path.lexists(current):
+                os.unlink(current)
+            os.symlink('A', current)
+            fixed += 1
+            print('[fix] %s/Versions/Current -> A' % name)
+
+# 3) 复查剩余断链
+for dirpath, dirs, files in os.walk(APP):
+    if os.path.islink(dirpath) and not os.path.exists(dirpath):
+        broken_after.append(os.path.relpath(dirpath, APP))
+    for fn in files:
+        fp = os.path.join(dirpath, fn)
+        if os.path.islink(fp) and not os.path.exists(fp):
+            broken_after.append(os.path.relpath(fp, APP))
+
+print('[fix] 修复 %d 个符号链接' % fixed)
+if broken_after:
+    print('[fix][WARN] 仍存在 %d 个断链:' % len(broken_after))
+    for b in broken_after[:20]:
+        print('    ', b)
+else:
+    print('[fix] OK: 无剩余断链')

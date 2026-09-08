@@ -197,6 +197,13 @@ jobs:
           SUPER_ADB_PYTHON: ${{ steps.python.outputs.python-path }}
         run: bash 打包/build_mac_zip.sh
 
+      - name: Fix broken symlinks and repackage
+        working-directory: Super_ADB_MAC
+        run: |
+          python 打包/fix_symlinks.py 打包/dist/Super_ADB_MAC.app
+          codesign --force --deep --sign - 打包/dist/Super_ADB_MAC.app
+          python 打包/make_zip.py 打包/dist/Super_ADB_MAC.app 打包/dist/Super_ADB_mac.zip
+
       - name: Rename artifact
         working-directory: Super_ADB_MAC/打包/dist
         run: |

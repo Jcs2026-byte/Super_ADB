@@ -40,6 +40,10 @@ IS_LINUX = sys.platform.startswith('linux')
 # 刻意写死，不从 spec 推导：spec 本身就可能写错（历史上 datas 的目标路径带过
 # 前导斜杠），从它推导出来的期望值会跟着一起错，测试永远绿。断言必须是独立的
 # 一份「我认为产物里应该有什么」。
+#
+# 2026-09 适配 Gitee 版三平台目录：资源目录为 资源/、外部工具目录为 外部扩展/
+# （不再是 resources/ 与 vendor/），打包信息写 配置/打包信息.json
+# （macOS 在 .app/Contents/MacOS/配置/ 下）。
 if IS_MAC:
     LAYOUT = {
         'name': 'macOS',
@@ -47,13 +51,14 @@ if IS_MAC:
         'exe_rel': os.path.join('Contents', 'MacOS', 'Super_ADB_MAC'),
         # 相对 app 根的必需条目；用后缀匹配，容忍 PyInstaller 版本间的布局差异
         'required': [
-            'Contents/Resources/config/build_info.json',
-            'resources/Super_ADB.png',
-            'resources/chart.umd.min.js',
-            'vendor/scrcpy',
+            'Contents/MacOS/配置/打包信息.json',
+            '资源/Super_ADB.png',
+            '资源/chart.umd.min.js',
+            '外部扩展/scrcpy',
         ],
-        # 绝不允许存在：Contents/MacOS 下除主程序外的内容会被 codesign 当作
-        # 未签名的嵌套代码对象，一个 json 就足以让签名校验失败
+        # 绝不允许存在：Contents/MacOS 下除主程序与随包 资源/外部扩展/配置 外的
+        # 意外内容会被 codesign 当作未签名的嵌套代码对象，一个 json 就足以让
+        # 签名校验失败
         'forbidden': ['Contents/MacOS/config'],
         'exe_arch': {'arm64'},
         'vendor_arch': {'arm64'},
@@ -84,10 +89,10 @@ else:
         'app_glob': 'Super_ADB',
         'exe_rel': 'Super_ADB',
         'required': [
-            'config/build_info.json',
-            'resources/Super_ADB.png',
-            'vendor/scrcpy',
-            'vendor/adb',
+            '配置/打包信息.json',
+            '资源/Super_ADB.png',
+            '外部扩展/scrcpy',
+            '外部扩展/adb',
         ],
         'forbidden': [],
         'exe_arch': {'x86-64'},
@@ -242,8 +247,8 @@ def main():
 
     # vendor 下的 adb / scrcpy 主二进制：主程序能跑不代表它们架构对，
     # 它们是启动后才按需调用的，而且是手工放进仓库的。
-    # Windows 版本 vendor 目录已改名为「外部扩展」，Mac/Linux 仍为 vendor。
-    _vendor_dir = '外部扩展' if IS_WIN else 'vendor'
+    # Gitee 版三平台外部工具目录统一为「外部扩展」（不再是 Win 的 外部扩展 / Mac·Linux 的 vendor）。
+    _vendor_dir = '外部扩展'
     for binname in ('adb', 'scrcpy'):
         cands = [p for p, r in entries
                  if ('/' + _vendor_dir + '/') in ('/' + r)

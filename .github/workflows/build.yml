@@ -22,7 +22,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14'
 
       - name: Verify runner architecture
         run: |
@@ -40,37 +40,37 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r Super_ADB_Linux/build_tools/requirements_linux.txt
+          pip install -r Super_ADB_Linux/打包/requirements_linux.txt
           pip install pyinstaller cryptography pyusb brotli
 
       - name: Build
         working-directory: Super_ADB_Linux
-        run: bash build_tools/build_linux.sh --clean
+        run: bash 打包/build_linux.sh --clean
 
-      # 说明：build_linux.sh 只执行 spec、不调用 build_exe.py，原先 trim_qt.py
+      # 说明：build_linux.sh 只执行 spec、不调用 精简打包exe.py，原先 裁剪_qt.py
       # 一次都没跑，闭包外 Qt6 库 / 孤儿插件 / 多余翻译全部进包（产物曾达 120MB）。
       # spec 内已内嵌 trim 调用，此处再跑一次作为显式校验与体积日志。
       - name: Trim Qt libraries
         working-directory: Super_ADB_Linux
-        run: python build_tools/trim_qt.py
+        run: python 打包/裁剪_qt.py
 
-      # build_linux.sh 不调用 build_exe，产物里不会有 config/build_info.json，
+      # build_linux.sh 不调用 build_exe，产物里不会有 配置/打包信息.json，
       # 「关于」页的下载地址就是空的。补写后再打归档。
       - name: Write build info
         working-directory: Super_ADB_Linux
         run: |
-          python -c "import sys; sys.path.insert(0,'build_tools'); import build_exe; build_exe._写入打包完成时间('.', 'Super_ADB')"
-          test -f build_tools/dist/Super_ADB/config/build_info.json
+          python -c "import sys; sys.path.insert(0,'打包'); import 精简打包exe; 精简打包exe._写入打包完成时间('.', 'Super_ADB')"
+          test -f 打包/dist/Super_ADB/配置/打包信息.json
 
       - name: Archive
-        working-directory: Super_ADB_Linux/build_tools/dist
+        working-directory: Super_ADB_Linux/打包/dist
         run: tar -czf Super_ADB-linux-x86_64.tar.gz Super_ADB
 
 
       # 对解压后的归档跑冒烟测试，而不是 dist/ —— 归档环节自身的缺陷
       # （丢符号链接、丢权限位）只在 归档→解压 往返后才暴露。
       - name: Smoke test
-        working-directory: Super_ADB_Linux/build_tools/dist
+        working-directory: Super_ADB_Linux/打包/dist
         run: |
           mkdir -p _smoke && tar -xzf Super_ADB-linux-x86_64.tar.gz -C _smoke
           python "$GITHUB_WORKSPACE/.github/scripts/smoke_test.py" \
@@ -87,7 +87,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: Super_ADB-linux-x86_64
-          path: Super_ADB_Linux/build_tools/dist/Super_ADB-linux-x86_64.tar.gz
+          path: Super_ADB_Linux/打包/dist/Super_ADB-linux-x86_64.tar.gz
           if-no-files-found: error
 
   windows:
@@ -104,7 +104,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14'
           architecture: x64
 
       - name: Install Python dependencies
@@ -178,7 +178,7 @@ jobs:
       - uses: actions/setup-python@v5
         id: python
         with:
-          python-version: '3.12'
+          python-version: '3.14'
 
       - name: Verify runner architecture
         run: |
@@ -195,10 +195,10 @@ jobs:
         working-directory: Super_ADB_MAC
         env:
           SUPER_ADB_PYTHON: ${{ steps.python.outputs.python-path }}
-        run: bash build_tools/build_mac_zip.sh
+        run: bash 打包/build_mac_zip.sh
 
       - name: Rename artifact
-        working-directory: Super_ADB_MAC/build_tools/dist
+        working-directory: Super_ADB_MAC/打包/dist
         run: |
           mv Super_ADB_mac.zip Super_ADB-macos-arm64.zip
           ls -lh Super_ADB-macos-arm64.zip
@@ -207,7 +207,7 @@ jobs:
       # 必须用 unzip / ditto 解压，不能用 Python zipfile：后者会把符号链接
       # 还原成普通文件、丢掉执行位，正好废掉我们要守的那条防线。
       - name: Smoke test
-        working-directory: Super_ADB_MAC/build_tools/dist
+        working-directory: Super_ADB_MAC/打包/dist
         run: |
           mkdir -p _smoke && unzip -q Super_ADB-macos-arm64.zip -d _smoke
           python "$GITHUB_WORKSPACE/.github/scripts/smoke_test.py" \
@@ -224,5 +224,5 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: Super_ADB-macos-arm64
-          path: Super_ADB_MAC/build_tools/dist/Super_ADB-macos-arm64.zip
+          path: Super_ADB_MAC/打包/dist/Super_ADB-macos-arm64.zip
           if-no-files-found: error

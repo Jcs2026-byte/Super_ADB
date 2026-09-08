@@ -20,7 +20,7 @@ import zipfile
 
 from PySide6.QtCore import Qt, QThread, Signal, QSize, QTimer
 from PySide6.QtGui import QColor, QIcon, QPixmap, QPainter, QFont
-from PySide6.QtWidgets import (QDialog, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
+from PySide6.QtWidgets import (QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
                                QWidget, QPlainTextEdit, QTreeWidget, QTreeWidgetItem,
                                QCheckBox, QProgressBar, QFileDialog, QMessageBox,
                                QSplitter, QSizePolicy, QApplication, QStyle)
@@ -31,8 +31,8 @@ from 项目UI import png_rc  # noqa: F401
 from 项目UI.对话框基类 import 对话框基类
 from 项目UI.弹窗样式 import add_green_glow, 拖拽区域
 from 项目UI.界面样式 import THEMES, FONT_FAMILY
-from 工具.AXML解码器 import decode_axml, is_axml
-from 工具 import 证书解析器
+from 工具.android调试工具.AXML解码器 import decode_axml, is_axml
+from 工具.android调试工具 import 证书解析器
 
 # 文本类扩展名（即使解码失败也优先尝试当文本看）。
 # 注意：`.xml` 不在此列，因为 APK 里的 XML 都是 Android Binary XML（二进制），

@@ -7,8 +7,6 @@ ADB 文件管理器 —— 内嵌子页面
 """
 
 import os
-import shutil
-import tempfile
 
 from PySide6.QtCore import (
     Qt, QThreadPool, QRunnable, Signal, QObject, QEvent, QTimer)
@@ -18,8 +16,8 @@ from PySide6.QtWidgets import (
     QLabel, QHeaderView, QFileDialog, QInputDialog, QMessageBox, QMenu,
     QAbstractItemView, QLineEdit, QDialog, QPlainTextEdit, QProgressBar)
 
-from 工具.ADB工具 import (AdbFileManager, 格式化设备标签,
-                       加载json配置, 保存json配置, AdbError)
+from 工具.android调试工具.ADB工具 import (AdbFileManager, 格式化设备标签,
+                                          加载json配置, 保存json配置)
 
 
 # 内置文本预览器支持的文件扩展名（双击即用 QuickLook 式预览）

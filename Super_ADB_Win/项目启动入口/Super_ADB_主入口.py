@@ -23,7 +23,6 @@ _here = __import__('os').path.dirname(__import__('os').path.abspath(__file__))
 _root = __import__('os').path.dirname(_here)
 if _root not in sys.path:
     sys.path.insert(0, _root)
-from 项目UI import png_rc
 # 编译后 UI 文件用裸导入 from 收藏下拉框 import FavComboBox / import png_rc，需把对应目录加入 sys.path
 for _sub in ('工具', '项目UI'):
     _p = __import__('os').path.join(_root, _sub)
@@ -46,7 +45,7 @@ try:
 except ImportError as e:
     print(f'错误: 未找到 PySide6 ({e})')
     print('请使用已安装 PySide6 的 Python 运行本工具，例如：')
-    print('  D:/Python/Python314/python.exe Super_ADB_Win/项目启动入口/Super_ADB_主入口.py')
+    print('  python 项目启动入口/Super_ADB_主入口.py')
     sys.exit(1)
 
 # 投屏参数设置对话框（已移入 对话框/，由上面的 sys.path 注入包含；
@@ -54,7 +53,7 @@ except ImportError as e:
 from 对话框 import scrcpy_设置对话框 as scrcpy_settings_dialog
 
 from 项目UI.Super_ADB import Ui_MainWindow
-from 工具.ADB工具 import Adb设备操作, 加载json配置, 保存json配置
+from 工具.android调试工具.ADB工具 import Adb设备操作, 加载json配置, 保存json配置
 from 项目UI.界面样式 import get_stylesheet, DEFAULT_THEME, THEMES, FONT_FAMILY
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style
 
@@ -326,7 +325,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             # tabBar 标签栏透明
             _tw.tabBar().setStyleSheet("background-color: transparent;")
             _tw.tabBar().setAutoFillBackground(False)
-        # leftPanel / splitter_main 也透明
+        # leftPanel / splitter 也透明
         for _name in ('leftPanel', 'splitter_main'):
             _w = getattr(self, _name, None)
             if _w is not None:
@@ -2350,7 +2349,7 @@ def main():
             app.installTranslator(_t)
 
     # ── 全局事件过滤器：将所有文本控件的右键菜单替换为中文 ──
-    from PySide6.QtWidgets import QMenu, QAbstractScrollArea
+    from PySide6.QtWidgets import QAbstractScrollArea
 
     _ZH_MENU_MAP = {
         'Undo': '撤消', 'Redo': '重做',

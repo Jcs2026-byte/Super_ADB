@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 生成项目全景文档
 ================
@@ -25,7 +25,7 @@ from datetime import datetime
 # 配置
 # ============================================================
 SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = SCRIPT_DIR.parent.parent  # G:\Python\jcspy\Super_ADB
+PROJECT_ROOT = SCRIPT_DIR.parent.parent  # 仓库根（相对本脚本自动定位）
 WIN_ROOT = PROJECT_ROOT / 'Super_ADB_Win'
 OUTPUT_DIR = PROJECT_ROOT / '项目说明'
 OUTPUT_HTML = PROJECT_ROOT / '项目全景文档.html'
@@ -383,7 +383,6 @@ def _初始化离屏环境():
             break
     if not 选中字体:
         # 如果系统字体库为空（offscreen 常见问题），尝试加载系统字体文件
-        import ctypes
         try:
             font_path = r'C:\Windows\Fonts\msyh.ttc'
             if os.path.exists(font_path):
@@ -418,7 +417,7 @@ def 生成对话框模拟截图(跳过=False):
     if app is None:
         return [], []
 
-    from PySide6.QtGui import QPixmap, QPainter, QColor
+    from PySide6.QtGui import QPainter, QColor
 
     成功列表 = []
     失败列表 = []
@@ -1438,7 +1437,7 @@ def 生成主界面截图(跳过=False):
         from 项目UI.界面样式 import get_stylesheet, DEFAULT_THEME
 
         # 用桩对象替换 ADB 操作，避免真实设备连接
-        import 工具.ADB工具 as _adb_mod
+        import 工具.android调试工具.ADB工具 as _adb_mod
         _原始Adb设备操作 = getattr(_adb_mod, 'Adb设备操作', None)
 
         class _MockAdb设备操作:
@@ -3660,7 +3659,7 @@ pyside6-uic "ui\\Super_ADB.ui" -o "Super_ADB_Win\\项目UI\\Super_ADB.py"
 pyside6-rcc "ui\\png.qrc" -o "Super_ADB_Win\\项目UI\\png_rc.py"
 
 # 运行
-D:\\Python\\Python314\\python.exe Super_ADB_Win\\项目启动入口\\Super_ADB_主入口.py
+python 项目启动入口/Super_ADB_主入口.py
 
 # 生成依赖图
 python Super_ADB_Win\\脚本\\生成依赖关系图.py

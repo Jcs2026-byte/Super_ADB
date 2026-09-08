@@ -18,7 +18,6 @@ ADB 交互式终端弹窗
   - apply_theme() 支持运行时主题切换
 """
 
-import os
 import re
 from collections import deque
 
@@ -30,9 +29,9 @@ from PySide6.QtWidgets import (
 )
 
 from 项目UI import png_rc  # noqa: F401
-from 项目UI.界面样式 import FONT_FAMILY, get_stylesheet, get_current_theme_id, THEMES
+from 项目UI.界面样式 import get_stylesheet, get_current_theme_id, THEMES
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style, _create_popup_card
-from 工具.ADB工具 import 格式化设备标签
+from 工具.android调试工具.ADB工具 import 格式化设备标签
 
 # ANSI 转义序列过滤（字节级，在解码前过滤，避免 UTF-8 多字节字符干扰）
 _ANSI_BYTES_RE = re.compile(
@@ -329,7 +328,7 @@ class ADB终端对话框(QDialog):
                 return
 
             self.status_label.setText('正在打开终端...')
-            from 工具.自研adb.自研adb客户端 import 交互式Shell
+            from 工具.android调试工具.自研adb.自研adb客户端 import 交互式Shell
             self._shell = 交互式Shell(
                 连接源,
                 on_output=lambda data: self._信号桥.输出.emit(data),

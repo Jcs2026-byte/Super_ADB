@@ -34,12 +34,11 @@ from PySide6.QtGui import QIcon, QPixmap, QImage
 from PySide6.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QGroupBox, QTextEdit, QFileDialog, QMessageBox,
-    QSizePolicy, QCheckBox, QFormLayout,
 )
 
 from 项目UI import png_rc  # noqa: F401
 from 项目UI.弹窗样式 import add_green_glow
-from 项目UI.界面样式 import STYLE_SHEET, get_stylesheet, get_current_theme_id, THEMES
+from 项目UI.界面样式 import get_stylesheet, get_current_theme_id, THEMES
 
 # 精确匹配等待窗口（秒）：超过该时间仍未发现「服务名匹配」的配对广播时，
 # 放开为「任意 pairing 服务」兜底配对。部分 ROM（华为/荣耀/小米等）扫描
@@ -157,7 +156,7 @@ class _QrPairWorker(QObject):
     def run(self):
         self.log.emit(f"[调试] 配对线程启动，目标={self._target}，配对码={self._code}")
         try:
-            from 工具.ADB工具 import AdbHelper
+            from 工具.android调试工具.ADB工具 import AdbHelper
             helper = AdbHelper()
             helper.log_callback = lambda msg: self.log.emit(msg)
             self.log.emit("[调试] AdbHelper已创建，log_callback已设置")
@@ -214,7 +213,7 @@ class _PairingPollWorker(QObject):
     def run(self):
         while not self._stop:
             try:
-                from 工具.自研adb.mdns主动查询 import query_mdns
+                from 工具.android调试工具.自研adb.mdns主动查询 import query_mdns
                 results = query_mdns('_adb-tls-pairing._tcp.local.', timeout=1.5)
             except Exception:
                 results = []
@@ -311,7 +310,7 @@ class _PortScanWorker(QObject):
                     continue
                 self.log.emit(f"  ↳ 尝试配对 {ip}:{port} …")
                 try:
-                    from 工具.自研adb.配对客户端 import 配对设备
+                    from 工具.android调试工具.自研adb.配对客户端 import 配对设备
                     ok, msg = 配对设备(
                         ip, port, self.code, timeout=15,
                         log_callback=lambda m: self.log.emit(f"    {m}"))
@@ -793,7 +792,7 @@ class 二维码连接页(QWidget):
         if not self._service_name or not self._code:
             return
         try:
-            from 工具.自研adb.mdns发现 import (
+            from 工具.android调试工具.自研adb.mdns发现 import (
                 ensure_running, register_pairing_listener)
         except Exception as e:
             self._log_scan(
@@ -838,7 +837,7 @@ class 二维码连接页(QWidget):
     def _候选设备ip(self):
         """从 mDNS 已发现的 connect 服务里取候选手机 IP + 已知调试端口。"""
         try:
-            from 工具.自研adb.mdns发现 import get_connect_services
+            from 工具.android调试工具.自研adb.mdns发现 import get_connect_services
             services = get_connect_services() or {}
         except Exception:
             services = {}
@@ -956,7 +955,7 @@ class 二维码连接页(QWidget):
         self._stop_scan()
         if self._mdns_bridge is not None:
             try:
-                from 工具.自研adb.mdns发现 import unregister_pairing_listener
+                from 工具.android调试工具.自研adb.mdns发现 import unregister_pairing_listener
                 unregister_pairing_listener(self._mdns_bridge.discovered.emit)
             except Exception:
                 pass
@@ -1039,7 +1038,7 @@ class 二维码连接页(QWidget):
         # ★ 官方机制：提前启动 _adb-tls-connect 浏览，配对完成时缓存里
         #   通常已有真实调试端口，可立即用于自动连接。
         try:
-            from 工具.自研adb.mdns发现 import ensure_running
+            from 工具.android调试工具.自研adb.mdns发现 import ensure_running
             ensure_running()
         except Exception:
             pass
@@ -1087,7 +1086,7 @@ class 二维码连接页(QWidget):
                 # ★ 官方机制：调试端口取手机广播的 _adb-tls-connect 服务端口（随机），
                 #   非阻塞读缓存回填（_ConnectWorker 连接前还会再等 3 秒解析兜底）。
                 try:
-                    from 工具.自研adb.mdns发现 import get_connect_port
+                    from 工具.android调试工具.自研adb.mdns发现 import get_connect_port
                     _mdns_port = get_connect_port(ip)
                     if _mdns_port:
                         try:
@@ -1177,7 +1176,7 @@ class 二维码连接页(QWidget):
         # 释放全局 mDNS 单例（Zeroconf + ServiceBrowser）；下次使用由
         # ensure_running() 自动重建，无需常驻占内存
         try:
-            from 工具.自研adb.mdns发现 import stop as mdns_stop
+            from 工具.android调试工具.自研adb.mdns发现 import stop as mdns_stop
             mdns_stop()
         except Exception:
             pass

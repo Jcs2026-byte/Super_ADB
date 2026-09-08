@@ -56,12 +56,11 @@ from PySide6.QtWidgets import (
     QToolButton, QTextEdit,
 )
 
-from 工具.ADB工具 import Adb设备操作
+from 工具.android调试工具.ADB工具 import Adb设备操作
 from 监控.设备性能监控 import ScrollChart
-from 工具.图表JS import load_chart_js
+from 工具.android调试工具.图表JS import load_chart_js
 from collections import deque  # AppScrollChart._values 兜底
-from 项目UI.界面样式 import STYLE_SHEET, FONT_FAMILY, get_stylesheet, get_current_theme_id, THEMES
-from 对话框.设备信息对话框 import 获取设备信息_方法B
+from 项目UI.界面样式 import FONT_FAMILY, get_stylesheet, get_current_theme_id, THEMES
 
 
 # ------------------------------------------------------------------

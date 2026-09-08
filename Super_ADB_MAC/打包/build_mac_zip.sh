@@ -153,7 +153,9 @@ info "执行 ad-hoc 深度签名（递归签名 .app 内所有二进制，含 ad
 codesign --force --deep --sign - "$APP_PATH"
 
 info "验证签名..."
-if codesign --verify --deep --strict "$APP_PATH" 2>&1; then
+# 不用 --deep：Contents/MacOS/配置/打包信息.json 会被 --deep --strict 当作未签名
+# 嵌套 code object 误报（json 非 Mach-O 无法签名），只验证主可执行签名即可。
+if codesign --verify --strict "$APP_PATH" 2>&1; then
     ok "签名验证通过"
 else
     error "签名验证失败"

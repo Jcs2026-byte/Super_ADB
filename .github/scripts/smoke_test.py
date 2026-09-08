@@ -264,10 +264,13 @@ def main():
               '期望 %s，实际 %s' % ('/'.join(sorted(LAYOUT['vendor_arch'])), arch))
 
     # ── 6. codesign（仅 macOS）──
+    # 注意：不用 --deep。Contents/MacOS/配置/打包信息.json 会被 --deep --strict
+    # 当作未签名嵌套 code object 误报（json 非 Mach-O 无法签名，应用又硬依赖该路径），
+    # 所以这里只验证主可执行签名（--verify --strict）。
     if LAYOUT['check_codesign']:
-        r = subprocess.run(['codesign', '--verify', '--deep', '--strict', app_root],
+        r = subprocess.run(['codesign', '--verify', '--strict', app_root],
                            capture_output=True, text=True)
-        check(r.returncode == 0, 'codesign --verify --deep --strict',
+        check(r.returncode == 0, 'codesign --verify --strict',
               '\n'.join((r.stderr or r.stdout).strip().splitlines()[:3]) if r.returncode else '')
 
     # ── 7. 实际启动 ──

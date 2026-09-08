@@ -41,8 +41,10 @@ LIB_PREFIX = 'lib' if IS_MAC else ''
 
 # 各插件子目录「保留项」（按去前缀/去扩展名后的 base name 匹配；None = 整目录保留）
 KEEP_PLUGINS = {
-    # 渲染平台：Win 只留 qwindows；Mac 只留 qcocoa（其余 qminimal/qoffscreen 等死重）
-    'platforms': (['qwindows'] if IS_WIN else ['qcocoa']),
+    # 渲染平台：Win 只留 qwindows；Mac 留 qcocoa + qoffscreen
+    #（qoffscreen 是 CI 冒烟 headless 启动必需：smoke 用 QT_QPA_PLATFORM=offscreen，
+    #   删掉后 macOS job 报 "Could not find the Qt platform plugin offscreen"）
+    'platforms': (['qwindows'] if IS_WIN else ['qcocoa', 'qoffscreen']),
     # 图片格式：图标(ico/icns)+截图(jpeg) 必需，其余格式删
     'imageformats': ['qico', 'qicns', 'qjpeg'],
     # 以下目录本应用完全用不到，整目录清空

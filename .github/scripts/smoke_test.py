@@ -51,14 +51,14 @@ if IS_MAC:
         'exe_rel': os.path.join('Contents', 'MacOS', 'Super_ADB_MAC'),
         # 相对 app 根的必需条目；用后缀匹配，容忍 PyInstaller 版本间的布局差异
         'required': [
-            'Contents/MacOS/配置/打包信息.json',
+            'Contents/Resources/配置/打包信息.json',
             '资源/Super_ADB.png',
             '资源/chart.umd.min.js',
             '外部扩展/scrcpy',
         ],
-        # 绝不允许存在：Contents/MacOS 下除主程序与随包 资源/外部扩展/配置 外的
-        # 意外内容会被 codesign 当作未签名的嵌套代码对象，一个 json 就足以让
-        # 签名校验失败
+        # 绝不允许存在：Contents/MacOS 下除主程序外的意外内容会被 codesign 当作
+        # 未签名的嵌套代码对象，一个 json 就足以让签名校验失败（打包信息.json 已
+        # 移到 Contents/Resources/ 下规避）
         'forbidden': ['Contents/MacOS/config'],
         'exe_arch': {'arm64'},
         'vendor_arch': {'arm64'},

@@ -27,7 +27,10 @@ def _写入打包完成时间(base_dir, name='Super_ADB'):
         import json as _json
         import time as _time
         if sys.platform == 'darwin':
-            _dist_dir = os.path.join(base_dir, '打包', 'dist', f'{name}.app', 'Contents', 'MacOS')
+            # 打包信息放 Contents/Resources/配置/（不能放 Contents/MacOS/：
+            # codesign 会把 MacOS/ 下非主程序文件当作嵌套 code object，
+            # 非 Mach-O 的 json 无法签名 → --verify 误报 not signed at all）
+            _dist_dir = os.path.join(base_dir, '打包', 'dist', f'{name}.app', 'Contents', 'Resources')
         else:
             _dist_dir = os.path.join(base_dir, '打包', 'dist', name)
         _dist_config_dir = os.path.join(_dist_dir, '配置')

@@ -150,6 +150,13 @@ jobs:
             echo "::warning::缺少附件 ${f}，跳过（GitHub Release 仍已正常发布）"
             exit 0
           fi
+          # Gitee 单附件硬限制 100MB：超限则跳过上传并提示去 GitHub 下载（上传必败，不再空耗）
+          SIZE=$(stat -c %s "${f}")
+          if [ "${SIZE}" -gt 104857600 ]; then
+            echo "::warning::${base} 大小 ${SIZE} 字节（约 $((SIZE/1024/1024))MB）超过 Gitee 单附件 100MB 限制，跳过上传"
+            echo "::warning::Linux 安装包仅提供 GitHub Release 下载：https://github.com/Jcs2026-byte/Super_ADB/releases"
+            exit 0
+          fi
           # 幂等：同名附件已存在则跳过
           if curl -s --max-time 60 "${API}/releases/${RID}/attach_files?per_page=100&access_token=${GITEE_TOKEN}" \
               | python -c "import json,sys; data=json.load(sys.stdin); names=[a.get('name','') for a in data]; sys.exit(0 if '${base}' in names else 1)" 2>/dev/null; then

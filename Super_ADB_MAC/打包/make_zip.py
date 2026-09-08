@@ -38,10 +38,26 @@ def main():
     count = 0
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
         for root, dirs, files in os.walk(app):
-            # 目录条目（带正确权限，目录名以 '/' 结尾）
+            # 目录条目（带正确权限，目录名以 '/' 结尾）。
+            # 注意：必须用 os.lstat 而非 os.stat —— 目录若是符号链接（如
+            # Frameworks/.../QtX.framework/Versions/Current -> A），os.stat 会跟随
+            # 到目标目录，把链接记录成普通空目录，解压后链接信息丢失、子链接全部断链。
             rel_dir = os.path.relpath(root, app_parent)
+            try:
+                _lst = os.lstat(root)
+            except OSError:
+                _lst = os.stat(root)
+            if stat.S_ISLNK(_lst.st_mode):
+                # 目录符号链接：按 symlink 条目记录（不带 '/' 结尾，unzip 才能建链接）
+                finfo = zipfile.ZipInfo(rel_dir)
+                finfo.external_attr = _mode_to_attr(_lst.st_mode)
+                finfo.create_system = 3
+                finfo.compress_type = zipfile.ZIP_DEFLATED
+                zf.writestr(finfo, os.readlink(root).encode('utf-8'))
+                count += 1
+                continue
             dinfo = zipfile.ZipInfo(rel_dir + '/')
-            dinfo.external_attr = _mode_to_attr(os.stat(root).st_mode)
+            dinfo.external_attr = _mode_to_attr(_lst.st_mode)
             dinfo.create_system = 3  # Unix
             dinfo.compress_type = zipfile.ZIP_DEFLATED  # 关键：writestr 不继承归档压缩
             zf.writestr(dinfo, b'')

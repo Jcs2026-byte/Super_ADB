@@ -123,7 +123,7 @@ jobs:
               continue
             fi
             echo "==> 上传 ${base} ($(du -h "${f}" | cut -f1)) -> release ${RID}"
-            RESP=$(curl -s --connect-timeout 30 --max-time 180 --retry 1 --retry-delay 5 \
+            RESP=$(curl -s --connect-timeout 30 --max-time 600 --retry 1 --retry-delay 5 \
               -X POST "${API}/releases/${RID}/attach_files" \
               -F "access_token=${GITEE_TOKEN}" -F "file=@${f}")
             if echo "${RESP}" | python -c "import json,sys; d=json.load(sys.stdin); assert d.get('id'); print('    uploaded id=', d.get('id'))" 2>/dev/null; then
@@ -165,7 +165,7 @@ jobs:
           fi
           echo "==> 上传 ${base} ($(du -h "${f}" | cut -f1)) -> release ${RID}"
           echo "    大文件：跨境限速，5min/次 × 1 次重试，超时即快速失败"
-          RESP=$(curl -s --connect-timeout 30 --max-time 300 --retry 1 --retry-delay 5 \
+          RESP=$(curl -s --connect-timeout 30 --max-time 600 --retry 1 --retry-delay 5 \
             -X POST "${API}/releases/${RID}/attach_files" \
             -F "access_token=${GITEE_TOKEN}" -F "file=@${f}")
           if echo "${RESP}" | python -c "import json,sys; d=json.load(sys.stdin); assert d.get('id'); print('    uploaded id=', d.get('id'))" 2>/dev/null; then

@@ -3,9 +3,11 @@ name: Release
 # 安装包不入库。打 tag（如 `git tag v1.2.0 && git push origin v1.2.0`）后，
 # 本工作流构建 macOS arm64 / Windows x64 / Linux x86_64 三份产物并挂到 GitHub Release，
 # 并把三平台安装包同步上传到 Gitee「发行版」。Gitee 上传拆两步：
-#   ① 小包（Windows/macOS zip）先行上传，快速完成；
-#   ② Linux 大包（约 107MB）单独一步，长超时（30min/次）× 5 次重试 + 上传后核验，
-#      仍失败时该 step 报红并提示补救（重跑 / 手动上传 / Gitee Go 流水线兜底）。
+#   ① 小包（Windows/macOS zip）先行上传：60min/次 × 3 次重试 + 10KB/s×2min 速度底线
+#      （跨境限速恶化时快速失败进入重试，而非干等超时），逐包容错（单包失败不影响
+#      另一包），每包上传后二次核验；全部结束后有失败才报红；
+#   ② Linux 大包（约 107MB）单独一步，同样的长超时 + 重试 + 核验，
+#      超过 Gitee 单附件 100MB 硬限制时主动跳过并提示去 GitHub 下载。
 #
 # 触发方式（任意一种都会自动打包含）：
 #   1. git push origin vX.Y.Z          —— 推荐，全自动建 Release + 上传包
@@ -103,8 +105,16 @@ jobs:
           echo "rid=${RID}" >> "$GITHUB_OUTPUT"
           echo "api=${API}" >> "$GITHUB_OUTPUT"
 
-      # 小包先行：Windows / macOS 各 50~60MB，普通超时即可，失败即报错中断
-      # （小包都传不上，说明 token / 网络有真问题，需要人工介入）。
+      # 小包先行：Windows / macOS 各 50~60MB。
+      # 逐包容错：单包失败不中断另一包，全部结束后若有失败统一报红；
+      # 幂等：重跑时已成功附件自动跳过，只补传失败的包。
+      # curl 加固（v2026.09.09 macOS 包曾因跨境限速 30min 超时 exit 28）：
+      #   --max-time 3600            单次尝试上限 30min → 60min
+      #   --retry 3 --retry-delay 60 失败重试 1 次 → 3 次，间隔 60s
+      #   --retry-all-errors         POST 已发出部分数据也允许重试
+      #   --speed-limit 10240 --speed-time 120
+      #                              速度低于 10KB/s 持续 2min 即快速失败进入重试，
+      #                              避免在已死的慢速链路上干等 60min
       - name: Upload Windows/macOS artifacts to Gitee
         if: steps.gitee.outputs.ready == 'true'
         env:
@@ -112,7 +122,8 @@ jobs:
           API: ${{ steps.gitee.outputs.api }}
           RID: ${{ steps.gitee.outputs.rid }}
         run: |
-          set -e
+          set -u
+          FAILURES=""
           for f in artifacts/Super_ADB-windows-x64.zip artifacts/Super_ADB-macos-arm64.zip; do
             [ -e "${f}" ] || { echo "::warning::缺少附件 ${f}，跳过"; continue; }
             base=$(basename "${f}")
@@ -123,19 +134,30 @@ jobs:
               continue
             fi
             echo "==> 上传 ${base} ($(du -h "${f}" | cut -f1)) -> release ${RID}"
-            RESP=$(curl -s --connect-timeout 30 --max-time 1800 --retry 1 --retry-delay 5 \
+            RESP=$(curl -s --connect-timeout 30 --max-time 3600 --retry 3 --retry-all-errors --retry-delay 60 \
+              --speed-limit 10240 --speed-time 120 \
               -X POST "${API}/releases/${RID}/attach_files" \
               -F "access_token=${GITEE_TOKEN}" -F "file=@${f}")
-            if echo "${RESP}" | python -c "import json,sys; d=json.load(sys.stdin); assert d.get('id'); print('    uploaded id=', d.get('id'))" 2>/dev/null; then
-              echo "    ${base} 上传成功"
+            # 上传后二次核验：确认附件真实出现在 Gitee 附件列表（防半截上传）
+            if echo "${RESP}" | python -c "import json,sys; d=json.load(sys.stdin); assert d.get('id'); print('    uploaded id=', d.get('id'))" 2>/dev/null \
+              && sleep 3 \
+              && curl -s --max-time 60 "${API}/releases/${RID}/attach_files?per_page=100&access_token=${GITEE_TOKEN}" \
+                   | python -c "import json,sys; data=json.load(sys.stdin); names=[a.get('name','') for a in data]; sys.exit(0 if '${base}' in names else 1)" 2>/dev/null; then
+              echo "    ${base} 上传成功并通过核验"
             else
               echo "::error::Gitee 上传 ${base} 失败: ${RESP:0:300}"
-              exit 1
+              echo "::error::补救：1) Re-run failed jobs（幂等，已成功附件跳过）；"
+              echo "::error::      2) 手动上传：从 GitHub Release 下载 ${base} 后到 Gitee 发行版页添加附件。"
+              FAILURES="${FAILURES} ${base}"
             fi
           done
+          if [ -n "${FAILURES}" ]; then
+            echo "::error::以下附件上传失败：${FAILURES}"
+            exit 1
+          fi
 
-      # Linux 大包单独一步：跨境限速，5min×1 重试快速失败 + 上传后二次核验。
-      # 仍失败 → step 报红，日志给出三种补救方式（幂等重跑 / 手动上传 / Gitee Go 兜底）。
+      # Linux 大包单独一步：与小包同样的长超时 + 重试 + 速度底线 + 上传后二次核验。
+      # 仍失败 → step 报红，日志给出补救方式（幂等重跑 / 手动上传 / Gitee Go 兜底）。
       - name: Upload Linux artifact to Gitee (large file, long timeout)
         if: steps.gitee.outputs.ready == 'true'
         env:
@@ -164,8 +186,9 @@ jobs:
             exit 0
           fi
           echo "==> 上传 ${base} ($(du -h "${f}" | cut -f1)) -> release ${RID}"
-          echo "    大文件：跨境限速，5min/次 × 1 次重试，超时即快速失败"
-          RESP=$(curl -s --connect-timeout 30 --max-time 1800 --retry 1 --retry-delay 5 \
+          echo "    大文件：60min/次 × 3 次重试，低于 10KB/s×2min 快速失败进入重试"
+          RESP=$(curl -s --connect-timeout 30 --max-time 3600 --retry 3 --retry-all-errors --retry-delay 60 \
+            --speed-limit 10240 --speed-time 120 \
             -X POST "${API}/releases/${RID}/attach_files" \
             -F "access_token=${GITEE_TOKEN}" -F "file=@${f}")
           if echo "${RESP}" | python -c "import json,sys; d=json.load(sys.stdin); assert d.get('id'); print('    uploaded id=', d.get('id'))" 2>/dev/null; then

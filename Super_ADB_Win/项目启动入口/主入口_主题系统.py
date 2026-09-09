@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QMenu
 from 项目UI.界面样式 import (
     THEMES, DEFAULT_THEME, get_stylesheet, get_theme_ids, get_theme_name, FONT_FAMILY,
 )
-from 工具.android调试工具.ADB工具 import 加载json配置, 保存json配置
+from 工具.android调试模块.ADB工具 import 加载json配置, 保存json配置
 
 # 配置常量（与主入口保持一致）
 CONFIG_NAME = '配置/Super_ADB配置.json'

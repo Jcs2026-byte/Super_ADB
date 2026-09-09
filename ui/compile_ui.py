@@ -15,7 +15,7 @@ from pathlib import Path
 UI_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = UI_DIR.parent
 UI_FILE = UI_DIR / 'Super_ADB.ui'
-OUTPUT_FILE = PROJECT_ROOT / 'Super_ADB_Win' / 'ui' / 'Super_ADB.py'
+OUTPUT_FILE = PROJECT_ROOT / 'Super_ADB_Win' / '项目UI' / 'Super_ADB.py'
 
 
 def 编译UI():

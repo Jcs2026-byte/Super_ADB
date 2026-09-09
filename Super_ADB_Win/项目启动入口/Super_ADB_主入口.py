@@ -50,10 +50,10 @@ except ImportError as e:
 
 # 投屏参数设置对话框（已移入 对话框/，由上面的 sys.path 注入包含；
 # 以 scrcpy_settings_dialog 别名导入，供 启动scrcpy / 打开scrcpy设置 使用）
-from 对话框 import scrcpy_设置对话框 as scrcpy_settings_dialog
+from 对话框.Android调试模块 import scrcpy_设置对话框 as scrcpy_settings_dialog
 
 from 项目UI.Super_ADB import Ui_MainWindow
-from 工具.android调试工具.ADB工具 import Adb设备操作, 加载json配置, 保存json配置
+from 工具.android调试模块.ADB工具 import Adb设备操作, 加载json配置, 保存json配置
 from 项目UI.界面样式 import get_stylesheet, DEFAULT_THEME, THEMES, FONT_FAMILY
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style
 
@@ -70,6 +70,7 @@ from 页面.小猫 import create_desk_cat
 from 项目启动入口.主入口_弹窗打开 import 弹窗打开Mixin
 from 项目启动入口.主入口_设备管理 import 设备管理Mixin
 from 项目启动入口.主入口_主题系统 import 主题系统Mixin
+from 项目启动入口.主入口_Ios调试 import cIos调试Mixin
 
 CONFIG_NAME = '配置/Super_ADB配置.json'
 # 首次启动 / 配置缺失或损坏时的默认窗口几何
@@ -297,7 +298,7 @@ class _文本发送器(QObject):
 # ----------------------------------------------------------------------
 # 主窗口（多重继承 Ui_MainWindow）
 # ----------------------------------------------------------------------
-class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, 主题系统Mixin):
+class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, 主题系统Mixin, cIos调试Mixin):
     def __init__(self):
         super().__init__()
         self.setupUi(self)
@@ -320,16 +321,24 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             for _i in range(_tw.count()):
                 _page = _tw.widget(_i)
                 if _page is not None:
-                    _page.setStyleSheet("background-color: transparent;")
+                    # 必须用 #objectName 限定：裸 "background-color: transparent;"
+                    # 会被 Qt 应用到该 page 及其所有子控件（含 QPushButton），
+                    # 把按钮自己的 background-color 覆盖成透明，导致 hover 时
+                    # 按钮背景不随 accent 变亮、文字却变深 → 文字看不清。
+                    _page.setStyleSheet(
+                        f"#{_page.objectName()} {{ background-color: transparent; }}")
                     _page.setAutoFillBackground(False)
-            # tabBar 标签栏透明
-            _tw.tabBar().setStyleSheet("background-color: transparent;")
-            _tw.tabBar().setAutoFillBackground(False)
-        # leftPanel / splitter 也透明
+            # tabBar 标签栏透明（同样用 #objectName 限定，避免影响 tab 按钮）
+            _tab_bar = _tw.tabBar()
+            _tab_bar.setStyleSheet(
+                f"#{_tab_bar.objectName()} {{ background-color: transparent; }}")
+            _tab_bar.setAutoFillBackground(False)
+        # leftPanel / splitter 也透明（同样限定 #objectName）
         for _name in ('leftPanel', 'splitter_main'):
             _w = getattr(self, _name, None)
             if _w is not None:
-                _w.setStyleSheet("background-color: transparent;")
+                _w.setStyleSheet(
+                    f"#{_w.objectName()} {{ background-color: transparent; }}")
                 _w.setAutoFillBackground(False)
         # ── 主题先于标题栏按钮加载：后面所有 setStyleSheet 都会用 self._current_theme ──
         self._current_theme = self._从配置加载主题()
@@ -427,6 +436,8 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self._drag_moved = False            # 是否已越过拖拽阈值开始真实位移
 
         self._连接信号()
+        # iOS 调试模块（Ios调试模块 页 tab_3）：创建 iOS 工具并连接页内控件信号
+        self.f初始化Ios调试模块()
         self._添加状态栏()
         self._初始化页面()
         # ── 默认页持久化：启动恢复上次打开的页，切换时 300ms 防抖写盘 ──
@@ -878,7 +889,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         if not serial:
             return
         self.设置状态('正在获取设备信息…')
-        from 对话框.设备信息对话框 import 设备信息对话框
+        from 对话框.Android调试模块.设备信息对话框 import 设备信息对话框
         # 关闭旧弹窗
         if hasattr(self, '_设备信息弹窗') and self._设备信息弹窗 is not None:
             try:
@@ -1243,7 +1254,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         serial = self._确保序列号()
         if not serial:
             return
-        from 对话框.修改时间对话框 import 修改时间对话框
+        from 对话框.Android调试模块.修改时间对话框 import 修改时间对话框
         # 关闭旧弹窗
         if hasattr(self, '_修改时间弹窗') and self._修改时间弹窗 is not None:
             try:
@@ -1526,7 +1537,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             lines.append(f'进程 PID: {m.group(1)}')
 
         # 优先用 应用性能监控 里已兼容新旧 Android 的解析器
-        from 监控.应用性能监控 import _parse_meminfo
+        from 对话框.Android调试模块.应用性能监控 import _parse_meminfo
         parsed = _parse_meminfo(raw)
         if 'pss_mb' in parsed:
             lines.append(f'总 PSS: {cls._格式化千字节(str(int(parsed["pss_mb"] * 1024)))}')
@@ -2407,7 +2418,7 @@ def main():
         _hash_paths = [a for a in sys.argv[sys.argv.index('--hash') + 1:]
                         if os.path.isfile(a)]
         if _hash_paths:
-            from 对话框.哈希上下文菜单 import 哈希上下文菜单, compute_hashes_batch, ALGO_ORDER
+            from 对话框.便捷工具.哈希上下文菜单 import 哈希上下文菜单, compute_hashes_batch, ALGO_ORDER
             from PySide6.QtCore import QSettings
             _hash_settings = QSettings('Super_ADB', 'Md5Tool')
             _hash_saved = _hash_settings.value('algos', 'MD5,SHA1,SHA256')

@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QPlainTextEdit, QSizePolicy,
 )
 
-from 工具.android调试工具.ADB工具 import AdbHelper, 格式化设备标签
+from 工具.android调试模块.ADB工具 import AdbHelper, 格式化设备标签
 
 
 # ANSI 转义序列过滤（颜色/光标控制等，终端页面暂不渲染，直接去掉）
@@ -180,7 +180,7 @@ class 终端页面(QWidget):
             # 交互式Shell 自动识别连接源类型：
             #   自研adb客户端 → TCP 池化独占
             #   UsbAdbConnection → USB 共享直连
-            from 工具.android调试工具.自研adb.自研adb客户端 import 交互式Shell
+            from 工具.android调试模块.自研adb.自研adb客户端 import 交互式Shell
             self._shell = 交互式Shell(
                 连接源,
                 on_output=lambda data: self._信号桥.输出.emit(data),

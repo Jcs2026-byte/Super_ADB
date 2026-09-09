@@ -26,7 +26,7 @@ class 弹窗打开Mixin:
             self._dpm_window.raise_()
             self._dpm_window.activateWindow()
             return
-        from 监控.设备性能监控 import 设备性能监控
+        from 对话框.Android调试模块.设备性能监控 import 设备性能监控
         self._dpm_window = 设备性能监控(serial)
         self._dpm_window.show()
 
@@ -65,7 +65,7 @@ class 弹窗打开Mixin:
             self._app_monitor_window.raise_()
             self._app_monitor_window.activateWindow()
             return
-        from 监控.应用性能监控 import 应用性能监控
+        from 对话框.Android调试模块.应用性能监控 import 应用性能监控
         self._app_monitor_window = 应用性能监控(serial, pkg)
         self._app_monitor_window.show()
 

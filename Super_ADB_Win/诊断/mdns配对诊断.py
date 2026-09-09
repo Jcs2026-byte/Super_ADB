@@ -151,7 +151,7 @@ class _Listener:
 # ── 3. mDNS 主动查询 ───────────────────────────────────────
 def 主动查询循环(stop_event):
     try:
-        from 工具.android调试工具.自研adb.mdns主动查询 import query_mdns
+        from 工具.android调试模块.自研adb.mdns主动查询 import query_mdns
     except Exception as e:
         log(f'[主动查询] 导入失败，跳过：{e}')
         return
@@ -244,7 +244,7 @@ def 探测已配对连接(listener, 等待秒=8):
         候选.append((ip, port, name))
         log(f'  → 探测 {ip}:{port}  {name}')
         try:
-            from 工具.android调试工具.ADB工具 import AdbHelper
+            from 工具.android调试模块.ADB工具 import AdbHelper
             h = AdbHelper()
             h.log_callback = lambda m: log(f'     [adb] {m}')
             r = h.连接设备(f'{ip}:{port}', timeout=8)

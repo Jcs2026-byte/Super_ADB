@@ -1437,7 +1437,7 @@ def 生成主界面截图(跳过=False):
         from 项目UI.界面样式 import get_stylesheet, DEFAULT_THEME
 
         # 用桩对象替换 ADB 操作，避免真实设备连接
-        import 工具.android调试工具.ADB工具 as _adb_mod
+        import 工具.android调试模块.ADB工具 as _adb_mod
         _原始Adb设备操作 = getattr(_adb_mod, 'Adb设备操作', None)
 
         class _MockAdb设备操作:
@@ -1684,7 +1684,7 @@ def 生成主界面截图(跳过=False):
 
     # ── 4. 性能监控窗口截图（独立窗口，含 CPU/内存/网络/电池图表） ──
     try:
-        from 监控.设备性能监控 import 设备性能监控
+        from 对话框.Android调试模块.设备性能监控 import 设备性能监控
         perf_win = 设备性能监控(serial='emulator-5554')
         # 停止定时器并标记关闭，避免后台线程持续采样
         try:

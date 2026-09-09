@@ -26,7 +26,7 @@ class 弹窗打开Mixin:
             self._dpm_window.raise_()
             self._dpm_window.activateWindow()
             return
-        from 监控.设备性能监控 import 设备性能监控
+        from 对话框.Android调试模块.设备性能监控 import 设备性能监控
         self._dpm_window = 设备性能监控(serial)
         self._dpm_window.show()
 
@@ -44,7 +44,7 @@ class 弹窗打开Mixin:
             return
         # 默认带入主窗口已填的包名
         default_pkg = self.pkgInput.text().strip()
-        from 对话框.Monkey压测窗口 import Monkey压测窗口
+        from 对话框.Android调试模块.Monkey压测窗口 import Monkey压测窗口
         self._monkey_window = Monkey压测窗口(
             serial, default_pkg=default_pkg)
         self._monkey_window.show()
@@ -65,7 +65,7 @@ class 弹窗打开Mixin:
             self._app_monitor_window.raise_()
             self._app_monitor_window.activateWindow()
             return
-        from 监控.应用性能监控 import 应用性能监控
+        from 对话框.Android调试模块.应用性能监控 import 应用性能监控
         self._app_monitor_window = 应用性能监控(serial, pkg)
         self._app_monitor_window.show()
 
@@ -78,7 +78,7 @@ class 弹窗打开Mixin:
             self._install_dialog.raise_()
             self._install_dialog.activateWindow()
             return
-        from 对话框.安装解包对话框 import 安装解包对话框
+        from 对话框.Android调试模块.安装解包对话框 import 安装解包对话框
         self._install_dialog = 安装解包对话框(
             self.adb, self.当前序列号)
         self._install_dialog.show()
@@ -89,7 +89,7 @@ class 弹窗打开Mixin:
             self._cert_dialog.raise_()
             self._cert_dialog.activateWindow()
             return
-        from 对话框.证书安装对话框 import 证书安装对话框
+        from 对话框.Android调试模块.证书安装对话框 import 证书安装对话框
         self._cert_dialog = 证书安装对话框(
             self.adb, self.当前序列号)
         self._cert_dialog.show()
@@ -107,7 +107,7 @@ class 弹窗打开Mixin:
                     self._adb_终端_dialog.raise_()
                     self._adb_终端_dialog.activateWindow()
                     return
-                from 对话框.ADB终端对话框 import ADB终端对话框
+                from 对话框.Android调试模块.ADB终端对话框 import ADB终端对话框
                 self._adb_终端_dialog = ADB终端对话框(self)
                 # 弹窗内设备切换 → 同步主窗口三个设备选择栏
                 self._adb_终端_dialog.设备已切换.connect(self._终端弹窗设备切换)
@@ -214,7 +214,7 @@ class 弹窗打开Mixin:
             self._json_tool_dialog.raise_()
             self._json_tool_dialog.activateWindow()
             return
-        from 对话框.JSON工具对话框 import Json工具对话框
+        from 对话框.便捷工具.JSON工具对话框 import Json工具对话框
         self._json_tool_dialog = Json工具对话框()
         self._json_tool_dialog.show()
 
@@ -224,7 +224,7 @@ class 弹窗打开Mixin:
             self._md5_dialog.raise_()
             self._md5_dialog.activateWindow()
             return
-        from 对话框.哈希校验对话框 import 哈希校验对话框
+        from 对话框.便捷工具.哈希校验对话框 import 哈希校验对话框
         self._md5_dialog = 哈希校验对话框()
         self._md5_dialog.show()
 
@@ -234,7 +234,7 @@ class 弹窗打开Mixin:
             self._timestamp_dialog.raise_()
             self._timestamp_dialog.activateWindow()
             return
-        from 对话框.时间戳对话框 import 时间戳对话框
+        from 对话框.便捷工具.时间戳对话框 import 时间戳对话框
         self._timestamp_dialog = 时间戳对话框()
         self._timestamp_dialog.show()
 
@@ -258,7 +258,7 @@ class 弹窗打开Mixin:
                 self._pending_select_serial = serial
             self.刷新设备()
 
-        from 对话框.无线调试对话框 import 无线调试对话框
+        from 对话框.Android调试模块.无线调试对话框 import 无线调试对话框
         self._wireless_debug_dialog = 无线调试对话框(
             on_pair_success=_配对成功时,
             on_device_connected=_设备连接时,
@@ -274,7 +274,7 @@ class 弹窗打开Mixin:
             self._wifi_dialog.raise_()
             self._wifi_dialog.activateWindow()
             return
-        from 对话框.WiFi对话框 import WiFi对话框
+        from 对话框.Android调试模块.WiFi对话框 import WiFi对话框
         self._wifi_dialog = WiFi对话框()
         self._wifi_dialog.show()
 
@@ -288,7 +288,7 @@ class 弹窗打开Mixin:
         if not serial:
             self.设置状态('请先选择设备', ok=False)
             return
-        from 对话框.TCPDump对话框 import Tcpdump对话框
+        from 对话框.Android调试模块.TCPDump对话框 import Tcpdump对话框
         # 独立窗口，不绑定 parent，与主页可自由切换前后层级。
         # 传入主窗口的 self.adb（已与自研adb 类级缓存共享 client），
         # 对话框内部优先复用，避免 new AdbHelper 造成独立实例建连。
@@ -297,7 +297,7 @@ class 弹窗打开Mixin:
 
     def 打开关于对话框(self):
         """打开关于弹窗：复用同一窗口实例，支持运行时切换主题。"""
-        from 对话框.关于对话框 import 关于对话框
+        from 对话框.主界面.关于对话框 import 关于对话框
         dlg = self._about_dialog
         if dlg is not None:
             try:
@@ -320,7 +320,7 @@ class 弹窗打开Mixin:
 
     def 打开环境配置对话框(self):
         """打开环境配置弹窗：复用同一窗口实例，支持运行时切换主题。"""
-        from 对话框.环境配置对话框 import 环境配置对话框
+        from 对话框.主界面.环境配置对话框 import 环境配置对话框
         dlg = self._env_config_dialog
         if dlg is not None:
             try:
@@ -353,7 +353,7 @@ class 弹窗打开Mixin:
             except RuntimeError:
                 self._pcap_parser_dialog = None
                 dlg = None
-        from 对话框.PCAP解析对话框 import Pcap解析对话框
+        from 对话框.便捷工具.PCAP解析对话框 import Pcap解析对话框
         dlg = Pcap解析对话框()  # 独立窗口，不绑定 parent，点击主界面时可正常前置
         dlg.destroyed.connect(
             lambda _obj=None, _self=self: _self._清空_pcap_parser_dialog(_obj))
@@ -371,7 +371,7 @@ class 弹窗打开Mixin:
                     return
             except RuntimeError:
                 self._ip_scan_dialog = None
-        from 对话框.IP扫描对话框 import IP扫描对话框
+        from 对话框.便捷工具.IP扫描对话框 import IP扫描对话框
         dlg = IP扫描对话框()
         dlg.destroyed.connect(
             lambda _obj=None, _self=self: _self._清空_ip扫描引用(_obj))

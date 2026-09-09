@@ -753,6 +753,18 @@ def get_stylesheet(theme_id=DEFAULT_THEME):
     QSplitter::handle:vertical:hover, QSplitter::handle:vertical:pressed {{
         background-color: {accent};
     }}
+
+    /* ────────────── 悬浮提示 QToolTip ──────────────
+       全局 QWidget 规则会把 QToolTip 背景刷成主题深色，但其文字走
+       QPalette::ToolTipText（系统默认黑色），Win10 上即出现"深底黑字"
+       看不见。这里显式指定背景/文字/边框，保证 Win10 / Win11 一致。 */
+    QToolTip {{
+        background-color: {t['bg_menu']};
+        color: {t['text_primary']};
+        border: 1px solid {accent};
+        border-radius: 4px;
+        padding: 4px 8px;
+    }}
 """
 
 

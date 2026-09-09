@@ -5,7 +5,7 @@
 设备连接/断开/扫描/序列号获取等方法。
 通过多继承混入 主窗口，可访问 self 的所有属性和方法。
 """
-from 工具.android调试工具.ADB工具 import 格式化设备标签
+from 工具.android调试模块.ADB工具 import 格式化设备标签
 
 
 class 设备管理Mixin:

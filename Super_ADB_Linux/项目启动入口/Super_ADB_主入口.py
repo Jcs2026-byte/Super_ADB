@@ -23,7 +23,6 @@ _here = __import__('os').path.dirname(__import__('os').path.abspath(__file__))
 _root = __import__('os').path.dirname(_here)
 if _root not in sys.path:
     sys.path.insert(0, _root)
-from 项目UI import png_rc
 # 编译后 UI 文件用裸导入 from 收藏下拉框 import FavComboBox / import png_rc，需把对应目录加入 sys.path
 for _sub in ('工具', '项目UI'):
     _p = __import__('os').path.join(_root, _sub)
@@ -1518,7 +1517,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             lines.append(f'进程 PID: {m.group(1)}')
 
         # 优先用 应用性能监控 里已兼容新旧 Android 的解析器
-        from 监控.应用性能监控 import _parse_meminfo
+        from 对话框.Android调试模块.应用性能监控 import _parse_meminfo
         parsed = _parse_meminfo(raw)
         if 'pss_mb' in parsed:
             lines.append(f'总 PSS: {cls._格式化千字节(str(int(parsed["pss_mb"] * 1024)))}')
@@ -2304,7 +2303,7 @@ def main():
             app.installTranslator(_t)
 
     # ── 全局事件过滤器：将所有文本控件的右键菜单替换为中文 ──
-    from PySide6.QtWidgets import QMenu, QAbstractScrollArea
+    from PySide6.QtWidgets import QAbstractScrollArea
 
     _ZH_MENU_MAP = {
         'Undo': '撤消', 'Redo': '重做',

@@ -23,7 +23,6 @@ _here = __import__('os').path.dirname(__import__('os').path.abspath(__file__))
 _root = __import__('os').path.dirname(_here)
 if _root not in sys.path:
     sys.path.insert(0, _root)
-from 项目UI import png_rc
 # 编译后 UI 文件用裸导入 from 收藏下拉框 import FavComboBox / import png_rc，需把对应目录加入 sys.path
 for _sub in ('工具', '项目UI'):
     _p = __import__('os').path.join(_root, _sub)
@@ -321,16 +320,24 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             for _i in range(_tw.count()):
                 _page = _tw.widget(_i)
                 if _page is not None:
-                    _page.setStyleSheet("background-color: transparent;")
+                    # 必须用 #objectName 限定：裸 "background-color: transparent;"
+                    # 会被 Qt 应用到该 page 及其所有子控件（含 QPushButton），
+                    # 把按钮自己的 background-color 覆盖成透明，导致 hover 时
+                    # 按钮背景不随 accent 变亮、文字却变深 → 文字看不清。
+                    _page.setStyleSheet(
+                        f"#{_page.objectName()} {{ background-color: transparent; }}")
                     _page.setAutoFillBackground(False)
-            # tabBar 标签栏透明
-            _tw.tabBar().setStyleSheet("background-color: transparent;")
-            _tw.tabBar().setAutoFillBackground(False)
-        # leftPanel / splitter_main 也透明
+            # tabBar 标签栏透明（同样用 #objectName 限定，避免影响 tab 按钮）
+            _tab_bar = _tw.tabBar()
+            _tab_bar.setStyleSheet(
+                f"#{_tab_bar.objectName()} {{ background-color: transparent; }}")
+            _tab_bar.setAutoFillBackground(False)
+        # leftPanel / splitter_main 也透明（同样限定 #objectName）
         for _name in ('leftPanel', 'splitter_main'):
             _w = getattr(self, _name, None)
             if _w is not None:
-                _w.setStyleSheet("background-color: transparent;")
+                _w.setStyleSheet(
+                    f"#{_w.objectName()} {{ background-color: transparent; }}")
                 _w.setAutoFillBackground(False)
         # ── 主题先于标题栏按钮加载：后面所有 setStyleSheet 都会用 self._current_theme ──
         self._current_theme = self._从配置加载主题()
@@ -1518,7 +1525,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             lines.append(f'进程 PID: {m.group(1)}')
 
         # 优先用 应用性能监控 里已兼容新旧 Android 的解析器
-        from 监控.应用性能监控 import _parse_meminfo
+        from 对话框.Android调试模块.应用性能监控 import _parse_meminfo
         parsed = _parse_meminfo(raw)
         if 'pss_mb' in parsed:
             lines.append(f'总 PSS: {cls._格式化千字节(str(int(parsed["pss_mb"] * 1024)))}')
@@ -2304,7 +2311,7 @@ def main():
             app.installTranslator(_t)
 
     # ── 全局事件过滤器：将所有文本控件的右键菜单替换为中文 ──
-    from PySide6.QtWidgets import QMenu, QAbstractScrollArea
+    from PySide6.QtWidgets import QAbstractScrollArea
 
     _ZH_MENU_MAP = {
         'Undo': '撤消', 'Redo': '重做',

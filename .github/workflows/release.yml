@@ -1,4 +1,4 @@
-name: Release
+﻿name: Release
 
 # 安装包不入库。打 tag（如 `git tag v1.2.0 && git push origin v1.2.0`）后，
 # 本工作流构建 macOS arm64 / Windows x64 / Linux x86_64 三份产物并挂到 GitHub Release，
@@ -77,7 +77,7 @@ jobs:
         env:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
           GITEE_OWNER: Jcs2026
-          GITEE_REPO: super_adb
+          GITEE_REPO: Super_Debug
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -e
@@ -94,7 +94,7 @@ jobs:
             echo "==> 创建 Gitee 发行版 ${TAG}"
             RESP=$(curl -s --max-time 60 -X POST "${API}/releases" \
               -H "Content-Type: application/json;charset=UTF-8" \
-              -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${TAG}\",\"name\":\"${TAG}\",\"body\":\"Super_ADB ${TAG} 发布包（GitHub Actions 自动发布）\",\"target_commitish\":\"master\",\"prerelease\":false}")
+              -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${TAG}\",\"name\":\"${TAG}\",\"body\":\"Super_Debug ${TAG} 发布包（GitHub Actions 自动发布）\",\"target_commitish\":\"master\",\"prerelease\":false}")
             RID=$(echo "${RESP}" | python -c "import json,sys; print(json.load(sys.stdin).get('id',''))")
           fi
           test -n "${RID}" || { echo "::error::无法定位/创建 Gitee 发行版"; exit 1; }
@@ -113,7 +113,7 @@ jobs:
           RID: ${{ steps.gitee.outputs.rid }}
         run: |
           set -e
-          for f in artifacts/Super_ADB-windows-x64.zip artifacts/Super_ADB-macos-arm64.zip; do
+          for f in artifacts/Super_Debug-windows-x64.zip artifacts/Super_Debug-macos-arm64.zip; do
             [ -e "${f}" ] || { echo "::warning::缺少附件 ${f}，跳过"; continue; }
             base=$(basename "${f}")
             # 幂等：同名附件已存在则跳过
@@ -144,7 +144,7 @@ jobs:
           RID: ${{ steps.gitee.outputs.rid }}
         run: |
           set -e
-          f=artifacts/Super_ADB-linux-x86_64.tar.gz
+          f=artifacts/Super_Debug-linux-x86_64.tar.gz
           base=$(basename "${f}")
           if [ ! -e "${f}" ]; then
             echo "::warning::缺少附件 ${f}，跳过（GitHub Release 仍已正常发布）"
@@ -154,7 +154,7 @@ jobs:
           SIZE=$(stat -c %s "${f}")
           if [ "${SIZE}" -gt 104857600 ]; then
             echo "::warning::${base} 大小 ${SIZE} 字节（约 $((SIZE/1024/1024))MB）超过 Gitee 单附件 100MB 限制，跳过上传"
-            echo "::warning::Linux 安装包仅提供 GitHub Release 下载：https://github.com/Jcs2026-byte/Super_ADB/releases"
+            echo "::warning::Linux 安装包仅提供 GitHub Release 下载：https://github.com/Jcs2026-byte/Super_Debug/releases"
             exit 0
           fi
           # 幂等：同名附件已存在则跳过

@@ -12,7 +12,7 @@
 
 提交 Issue 前，请先：
 
-1. 搜索现有 [Issues](https://github.com/Jcs2026-byte/Super_ADB/issues)，确认是否已有相同问题
+1. 搜索现有 [Issues](https://github.com/Jcs2026-byte/Super_Debug/issues)，确认是否已有相同问题
 2. 确认使用的是最新版本
 3. 准备好以下信息：
    - 操作系统及版本（Windows/macOS/Linux）
@@ -35,8 +35,8 @@
 
 ```bash
 # Fork 并克隆你的仓库
-git clone https://github.com/<your-username>/Super_ADB.git
-cd Super_ADB
+git clone https://github.com/<your-username>/Super_Debug.git
+cd Super_Debug
 
 # 安装依赖
 pip install -r requirements.txt
@@ -100,7 +100,7 @@ docs: 更新 README 安装说明
 
 如果在贡献过程中遇到问题，可以：
 
-- 提交 [Issue](https://github.com/Jcs2026-byte/Super_ADB/issues)
+- 提交 [Issue](https://github.com/Jcs2026-byte/Super_Debug/issues)
 - 关注公众号 **Super_ADB** 留言反馈
 
 再次感谢你的贡献！🎉

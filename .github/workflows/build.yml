@@ -1,4 +1,4 @@
-name: Build
+﻿name: Build
 
 # 可复用工作流：CI（每次 PR / push）与 Release（打 tag）共用同一套构建逻辑，
 # 避免两边各写一份、发版时才发现 CI 里的构建早已失效。
@@ -40,39 +40,39 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r Super_ADB_Linux/打包/requirements_linux.txt
+          pip install -r Super_Debug_Linux/打包/requirements_linux.txt
           pip install "pyinstaller==6.21.0" cryptography pyusb brotli
 
       - name: Build
-        working-directory: Super_ADB_Linux
+        working-directory: Super_Debug_Linux
         run: bash 打包/build_linux.sh --clean
 
       # 说明：build_linux.sh 只执行 spec、不调用 精简打包exe.py，原先 裁剪_qt.py
       # 一次都没跑，闭包外 Qt6 库 / 孤儿插件 / 多余翻译全部进包（产物曾达 120MB）。
       # spec 内已内嵌 trim 调用，此处再跑一次作为显式校验与体积日志。
       - name: Trim Qt libraries
-        working-directory: Super_ADB_Linux
+        working-directory: Super_Debug_Linux
         run: python 打包/裁剪_qt.py
 
       # build_linux.sh 不调用 build_exe，产物里不会有 配置/打包信息.json，
       # 「关于」页的下载地址就是空的。补写后再打归档。
       - name: Write build info
-        working-directory: Super_ADB_Linux
+        working-directory: Super_Debug_Linux
         run: |
-          python -c "import sys; sys.path.insert(0,'打包'); import 精简打包exe; 精简打包exe._写入打包完成时间('.', 'Super_ADB')"
-          test -f 打包/dist/Super_ADB/配置/打包信息.json
+          python -c "import sys; sys.path.insert(0,'打包'); import 精简打包exe; 精简打包exe._写入打包完成时间('.', 'Super_Debug')"
+          test -f 打包/dist/Super_Debug/配置/打包信息.json
 
       - name: Archive
-        working-directory: Super_ADB_Linux/打包/dist
-        run: tar -czf Super_ADB-linux-x86_64.tar.gz Super_ADB
+        working-directory: Super_Debug_Linux/打包/dist
+        run: tar -czf Super_Debug-linux-x86_64.tar.gz Super_Debug
 
 
       # 对解压后的归档跑冒烟测试，而不是 dist/ —— 归档环节自身的缺陷
       # （丢符号链接、丢权限位）只在 归档→解压 往返后才暴露。
       - name: Smoke test
-        working-directory: Super_ADB_Linux/打包/dist
+        working-directory: Super_Debug_Linux/打包/dist
         run: |
-          mkdir -p _smoke && tar -xzf Super_ADB-linux-x86_64.tar.gz -C _smoke
+          mkdir -p _smoke && tar -xzf Super_Debug-linux-x86_64.tar.gz -C _smoke
           python "$GITHUB_WORKSPACE/.github/scripts/smoke_test.py" \
             --extracted-dir _smoke --report-dir "$GITHUB_WORKSPACE/smoke-report"
 
@@ -86,8 +86,8 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: Super_ADB-linux-x86_64
-          path: Super_ADB_Linux/打包/dist/Super_ADB-linux-x86_64.tar.gz
+          name: Super_Debug-linux-x86_64
+          path: Super_Debug_Linux/打包/dist/Super_Debug-linux-x86_64.tar.gz
           if-no-files-found: error
 
   windows:
@@ -114,44 +114,44 @@ jobs:
           pip install "pyinstaller==6.21.0" cryptography pyusb pyzbar brotli
 
       - name: Build
-        working-directory: Super_ADB_Win
+        working-directory: Super_Debug_Win
         run: >
           pyinstaller --noconfirm --clean
           --distpath 打包/dist --workpath 打包/build
-          打包/Super_ADB.spec
+          打包/Super_Debug.spec
 
       # 说明：CI 直接执行 spec、不调用 精简打包exe.py，原先 裁剪_qt.py 一次都没跑，
       # 闭包外 Qt6 DLL / opengl32sw / FFmpeg / OpenSSL / 孤儿插件 / 多余翻译全部
       # 进包（产物曾达 79MB）。spec 内已内嵌 trim，此处再跑一次作为显式校验与体积日志。
       - name: Trim Qt libraries
-        working-directory: Super_ADB_Win
+        working-directory: Super_Debug_Win
         run: python 打包/裁剪_qt.py
 
       # spec 不含 配置/，需补写 打包信息.json，否则「关于」页无下载地址
       - name: Write build info
-        working-directory: Super_ADB_Win
+        working-directory: Super_Debug_Win
         # 精简打包exe 里的 print 是中文，Windows 控制台默认 cp1252 会 UnicodeEncodeError
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          python -c "import sys; sys.path.insert(0,'打包'); import 精简打包exe; 精简打包exe._写入打包完成时间('.', 'Super_ADB')"
-          if (-not (Test-Path 打包/dist/Super_ADB/配置/打包信息.json)) { exit 1 }
+          python -c "import sys; sys.path.insert(0,'打包'); import 精简打包exe; 精简打包exe._写入打包完成时间('.', 'Super_Debug')"
+          if (-not (Test-Path 打包/dist/Super_Debug/配置/打包信息.json)) { exit 1 }
         shell: pwsh
 
       - name: Zip bundle
-        working-directory: Super_ADB_Win/打包/dist
+        working-directory: Super_Debug_Win/打包/dist
         shell: pwsh
         run: |
-          Compress-Archive -Path Super_ADB -DestinationPath Super_ADB-windows-x64.zip
-          Get-ChildItem Super_ADB-windows-x64.zip
+          Compress-Archive -Path Super_Debug -DestinationPath Super_Debug-windows-x64.zip
+          Get-ChildItem Super_Debug-windows-x64.zip
 
 
       - name: Smoke test
-        working-directory: Super_ADB_Win/打包/dist
+        working-directory: Super_Debug_Win/打包/dist
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path _smoke | Out-Null
-          Expand-Archive -Path Super_ADB-windows-x64.zip -DestinationPath _smoke -Force
+          Expand-Archive -Path Super_Debug-windows-x64.zip -DestinationPath _smoke -Force
           python "$env:GITHUB_WORKSPACE/.github/scripts/smoke_test.py" `
             --extracted-dir _smoke --report-dir "$env:GITHUB_WORKSPACE/smoke-report"
 
@@ -165,8 +165,8 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: Super_ADB-windows-x64
-          path: Super_ADB_Win/打包/dist/Super_ADB-windows-x64.zip
+          name: Super_Debug-windows-x64
+          path: Super_Debug_Win/打包/dist/Super_Debug-windows-x64.zip
           if-no-files-found: error
 
   macos:
@@ -192,44 +192,44 @@ jobs:
           pip install "pyinstaller==6.21.0" cryptography pyusb libusb1 brotli
 
       - name: Build
-        working-directory: Super_ADB_MAC
+        working-directory: Super_Debug_MAC
         env:
-          SUPER_ADB_PYTHON: ${{ steps.python.outputs.python-path }}
+          Super_Debug_PYTHON: ${{ steps.python.outputs.python-path }}
         run: bash 打包/build_mac_zip.sh
 
       - name: Fix broken symlinks and repackage
-        working-directory: Super_ADB_MAC
+        working-directory: Super_Debug_MAC
         run: |
-          python 打包/fix_symlinks.py 打包/dist/Super_ADB_MAC.app
+          python 打包/fix_symlinks.py 打包/dist/Super_Debug_MAC.app
           echo "--- after fix: Resources/Qt* links ---"
-          ls -la 打包/dist/Super_ADB_MAC.app/Contents/Resources/QtCore 2>/dev/null || true
+          ls -la 打包/dist/Super_Debug_MAC.app/Contents/Resources/QtCore 2>/dev/null || true
           echo "--- after fix: Versions/Current ---"
-          ls -la 打包/dist/Super_ADB_MAC.app/Contents/Frameworks/PySide6/Qt/lib/QtCore.framework/Versions/ 2>/dev/null || true
-          codesign --force --deep --sign - 打包/dist/Super_ADB_MAC.app
+          ls -la 打包/dist/Super_Debug_MAC.app/Contents/Frameworks/PySide6/Qt/lib/QtCore.framework/Versions/ 2>/dev/null || true
+          codesign --force --deep --sign - 打包/dist/Super_Debug_MAC.app
           echo "--- codesign verify after fix (rc matters, no --deep: json 误报) ---"
-          codesign --verify --strict 打包/dist/Super_ADB_MAC.app 2>&1 || true
+          codesign --verify --strict 打包/dist/Super_Debug_MAC.app 2>&1 || true
           echo "--- first unsigned mach-o candidates ---"
-          find 打包/dist/Super_ADB_MAC.app -type f \( -name '*.dylib' -o -name '*.so' \) -exec codesign -v {} \; 2>&1 | grep -v 'satisfies its Designated Requirement' | head -20 || true
-          python 打包/make_zip.py 打包/dist/Super_ADB_MAC.app 打包/dist/Super_ADB_mac.zip
+          find 打包/dist/Super_Debug_MAC.app -type f \( -name '*.dylib' -o -name '*.so' \) -exec codesign -v {} \; 2>&1 | grep -v 'satisfies its Designated Requirement' | head -20 || true
+          python 打包/make_zip.py 打包/dist/Super_Debug_MAC.app 打包/dist/Super_Debug_mac.zip
 
       - name: Verify zip symlinks before smoke
-        working-directory: Super_ADB_MAC
+        working-directory: Super_Debug_MAC
         run: |
-          python 打包/verify_zip_symlinks.py 打包/dist/Super_ADB_mac.zip
+          python 打包/verify_zip_symlinks.py 打包/dist/Super_Debug_mac.zip
 
       - name: Rename artifact
-        working-directory: Super_ADB_MAC/打包/dist
+        working-directory: Super_Debug_MAC/打包/dist
         run: |
-          mv Super_ADB_mac.zip Super_ADB-macos-arm64.zip
-          ls -lh Super_ADB-macos-arm64.zip
+          mv Super_Debug_mac.zip Super_Debug-macos-arm64.zip
+          ls -lh Super_Debug-macos-arm64.zip
 
 
       # 必须用 unzip / ditto 解压，不能用 Python zipfile：后者会把符号链接
       # 还原成普通文件、丢掉执行位，正好废掉我们要守的那条防线。
       - name: Smoke test
-        working-directory: Super_ADB_MAC/打包/dist
+        working-directory: Super_Debug_MAC/打包/dist
         run: |
-          mkdir -p _smoke && unzip -q Super_ADB-macos-arm64.zip -d _smoke
+          mkdir -p _smoke && unzip -q Super_Debug-macos-arm64.zip -d _smoke
           python "$GITHUB_WORKSPACE/.github/scripts/smoke_test.py" \
             --extracted-dir _smoke --report-dir "$GITHUB_WORKSPACE/smoke-report"
 
@@ -243,6 +243,6 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: Super_ADB-macos-arm64
-          path: Super_ADB_MAC/打包/dist/Super_ADB-macos-arm64.zip
+          name: Super_Debug-macos-arm64
+          path: Super_Debug_MAC/打包/dist/Super_Debug-macos-arm64.zip
           if-no-files-found: error

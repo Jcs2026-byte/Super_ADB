@@ -1,0 +1,459 @@
+D  Contents
+D  Contents/_CodeSignature
+D  Contents/MacOS
+D  Contents/Resources
+D  Contents/Frameworks
+F  Contents/Info.plist
+F  Contents/_CodeSignature/CodeResources
+D  Contents/MacOS/配置
+F  Contents/MacOS/Super_ADB_MAC
+F  Contents/MacOS/配置/打包信息.json
+L  Contents/Resources/shiboken6 -> ../Frameworks/shiboken6
+L  Contents/Resources/cryptography -> ../Frameworks/cryptography
+L  Contents/Resources/PIL -> ../Frameworks/PIL
+D  Contents/Resources/PySide6
+L  Contents/Resources/Python.framework -> ../Frameworks/Python.framework
+D  Contents/Resources/cryptography-50.0.1.dist-info
+D  Contents/Resources/资源
+D  Contents/Resources/外部扩展
+L  Contents/Resources/zeroconf -> ../Frameworks/zeroconf
+D  Contents/Resources/setuptools
+L  Contents/Resources/python3.14 -> ../Frameworks/python3.14
+L  Contents/Resources/QtQmlModels -> ../Frameworks/PySide6/Qt/lib/QtQmlModels.framework/Versions/A/QtQmlModels
+L  Contents/Resources/QtOpenGL -> ../Frameworks/PySide6/Qt/lib/QtOpenGL.framework/Versions/A/QtOpenGL
+L  Contents/Resources/QtQml -> ../Frameworks/PySide6/Qt/lib/QtQml.framework/Versions/A/QtQml
+L  Contents/Resources/QtQmlWorkerScript -> ../Frameworks/PySide6/Qt/lib/QtQmlWorkerScript.framework/Versions/A/QtQmlWorkerScript
+L  Contents/Resources/QtNetwork -> ../Frameworks/PySide6/Qt/lib/QtNetwork.framework/Versions/A/QtNetwork
+L  Contents/Resources/QtVirtualKeyboardQml -> ../Frameworks/PySide6/Qt/lib/QtVirtualKeyboardQml.framework/Versions/A/QtVirtualKeyboardQml
+L  Contents/Resources/libusb-1.0.dylib -> ../Frameworks/libusb-1.0.dylib
+L  Contents/Resources/libpyside6.abi3.6.11.dylib -> ../Frameworks/PySide6/libpyside6.abi3.6.11.dylib
+L  Contents/Resources/Python -> ../Frameworks/Python.framework/Versions/3.14/Python
+L  Contents/Resources/QtSvg -> ../Frameworks/PySide6/Qt/lib/QtSvg.framework/Versions/A/QtSvg
+L  Contents/Resources/_brotli.cpython-314-darwin.so -> ../Frameworks/_brotli.cpython-314-darwin.so
+L  Contents/Resources/QtPdf -> ../Frameworks/PySide6/Qt/lib/QtPdf.framework/Versions/A/QtPdf
+L  Contents/Resources/libssl.3.dylib -> ../Frameworks/libssl.3.dylib
+L  Contents/Resources/libxcb.1.1.0.dylib -> ../Frameworks/PIL/__dot__dylibs/libxcb.1.1.0.dylib
+L  Contents/Resources/libjpeg.62.4.0.dylib -> ../Frameworks/PIL/__dot__dylibs/libjpeg.62.4.0.dylib
+L  Contents/Resources/libcrypto.3.dylib -> ../Frameworks/libcrypto.3.dylib
+L  Contents/Resources/libopenjp2.2.5.4.dylib -> ../Frameworks/PIL/__dot__dylibs/libopenjp2.2.5.4.dylib
+F  Contents/Resources/base_library.zip
+L  Contents/Resources/QtQmlMeta -> ../Frameworks/PySide6/Qt/lib/QtQmlMeta.framework/Versions/A/QtQmlMeta
+F  Contents/Resources/Super_ADB.icns
+L  Contents/Resources/QtGui -> ../Frameworks/PySide6/Qt/lib/QtGui.framework/Versions/A/QtGui
+L  Contents/Resources/libz.1.3.1.zlib-ng.dylib -> ../Frameworks/PIL/__dot__dylibs/libz.1.3.1.zlib-ng.dylib
+L  Contents/Resources/QtVirtualKeyboard -> ../Frameworks/PySide6/Qt/lib/QtVirtualKeyboard.framework/Versions/A/QtVirtualKeyboard
+L  Contents/Resources/QtQuick -> ../Frameworks/PySide6/Qt/lib/QtQuick.framework/Versions/A/QtQuick
+L  Contents/Resources/libXau.6.dylib -> ../Frameworks/PIL/__dot__dylibs/libXau.6.dylib
+L  Contents/Resources/QtDBus -> ../Frameworks/PySide6/Qt/lib/QtDBus.framework/Versions/A/QtDBus
+L  Contents/Resources/QtWidgets -> ../Frameworks/PySide6/Qt/lib/QtWidgets.framework/Versions/A/QtWidgets
+L  Contents/Resources/libshiboken6.abi3.6.11.dylib -> ../Frameworks/shiboken6/libshiboken6.abi3.6.11.dylib
+L  Contents/Resources/liblzma.5.dylib -> ../Frameworks/PIL/__dot__dylibs/liblzma.5.dylib
+L  Contents/Resources/QtCore -> ../Frameworks/PySide6/Qt/lib/QtCore.framework/Versions/A/QtCore
+L  Contents/Resources/_cffi_backend.cpython-314-darwin.so -> ../Frameworks/_cffi_backend.cpython-314-darwin.so
+L  Contents/Resources/libtiff.6.dylib -> ../Frameworks/PIL/__dot__dylibs/libtiff.6.dylib
+D  Contents/Resources/PySide6/Qt
+L  Contents/Resources/PySide6/QtWidgets.abi3.so -> ../../Frameworks/PySide6/QtWidgets.abi3.so
+L  Contents/Resources/PySide6/QtGui.abi3.so -> ../../Frameworks/PySide6/QtGui.abi3.so
+L  Contents/Resources/PySide6/libpyside6.abi3.6.11.dylib -> ../../Frameworks/PySide6/libpyside6.abi3.6.11.dylib
+L  Contents/Resources/PySide6/QtNetwork.abi3.so -> ../../Frameworks/PySide6/QtNetwork.abi3.so
+L  Contents/Resources/PySide6/QtCore.abi3.so -> ../../Frameworks/PySide6/QtCore.abi3.so
+L  Contents/Resources/PySide6/QtDBus.abi3.so -> ../../Frameworks/PySide6/QtDBus.abi3.so
+L  Contents/Resources/PySide6/Qt/plugins -> ../../../Frameworks/PySide6/Qt/plugins
+L  Contents/Resources/PySide6/Qt/lib -> ../../../Frameworks/PySide6/Qt/lib
+D  Contents/Resources/PySide6/Qt/translations
+F  Contents/Resources/PySide6/Qt/translations/qtbase_zh_CN.qm
+F  Contents/Resources/PySide6/Qt/translations/qt_help_en.qm
+F  Contents/Resources/PySide6/Qt/translations/qt_zh_CN.qm
+F  Contents/Resources/PySide6/Qt/translations/qtbase_en.qm
+F  Contents/Resources/PySide6/Qt/translations/qt_en.qm
+F  Contents/Resources/PySide6/Qt/translations/qt_help_zh_CN.qm
+D  Contents/Resources/cryptography-50.0.1.dist-info/licenses
+D  Contents/Resources/cryptography-50.0.1.dist-info/sboms
+F  Contents/Resources/cryptography-50.0.1.dist-info/RECORD
+F  Contents/Resources/cryptography-50.0.1.dist-info/WHEEL
+F  Contents/Resources/cryptography-50.0.1.dist-info/REQUESTED
+F  Contents/Resources/cryptography-50.0.1.dist-info/INSTALLER
+F  Contents/Resources/cryptography-50.0.1.dist-info/METADATA
+F  Contents/Resources/cryptography-50.0.1.dist-info/licenses/LICENSE
+F  Contents/Resources/cryptography-50.0.1.dist-info/licenses/LICENSE.APACHE
+F  Contents/Resources/cryptography-50.0.1.dist-info/licenses/LICENSE.BSD
+F  Contents/Resources/cryptography-50.0.1.dist-info/sboms/cryptography-rust.cyclonedx.json
+F  Contents/Resources/cryptography-50.0.1.dist-info/sboms/sbom.json
+F  Contents/Resources/资源/透明公众号.png
+F  Contents/Resources/资源/公众号.jpg
+F  Contents/Resources/资源/Super_ADB.png
+F  Contents/Resources/资源/1c4129f88d6682607479e71c30b61f88_副本.png
+F  Contents/Resources/资源/Super_ADB.icns
+F  Contents/Resources/资源/chart.umd.min.js
+F  Contents/Resources/资源/Super_ADB.ico
+D  Contents/Resources/外部扩展/tcpdump
+D  Contents/Resources/外部扩展/scrcpy
+F  Contents/Resources/外部扩展/tcpdump/README.md
+F  Contents/Resources/外部扩展/tcpdump/tcpdump_arm
+F  Contents/Resources/外部扩展/tcpdump/tcpdump_arm64
+D  Contents/Resources/外部扩展/scrcpy/scrcpy-macos-aarch64-v4.1
+F  Contents/Resources/外部扩展/scrcpy/scrcpy-macos-aarch64-v4.1/LICENSE
+F  Contents/Resources/外部扩展/scrcpy/scrcpy-macos-aarch64-v4.1/disconnected.png
+L  Contents/Resources/外部扩展/scrcpy/scrcpy-macos-aarch64-v4.1/adb -> ../../../../Frameworks/外部扩展/scrcpy/scrcpy-macos-aarch64-v4.1/adb
+F  Contents/Resources/外部扩展/scrcpy/scrcpy-macos-aarch64-v4.1/scrcpy.1
+F  Contents/Resources/外部扩展/scrcpy/scrcpy-macos-aarch64-v4.1/scrcpy.png
+F  Contents/Resources/外部扩展/scrcpy/scrcpy-macos-aarch64-v4.1/scrcpy-server
+L  Contents/Resources/外部扩展/scrcpy/scrcpy-macos-aarch64-v4.1/scrcpy -> ../../../../Frameworks/外部扩展/scrcpy/scrcpy-macos-aarch64-v4.1/scrcpy
+D  Contents/Resources/setuptools/_vendor
+D  Contents/Resources/setuptools/_vendor/jaraco
+D  Contents/Resources/setuptools/_vendor/importlib_metadata-8.7.1.dist-info
+D  Contents/Resources/setuptools/_vendor/jaraco/text
+F  Contents/Resources/setuptools/_vendor/jaraco/text/Lorem ipsum.txt
+D  Contents/Resources/setuptools/_vendor/importlib_metadata-8.7.1.dist-info/licenses
+F  Contents/Resources/setuptools/_vendor/importlib_metadata-8.7.1.dist-info/RECORD
+F  Contents/Resources/setuptools/_vendor/importlib_metadata-8.7.1.dist-info/WHEEL
+F  Contents/Resources/setuptools/_vendor/importlib_metadata-8.7.1.dist-info/top_level.txt
+F  Contents/Resources/setuptools/_vendor/importlib_metadata-8.7.1.dist-info/REQUESTED
+F  Contents/Resources/setuptools/_vendor/importlib_metadata-8.7.1.dist-info/INSTALLER
+F  Contents/Resources/setuptools/_vendor/importlib_metadata-8.7.1.dist-info/METADATA
+F  Contents/Resources/setuptools/_vendor/importlib_metadata-8.7.1.dist-info/licenses/LICENSE
+D  Contents/Frameworks/python3__dot__14
+D  Contents/Frameworks/shiboken6
+D  Contents/Frameworks/cryptography
+D  Contents/Frameworks/PIL
+D  Contents/Frameworks/PySide6
+D  Contents/Frameworks/Python.framework
+L  Contents/Frameworks/cryptography-50.0.1.dist-info -> ../Resources/cryptography-50.0.1.dist-info
+L  Contents/Frameworks/资源 -> ../Resources/资源
+D  Contents/Frameworks/外部扩展
+D  Contents/Frameworks/zeroconf
+L  Contents/Frameworks/setuptools -> ../Resources/setuptools
+L  Contents/Frameworks/python3.14 -> python3__dot__14
+L  Contents/Frameworks/QtQmlModels -> PySide6/Qt/lib/QtQmlModels.framework/Versions/A/QtQmlModels
+L  Contents/Frameworks/QtOpenGL -> PySide6/Qt/lib/QtOpenGL.framework/Versions/A/QtOpenGL
+L  Contents/Frameworks/QtQml -> PySide6/Qt/lib/QtQml.framework/Versions/A/QtQml
+L  Contents/Frameworks/QtQmlWorkerScript -> PySide6/Qt/lib/QtQmlWorkerScript.framework/Versions/A/QtQmlWorkerScript
+L  Contents/Frameworks/QtNetwork -> PySide6/Qt/lib/QtNetwork.framework/Versions/A/QtNetwork
+L  Contents/Frameworks/QtVirtualKeyboardQml -> PySide6/Qt/lib/QtVirtualKeyboardQml.framework/Versions/A/QtVirtualKeyboardQml
+F  Contents/Frameworks/libusb-1.0.dylib
+L  Contents/Frameworks/libpyside6.abi3.6.11.dylib -> PySide6/libpyside6.abi3.6.11.dylib
+L  Contents/Frameworks/Python -> Python.framework/Versions/3.14/Python
+L  Contents/Frameworks/QtSvg -> PySide6/Qt/lib/QtSvg.framework/Versions/A/QtSvg
+F  Contents/Frameworks/_brotli.cpython-314-darwin.so
+L  Contents/Frameworks/QtPdf -> PySide6/Qt/lib/QtPdf.framework/Versions/A/QtPdf
+F  Contents/Frameworks/libssl.3.dylib
+L  Contents/Frameworks/libxcb.1.1.0.dylib -> PIL/__dot__dylibs/libxcb.1.1.0.dylib
+L  Contents/Frameworks/libjpeg.62.4.0.dylib -> PIL/__dot__dylibs/libjpeg.62.4.0.dylib
+F  Contents/Frameworks/libcrypto.3.dylib
+L  Contents/Frameworks/libopenjp2.2.5.4.dylib -> PIL/__dot__dylibs/libopenjp2.2.5.4.dylib
+L  Contents/Frameworks/base_library.zip -> ../Resources/base_library.zip
+L  Contents/Frameworks/QtQmlMeta -> PySide6/Qt/lib/QtQmlMeta.framework/Versions/A/QtQmlMeta
+L  Contents/Frameworks/QtGui -> PySide6/Qt/lib/QtGui.framework/Versions/A/QtGui
+L  Contents/Frameworks/libz.1.3.1.zlib-ng.dylib -> PIL/__dot__dylibs/libz.1.3.1.zlib-ng.dylib
+L  Contents/Frameworks/QtVirtualKeyboard -> PySide6/Qt/lib/QtVirtualKeyboard.framework/Versions/A/QtVirtualKeyboard
+L  Contents/Frameworks/QtQuick -> PySide6/Qt/lib/QtQuick.framework/Versions/A/QtQuick
+L  Contents/Frameworks/libXau.6.dylib -> PIL/__dot__dylibs/libXau.6.dylib
+L  Contents/Frameworks/QtDBus -> PySide6/Qt/lib/QtDBus.framework/Versions/A/QtDBus
+L  Contents/Frameworks/QtWidgets -> PySide6/Qt/lib/QtWidgets.framework/Versions/A/QtWidgets
+L  Contents/Frameworks/libshiboken6.abi3.6.11.dylib -> shiboken6/libshiboken6.abi3.6.11.dylib
+L  Contents/Frameworks/liblzma.5.dylib -> PIL/__dot__dylibs/liblzma.5.dylib
+L  Contents/Frameworks/QtCore -> PySide6/Qt/lib/QtCore.framework/Versions/A/QtCore
+F  Contents/Frameworks/_cffi_backend.cpython-314-darwin.so
+L  Contents/Frameworks/libtiff.6.dylib -> PIL/__dot__dylibs/libtiff.6.dylib
+D  Contents/Frameworks/python3__dot__14/lib-dynload
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_socket.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_hashlib.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/grp.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_sha3.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/fcntl.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_ssl.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_statistics.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_csv.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_queue.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_blake2.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_struct.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/array.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_interpreters.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_sha1.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_posixshmem.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_posixsubprocess.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/xxsubtype.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_interpqueues.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_pickle.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/syslog.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/readline.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/select.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_lzma.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/pyexpat.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/unicodedata.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/zlib.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/termios.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_asyncio.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_cn.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_multibytecodec.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_bisect.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/math.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_sha2.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_iso2022.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/mmap.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_ctypes.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_bz2.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_jp.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_hk.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/resource.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_random.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_json.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/binascii.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_multiprocessing.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_md5.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_hmac.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_scproxy.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_kr.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_tw.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_heapq.cpython-314-darwin.so
+F  Contents/Frameworks/python3__dot__14/lib-dynload/_elementtree.cpython-314-darwin.so
+F  Contents/Frameworks/shiboken6/libshiboken6.abi3.6.11.dylib
+F  Contents/Frameworks/shiboken6/Shiboken.abi3.so
+D  Contents/Frameworks/cryptography/hazmat
+D  Contents/Frameworks/cryptography/hazmat/bindings
+F  Contents/Frameworks/cryptography/hazmat/bindings/_rust.abi3.so
+D  Contents/Frameworks/PIL/__dot__dylibs
+L  Contents/Frameworks/PIL/.dylibs -> __dot__dylibs
+F  Contents/Frameworks/PIL/_imaging.cpython-314-darwin.so
+F  Contents/Frameworks/PIL/__dot__dylibs/libxcb.1.1.0.dylib
+F  Contents/Frameworks/PIL/__dot__dylibs/libjpeg.62.4.0.dylib
+F  Contents/Frameworks/PIL/__dot__dylibs/libopenjp2.2.5.4.dylib
+F  Contents/Frameworks/PIL/__dot__dylibs/libz.1.3.1.zlib-ng.dylib
+F  Contents/Frameworks/PIL/__dot__dylibs/libXau.6.dylib
+F  Contents/Frameworks/PIL/__dot__dylibs/liblzma.5.dylib
+F  Contents/Frameworks/PIL/__dot__dylibs/libtiff.6.dylib
+D  Contents/Frameworks/PySide6/Qt
+F  Contents/Frameworks/PySide6/QtWidgets.abi3.so
+F  Contents/Frameworks/PySide6/QtGui.abi3.so
+F  Contents/Frameworks/PySide6/libpyside6.abi3.6.11.dylib
+F  Contents/Frameworks/PySide6/QtNetwork.abi3.so
+F  Contents/Frameworks/PySide6/QtCore.abi3.so
+F  Contents/Frameworks/PySide6/QtDBus.abi3.so
+D  Contents/Frameworks/PySide6/Qt/plugins
+D  Contents/Frameworks/PySide6/Qt/lib
+L  Contents/Frameworks/PySide6/Qt/translations -> ../../../Resources/PySide6/Qt/translations
+D  Contents/Frameworks/PySide6/Qt/plugins/platforminputcontexts
+D  Contents/Frameworks/PySide6/Qt/plugins/platforms
+D  Contents/Frameworks/PySide6/Qt/plugins/styles
+D  Contents/Frameworks/PySide6/Qt/plugins/tls
+D  Contents/Frameworks/PySide6/Qt/plugins/iconengines
+D  Contents/Frameworks/PySide6/Qt/plugins/imageformats
+D  Contents/Frameworks/PySide6/Qt/plugins/generic
+D  Contents/Frameworks/PySide6/Qt/plugins/networkinformation
+F  Contents/Frameworks/PySide6/Qt/plugins/platforminputcontexts/libqtvirtualkeyboardplugin.dylib
+F  Contents/Frameworks/PySide6/Qt/plugins/platforms/libqcocoa.dylib
+F  Contents/Frameworks/PySide6/Qt/plugins/styles/libqmacstyle.dylib
+F  Contents/Frameworks/PySide6/Qt/plugins/tls/libqsecuretransportbackend.dylib
+F  Contents/Frameworks/PySide6/Qt/plugins/tls/libqopensslbackend.dylib
+F  Contents/Frameworks/PySide6/Qt/plugins/tls/libqcertonlybackend.dylib
+F  Contents/Frameworks/PySide6/Qt/plugins/imageformats/libqico.dylib
+F  Contents/Frameworks/PySide6/Qt/plugins/imageformats/libqjpeg.dylib
+F  Contents/Frameworks/PySide6/Qt/plugins/imageformats/libqicns.dylib
+D  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboardQml.framework
+D  Contents/Frameworks/PySide6/Qt/lib/QtQmlMeta.framework
+D  Contents/Frameworks/PySide6/Qt/lib/QtPdf.framework
+D  Contents/Frameworks/PySide6/Qt/lib/QtGui.framework
+D  Contents/Frameworks/PySide6/Qt/lib/QtDBus.framework
+D  Contents/Frameworks/PySide6/Qt/lib/QtQuick.framework
+D  Contents/Frameworks/PySide6/Qt/lib/QtCore.framework
+D  Contents/Frameworks/PySide6/Qt/lib/QtQml.framework
+D  Contents/Frameworks/PySide6/Qt/lib/QtQmlWorkerScript.framework
+D  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboard.framework
+D  Contents/Frameworks/PySide6/Qt/lib/QtOpenGL.framework
+D  Contents/Frameworks/PySide6/Qt/lib/QtWidgets.framework
+D  Contents/Frameworks/PySide6/Qt/lib/QtNetwork.framework
+D  Contents/Frameworks/PySide6/Qt/lib/QtSvg.framework
+D  Contents/Frameworks/PySide6/Qt/lib/QtQmlModels.framework
+L  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboardQml.framework/Resources -> Versions/Current/Resources
+D  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboardQml.framework/Versions
+L  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboardQml.framework/QtVirtualKeyboardQml -> Versions/Current/QtVirtualKeyboardQml
+D  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboardQml.framework/Versions/A
+L  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboardQml.framework/Versions/Current -> A
+D  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboardQml.framework/Versions/A/_CodeSignature
+D  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboardQml.framework/Versions/A/Resources
+F  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboardQml.framework/Versions/A/QtVirtualKeyboardQml
+F  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboardQml.framework/Versions/A/_CodeSignature/CodeResources
+F  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboardQml.framework/Versions/A/Resources/Info.plist
+L  Contents/Frameworks/PySide6/Qt/lib/QtQmlMeta.framework/Resources -> Versions/Current/Resources
+D  Contents/Frameworks/PySide6/Qt/lib/QtQmlMeta.framework/Versions
+L  Contents/Frameworks/PySide6/Qt/lib/QtQmlMeta.framework/QtQmlMeta -> Versions/Current/QtQmlMeta
+D  Contents/Frameworks/PySide6/Qt/lib/QtQmlMeta.framework/Versions/A
+L  Contents/Frameworks/PySide6/Qt/lib/QtQmlMeta.framework/Versions/Current -> A
+D  Contents/Frameworks/PySide6/Qt/lib/QtQmlMeta.framework/Versions/A/_CodeSignature
+D  Contents/Frameworks/PySide6/Qt/lib/QtQmlMeta.framework/Versions/A/Resources
+F  Contents/Frameworks/PySide6/Qt/lib/QtQmlMeta.framework/Versions/A/QtQmlMeta
+F  Contents/Frameworks/PySide6/Qt/lib/QtQmlMeta.framework/Versions/A/_CodeSignature/CodeResources
+F  Contents/Frameworks/PySide6/Qt/lib/QtQmlMeta.framework/Versions/A/Resources/Info.plist
+L  Contents/Frameworks/PySide6/Qt/lib/QtPdf.framework/Resources -> Versions/Current/Resources
+D  Contents/Frameworks/PySide6/Qt/lib/QtPdf.framework/Versions
+L  Contents/Frameworks/PySide6/Qt/lib/QtPdf.framework/QtPdf -> Versions/Current/QtPdf
+D  Contents/Frameworks/PySide6/Qt/lib/QtPdf.framework/Versions/A
+L  Contents/Frameworks/PySide6/Qt/lib/QtPdf.framework/Versions/Current -> A
+D  Contents/Frameworks/PySide6/Qt/lib/QtPdf.framework/Versions/A/_CodeSignature
+D  Contents/Frameworks/PySide6/Qt/lib/QtPdf.framework/Versions/A/Resources
+F  Contents/Frameworks/PySide6/Qt/lib/QtPdf.framework/Versions/A/QtPdf
+F  Contents/Frameworks/PySide6/Qt/lib/QtPdf.framework/Versions/A/_CodeSignature/CodeResources
+F  Contents/Frameworks/PySide6/Qt/lib/QtPdf.framework/Versions/A/Resources/Info.plist
+L  Contents/Frameworks/PySide6/Qt/lib/QtGui.framework/Resources -> Versions/Current/Resources
+D  Contents/Frameworks/PySide6/Qt/lib/QtGui.framework/Versions
+L  Contents/Frameworks/PySide6/Qt/lib/QtGui.framework/QtGui -> Versions/Current/QtGui
+D  Contents/Frameworks/PySide6/Qt/lib/QtGui.framework/Versions/A
+L  Contents/Frameworks/PySide6/Qt/lib/QtGui.framework/Versions/Current -> A
+D  Contents/Frameworks/PySide6/Qt/lib/QtGui.framework/Versions/A/_CodeSignature
+D  Contents/Frameworks/PySide6/Qt/lib/QtGui.framework/Versions/A/Resources
+F  Contents/Frameworks/PySide6/Qt/lib/QtGui.framework/Versions/A/QtGui
+F  Contents/Frameworks/PySide6/Qt/lib/QtGui.framework/Versions/A/_CodeSignature/CodeResources
+F  Contents/Frameworks/PySide6/Qt/lib/QtGui.framework/Versions/A/Resources/Info.plist
+L  Contents/Frameworks/PySide6/Qt/lib/QtDBus.framework/Resources -> Versions/Current/Resources
+D  Contents/Frameworks/PySide6/Qt/lib/QtDBus.framework/Versions
+L  Contents/Frameworks/PySide6/Qt/lib/QtDBus.framework/QtDBus -> Versions/Current/QtDBus
+D  Contents/Frameworks/PySide6/Qt/lib/QtDBus.framework/Versions/A
+L  Contents/Frameworks/PySide6/Qt/lib/QtDBus.framework/Versions/Current -> A
+D  Contents/Frameworks/PySide6/Qt/lib/QtDBus.framework/Versions/A/_CodeSignature
+D  Contents/Frameworks/PySide6/Qt/lib/QtDBus.framework/Versions/A/Resources
+F  Contents/Frameworks/PySide6/Qt/lib/QtDBus.framework/Versions/A/QtDBus
+F  Contents/Frameworks/PySide6/Qt/lib/QtDBus.framework/Versions/A/_CodeSignature/CodeResources
+F  Contents/Frameworks/PySide6/Qt/lib/QtDBus.framework/Versions/A/Resources/Info.plist
+L  Contents/Frameworks/PySide6/Qt/lib/QtQuick.framework/Resources -> Versions/Current/Resources
+D  Contents/Frameworks/PySide6/Qt/lib/QtQuick.framework/Versions
+L  Contents/Frameworks/PySide6/Qt/lib/QtQuick.framework/QtQuick -> Versions/Current/QtQuick
+D  Contents/Frameworks/PySide6/Qt/lib/QtQuick.framework/Versions/A
+L  Contents/Frameworks/PySide6/Qt/lib/QtQuick.framework/Versions/Current -> A
+D  Contents/Frameworks/PySide6/Qt/lib/QtQuick.framework/Versions/A/_CodeSignature
+D  Contents/Frameworks/PySide6/Qt/lib/QtQuick.framework/Versions/A/Resources
+F  Contents/Frameworks/PySide6/Qt/lib/QtQuick.framework/Versions/A/QtQuick
+F  Contents/Frameworks/PySide6/Qt/lib/QtQuick.framework/Versions/A/_CodeSignature/CodeResources
+F  Contents/Frameworks/PySide6/Qt/lib/QtQuick.framework/Versions/A/Resources/Info.plist
+L  Contents/Frameworks/PySide6/Qt/lib/QtCore.framework/Resources -> Versions/Current/Resources
+D  Contents/Frameworks/PySide6/Qt/lib/QtCore.framework/Versions
+L  Contents/Frameworks/PySide6/Qt/lib/QtCore.framework/QtCore -> Versions/Current/QtCore
+D  Contents/Frameworks/PySide6/Qt/lib/QtCore.framework/Versions/A
+L  Contents/Frameworks/PySide6/Qt/lib/QtCore.framework/Versions/Current -> A
+D  Contents/Frameworks/PySide6/Qt/lib/QtCore.framework/Versions/A/_CodeSignature
+D  Contents/Frameworks/PySide6/Qt/lib/QtCore.framework/Versions/A/Resources
+F  Contents/Frameworks/PySide6/Qt/lib/QtCore.framework/Versions/A/QtCore
+F  Contents/Frameworks/PySide6/Qt/lib/QtCore.framework/Versions/A/_CodeSignature/CodeResources
+F  Contents/Frameworks/PySide6/Qt/lib/QtCore.framework/Versions/A/Resources/Info.plist
+L  Contents/Frameworks/PySide6/Qt/lib/QtQml.framework/Resources -> Versions/Current/Resources
+D  Contents/Frameworks/PySide6/Qt/lib/QtQml.framework/Versions
+L  Contents/Frameworks/PySide6/Qt/lib/QtQml.framework/QtQml -> Versions/Current/QtQml
+D  Contents/Frameworks/PySide6/Qt/lib/QtQml.framework/Versions/A
+L  Contents/Frameworks/PySide6/Qt/lib/QtQml.framework/Versions/Current -> A
+D  Contents/Frameworks/PySide6/Qt/lib/QtQml.framework/Versions/A/_CodeSignature
+D  Contents/Frameworks/PySide6/Qt/lib/QtQml.framework/Versions/A/Resources
+F  Contents/Frameworks/PySide6/Qt/lib/QtQml.framework/Versions/A/QtQml
+F  Contents/Frameworks/PySide6/Qt/lib/QtQml.framework/Versions/A/_CodeSignature/CodeResources
+F  Contents/Frameworks/PySide6/Qt/lib/QtQml.framework/Versions/A/Resources/Info.plist
+L  Contents/Frameworks/PySide6/Qt/lib/QtQmlWorkerScript.framework/Resources -> Versions/Current/Resources
+D  Contents/Frameworks/PySide6/Qt/lib/QtQmlWorkerScript.framework/Versions
+L  Contents/Frameworks/PySide6/Qt/lib/QtQmlWorkerScript.framework/QtQmlWorkerScript -> Versions/Current/QtQmlWorkerScript
+D  Contents/Frameworks/PySide6/Qt/lib/QtQmlWorkerScript.framework/Versions/A
+L  Contents/Frameworks/PySide6/Qt/lib/QtQmlWorkerScript.framework/Versions/Current -> A
+D  Contents/Frameworks/PySide6/Qt/lib/QtQmlWorkerScript.framework/Versions/A/_CodeSignature
+D  Contents/Frameworks/PySide6/Qt/lib/QtQmlWorkerScript.framework/Versions/A/Resources
+F  Contents/Frameworks/PySide6/Qt/lib/QtQmlWorkerScript.framework/Versions/A/QtQmlWorkerScript
+F  Contents/Frameworks/PySide6/Qt/lib/QtQmlWorkerScript.framework/Versions/A/_CodeSignature/CodeResources
+F  Contents/Frameworks/PySide6/Qt/lib/QtQmlWorkerScript.framework/Versions/A/Resources/Info.plist
+L  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboard.framework/Resources -> Versions/Current/Resources
+D  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboard.framework/Versions
+L  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboard.framework/QtVirtualKeyboard -> Versions/Current/QtVirtualKeyboard
+D  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboard.framework/Versions/A
+L  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboard.framework/Versions/Current -> A
+D  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboard.framework/Versions/A/_CodeSignature
+D  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboard.framework/Versions/A/Resources
+F  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboard.framework/Versions/A/QtVirtualKeyboard
+F  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboard.framework/Versions/A/_CodeSignature/CodeResources
+F  Contents/Frameworks/PySide6/Qt/lib/QtVirtualKeyboard.framework/Versions/A/Resources/Info.plist
+L  Contents/Frameworks/PySide6/Qt/lib/QtOpenGL.framework/Resources -> Versions/Current/Resources
+D  Contents/Frameworks/PySide6/Qt/lib/QtOpenGL.framework/Versions
+L  Contents/Frameworks/PySide6/Qt/lib/QtOpenGL.framework/QtOpenGL -> Versions/Current/QtOpenGL
+D  Contents/Frameworks/PySide6/Qt/lib/QtOpenGL.framework/Versions/A
+L  Contents/Frameworks/PySide6/Qt/lib/QtOpenGL.framework/Versions/Current -> A
+D  Contents/Frameworks/PySide6/Qt/lib/QtOpenGL.framework/Versions/A/_CodeSignature
+D  Contents/Frameworks/PySide6/Qt/lib/QtOpenGL.framework/Versions/A/Resources
+F  Contents/Frameworks/PySide6/Qt/lib/QtOpenGL.framework/Versions/A/QtOpenGL
+F  Contents/Frameworks/PySide6/Qt/lib/QtOpenGL.framework/Versions/A/_CodeSignature/CodeResources
+F  Contents/Frameworks/PySide6/Qt/lib/QtOpenGL.framework/Versions/A/Resources/Info.plist
+L  Contents/Frameworks/PySide6/Qt/lib/QtWidgets.framework/Resources -> Versions/Current/Resources
+D  Contents/Frameworks/PySide6/Qt/lib/QtWidgets.framework/Versions
+L  Contents/Frameworks/PySide6/Qt/lib/QtWidgets.framework/QtWidgets -> Versions/Current/QtWidgets
+D  Contents/Frameworks/PySide6/Qt/lib/QtWidgets.framework/Versions/A
+L  Contents/Frameworks/PySide6/Qt/lib/QtWidgets.framework/Versions/Current -> A
+D  Contents/Frameworks/PySide6/Qt/lib/QtWidgets.framework/Versions/A/_CodeSignature
+D  Contents/Frameworks/PySide6/Qt/lib/QtWidgets.framework/Versions/A/Resources
+F  Contents/Frameworks/PySide6/Qt/lib/QtWidgets.framework/Versions/A/QtWidgets
+F  Contents/Frameworks/PySide6/Qt/lib/QtWidgets.framework/Versions/A/_CodeSignature/CodeResources
+F  Contents/Frameworks/PySide6/Qt/lib/QtWidgets.framework/Versions/A/Resources/Info.plist
+L  Contents/Frameworks/PySide6/Qt/lib/QtNetwork.framework/Resources -> Versions/Current/Resources
+D  Contents/Frameworks/PySide6/Qt/lib/QtNetwork.framework/Versions
+L  Contents/Frameworks/PySide6/Qt/lib/QtNetwork.framework/QtNetwork -> Versions/Current/QtNetwork
+D  Contents/Frameworks/PySide6/Qt/lib/QtNetwork.framework/Versions/A
+L  Contents/Frameworks/PySide6/Qt/lib/QtNetwork.framework/Versions/Current -> A
+D  Contents/Frameworks/PySide6/Qt/lib/QtNetwork.framework/Versions/A/_CodeSignature
+D  Contents/Frameworks/PySide6/Qt/lib/QtNetwork.framework/Versions/A/Resources
+F  Contents/Frameworks/PySide6/Qt/lib/QtNetwork.framework/Versions/A/QtNetwork
+F  Contents/Frameworks/PySide6/Qt/lib/QtNetwork.framework/Versions/A/_CodeSignature/CodeResources
+F  Contents/Frameworks/PySide6/Qt/lib/QtNetwork.framework/Versions/A/Resources/Info.plist
+L  Contents/Frameworks/PySide6/Qt/lib/QtSvg.framework/Resources -> Versions/Current/Resources
+D  Contents/Frameworks/PySide6/Qt/lib/QtSvg.framework/Versions
+L  Contents/Frameworks/PySide6/Qt/lib/QtSvg.framework/QtSvg -> Versions/Current/QtSvg
+D  Contents/Frameworks/PySide6/Qt/lib/QtSvg.framework/Versions/A
+L  Contents/Frameworks/PySide6/Qt/lib/QtSvg.framework/Versions/Current -> A
+D  Contents/Frameworks/PySide6/Qt/lib/QtSvg.framework/Versions/A/_CodeSignature
+D  Contents/Frameworks/PySide6/Qt/lib/QtSvg.framework/Versions/A/Resources
+F  Contents/Frameworks/PySide6/Qt/lib/QtSvg.framework/Versions/A/QtSvg
+F  Contents/Frameworks/PySide6/Qt/lib/QtSvg.framework/Versions/A/_CodeSignature/CodeResources
+F  Contents/Frameworks/PySide6/Qt/lib/QtSvg.framework/Versions/A/Resources/Info.plist
+L  Contents/Frameworks/PySide6/Qt/lib/QtQmlModels.framework/Resources -> Versions/Current/Resources
+D  Contents/Frameworks/PySide6/Qt/lib/QtQmlModels.framework/Versions
+L  Contents/Frameworks/PySide6/Qt/lib/QtQmlModels.framework/QtQmlModels -> Versions/Current/QtQmlModels
+D  Contents/Frameworks/PySide6/Qt/lib/QtQmlModels.framework/Versions/A
+L  Contents/Frameworks/PySide6/Qt/lib/QtQmlModels.framework/Versions/Current -> A
+D  Contents/Frameworks/PySide6/Qt/lib/QtQmlModels.framework/Versions/A/_CodeSignature
+D  Contents/Frameworks/PySide6/Qt/lib/QtQmlModels.framework/Versions/A/Resources
+F  Contents/Frameworks/PySide6/Qt/lib/QtQmlModels.framework/Versions/A/QtQmlModels
+F  Contents/Frameworks/PySide6/Qt/lib/QtQmlModels.framework/Versions/A/_CodeSignature/CodeResources
+F  Contents/Frameworks/PySide6/Qt/lib/QtQmlModels.framework/Versions/A/Resources/Info.plist
+L  Contents/Frameworks/Python.framework/Resources -> Versions/Current/Resources
+D  Contents/Frameworks/Python.framework/Versions
+L  Contents/Frameworks/Python.framework/Python -> Versions/Current/Python
+D  Contents/Frameworks/Python.framework/Versions/3.14
+L  Contents/Frameworks/Python.framework/Versions/Current -> 3.14
+D  Contents/Frameworks/Python.framework/Versions/3.14/_CodeSignature
+D  Contents/Frameworks/Python.framework/Versions/3.14/Resources
+F  Contents/Frameworks/Python.framework/Versions/3.14/Python
+F  Contents/Frameworks/Python.framework/Versions/3.14/_CodeSignature/CodeResources
+F  Contents/Frameworks/Python.framework/Versions/3.14/Resources/Info.plist
+L  Contents/Frameworks/外部扩展/tcpdump -> ../../Resources/外部扩展/tcpdump
+D  Contents/Frameworks/外部扩展/scrcpy
+D  Contents/Frameworks/外部扩展/scrcpy/scrcpy-macos-aarch64-v4__dot__1
+L  Contents/Frameworks/外部扩展/scrcpy/scrcpy-macos-aarch64-v4.1 -> scrcpy-macos-aarch64-v4__dot__1
+L  Contents/Frameworks/外部扩展/scrcpy/scrcpy-macos-aarch64-v4__dot__1/LICENSE -> ../../../../Resources/外部扩展/scrcpy/scrcpy-macos-aarch64-v4.1/LICENSE
+L  Contents/Frameworks/外部扩展/scrcpy/scrcpy-macos-aarch64-v4__dot__1/disconnected.png -> ../../../../Resources/外部扩展/scrcpy/scrcpy-macos-aarch64-v4.1/disconnected.png
+F  Contents/Frameworks/外部扩展/scrcpy/scrcpy-macos-aarch64-v4__dot__1/adb
+L  Contents/Frameworks/外部扩展/scrcpy/scrcpy-macos-aarch64-v4__dot__1/scrcpy.1 -> ../../../../Resources/外部扩展/scrcpy/scrcpy-macos-aarch64-v4.1/scrcpy.1
+L  Contents/Frameworks/外部扩展/scrcpy/scrcpy-macos-aarch64-v4__dot__1/scrcpy.png -> ../../../../Resources/外部扩展/scrcpy/scrcpy-macos-aarch64-v4.1/scrcpy.png
+L  Contents/Frameworks/外部扩展/scrcpy/scrcpy-macos-aarch64-v4__dot__1/scrcpy-server -> ../../../../Resources/外部扩展/scrcpy/scrcpy-macos-aarch64-v4.1/scrcpy-server
+F  Contents/Frameworks/外部扩展/scrcpy/scrcpy-macos-aarch64-v4__dot__1/scrcpy
+D  Contents/Frameworks/zeroconf/_utils
+D  Contents/Frameworks/zeroconf/_protocol
+D  Contents/Frameworks/zeroconf/_handlers
+D  Contents/Frameworks/zeroconf/_services
+F  Contents/Frameworks/zeroconf/_history.cpython-314-darwin.so
+F  Contents/Frameworks/zeroconf/_updates.cpython-314-darwin.so
+F  Contents/Frameworks/zeroconf/_dns.cpython-314-darwin.so
+F  Contents/Frameworks/zeroconf/_record_update.cpython-314-darwin.so
+F  Contents/Frameworks/zeroconf/_listener.cpython-314-darwin.so
+F  Contents/Frameworks/zeroconf/_cache.cpython-314-darwin.so
+F  Contents/Frameworks/zeroconf/_utils/time.cpython-314-darwin.so
+F  Contents/Frameworks/zeroconf/_utils/ipaddress.cpython-314-darwin.so
+F  Contents/Frameworks/zeroconf/_protocol/incoming.cpython-314-darwin.so
+F  Contents/Frameworks/zeroconf/_protocol/outgoing.cpython-314-darwin.so
+F  Contents/Frameworks/zeroconf/_handlers/answers.cpython-314-darwin.so
+F  Contents/Frameworks/zeroconf/_handlers/multicast_outgoing_queue.cpython-314-darwin.so
+F  Contents/Frameworks/zeroconf/_handlers/query_handler.cpython-314-darwin.so
+F  Contents/Frameworks/zeroconf/_handlers/record_manager.cpython-314-darwin.so
+F  Contents/Frameworks/zeroconf/_services/__init__.cpython-314-darwin.so
+F  Contents/Frameworks/zeroconf/_services/browser.cpython-314-darwin.so
+F  Contents/Frameworks/zeroconf/_services/info.cpython-314-darwin.so
+F  Contents/Frameworks/zeroconf/_services/registry.cpython-314-darwin.so

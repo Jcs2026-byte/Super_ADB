@@ -48,11 +48,11 @@ if IS_MAC:
     LAYOUT = {
         'name': 'macOS',
         'app_glob': '*.app',
-        'exe_rel': os.path.join('Contents', 'MacOS', 'Super_ADB_MAC'),
+        'exe_rel': os.path.join('Contents', 'MacOS', 'Super_Debug_MAC'),
         # 相对 app 根的必需条目；用后缀匹配，容忍 PyInstaller 版本间的布局差异
         'required': [
             'Contents/Resources/配置/打包信息.json',
-            '资源/Super_ADB.png',
+            '资源/Super_Debug.png',
             '资源/chart.umd.min.js',
             '外部扩展/scrcpy',
         ],
@@ -68,11 +68,11 @@ if IS_MAC:
 elif IS_WIN:
     LAYOUT = {
         'name': 'Windows',
-        'app_glob': 'Super_ADB',
-        'exe_rel': 'Super_ADB.exe',
+        'app_glob': 'Super_Debug',
+        'exe_rel': 'Super_Debug.exe',
         'required': [
             '配置/打包信息.json',
-            '资源/Super_ADB.png',
+            '资源/Super_Debug.png',
             '外部扩展/scrcpy',
         ],
         'forbidden': [],
@@ -86,11 +86,11 @@ elif IS_WIN:
 else:
     LAYOUT = {
         'name': 'Linux',
-        'app_glob': 'Super_ADB',
-        'exe_rel': 'Super_ADB',
+        'app_glob': 'Super_Debug',
+        'exe_rel': 'Super_Debug',
         'required': [
             '配置/打包信息.json',
-            '资源/Super_ADB.png',
+            '资源/Super_Debug.png',
             '外部扩展/scrcpy',
             # 注意：不要求 外部扩展/adb —— 仓库 Linux 版不随包顶层 adb，
             # 程序运行时回退使用 外部扩展/scrcpy/.../adb（见 ADB工具.py 回退逻辑），
@@ -192,7 +192,7 @@ def main():
     if args.report_dir:
         args.report_dir = os.path.abspath(args.report_dir)
 
-    print('=== Super_ADB 打包产物冒烟测试 ===')
+    print('=== Super_Debug 打包产物冒烟测试 ===')
     print('平台: %s (%s / %s)' % (LAYOUT['name'], sys.platform, platform.machine()))
     print('解压目录: %s' % args.extracted_dir)
 

@@ -55,9 +55,9 @@
 
 | 平台 | 目录 | 状态 |
 |------|------|------|
-| Windows | `Super_ADB_Win/` | ✅ 完整支持 |
-| macOS | `Super_ADB_MAC/` | ✅ 完整支持 |
-| Linux | `Super_ADB_Linux/` | ✅ 完整支持 |
+| Windows | `Super_Debug_Win/` | ✅ 完整支持 |
+| macOS | `Super_Debug_MAC/` | ✅ 完整支持 |
+| Linux | `Super_Debug_Linux/` | ✅ 完整支持 |
 
 ## 🚀 快速开始
 
@@ -70,14 +70,14 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/Jcs2026-byte/Super_ADB.git
-cd Super_ADB
+git clone https://github.com/Jcs2026-byte/Super_Debug.git
+cd Super_Debug
 
 # 安装依赖
 pip install -r requirements.txt
 
 # 运行（以 Windows 为例）
-cd Super_ADB_Win
+cd Super_Debug_Win
 python 项目启动入口/main.py
 ```
 
@@ -85,8 +85,8 @@ python 项目启动入口/main.py
 
 三平台安装包由 CI（打标签后）自动构建发布，提供两个下载渠道：
 夸克网盘：https://pan.quark.cn/s/2b7b11ebe1e5?pwd=fAXN#/list/share
-- **GitHub Releases**（主选ci自动打包）：https://github.com/Jcs2026-byte/Super_ADB/releases
-- **Gitee 发行版**（GitHub跨界不一定能同步过来）：https://gitee.com/Jcs2026/super_adb/releases
+- **GitHub Releases**（主选ci自动打包）：https://github.com/Jcs2026-byte/Super_Debug/releases
+- **Gitee 发行版**（GitHub跨界不一定能同步过来）：https://gitee.com/Jcs2026/Super_Debug/releases
 
 | 平台 | 产物 |
 |------|------|
@@ -116,7 +116,7 @@ Super_ADB/
 
 ## 🔗 开源地址
 
-- **GitHub**：https://github.com/Jcs2026-byte/Super_ADB.git
+- **GitHub**：https://github.com/Jcs2026-byte/Super_Debug.git
 
 ## 🤝 贡献
 
@@ -130,4 +130,4 @@ Super_ADB/
 
 扫码关注公众号 **Super_ADB**，获取最新版本更新、使用教程和技术分享。
 
-![公众号](Super_ADB_Win/资源/公众号.jpg)
+![公众号](Super_Debug_Win/资源/公众号.jpg)

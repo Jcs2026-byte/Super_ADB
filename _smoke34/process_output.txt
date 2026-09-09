@@ -1,0 +1,5 @@
+qt.qpa.plugin: Could not find the Qt platform plugin "offscreen" in ""
+This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem.
+
+Available platform plugins are: cocoa.
+

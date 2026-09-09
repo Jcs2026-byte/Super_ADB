@@ -2,7 +2,7 @@
 """
 编译 UI 脚本
 ==========
-自动编译 Super_ADB.ui 为 Super_ADB.py，并给 import png_rc 加 try-except 容错。
+自动编译 Super_Debug.ui 为 Super_Debug.py，并给 import png_rc 加 try-except 容错。
 
 用法：
     python compile_ui.py
@@ -14,8 +14,8 @@ from pathlib import Path
 # 路径配置
 UI_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = UI_DIR.parent
-UI_FILE = UI_DIR / 'Super_ADB.ui'
-OUTPUT_FILE = PROJECT_ROOT / 'Super_ADB_Win' / '项目UI' / 'Super_ADB.py'
+UI_FILE = UI_DIR / 'Super_Debug.ui'
+OUTPUT_FILE = PROJECT_ROOT / 'Super_Debug_Win' / '项目UI' / 'Super_Debug.py'
 
 
 def 编译UI():

@@ -11,7 +11,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Super_ADB version / 版本
+      label: Super_Debug version / 版本
       description: 见「关于」对话框，或你下载的 Release tag
       placeholder: v1.2.0
     validations:

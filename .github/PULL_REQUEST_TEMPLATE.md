@@ -19,4 +19,4 @@
 - [ ] 改动范围最小化，没有顺手重构无关代码
 - [ ] 文件名、目录名、模块名使用 ASCII（`vendor/` 下的第三方产物除外）
 - [ ] 没有提交密钥、安装包、构建产物或 IDE 配置
-- [ ] 三棵平台树（`Super_ADB_MAC` / `Super_ADB_Linux` / `Super_ADB_Win`）中需要同步的部分已同步
+- [ ] 三棵平台树（`Super_Debug_MAC` / `Super_Debug_Linux` / `Super_Debug_Win`）中需要同步的部分已同步

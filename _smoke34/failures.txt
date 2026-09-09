@@ -1,0 +1,5 @@
+平台: macOS
+
+- codesign --verify --deep --strict  — /Users/runner/work/Super_ADB/Super_ADB/Super_ADB_MAC/打包/dist/_smoke/Super_ADB_MAC.app: code object is not signed at all
+- 启动后 20s 内未退出  — 退出码 -6
+- 输出中无崩溃标志  — 命中: failed to start because no Qt platform plugin

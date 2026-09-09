@@ -1345,13 +1345,25 @@ class 应用性能监控(QWidget):
         top.addWidget(self._btn_dump_hprof)
         lay.addLayout(top)
 
+        # ---- 设备信息折叠容器 (默认收起) ----
+        # 设备信息一多就会把下方图表区挤没, 整体收进可折叠容器,
+        # 默认折叠; hprof 状态 / 崩溃日志是临时警示, 留在容器外始终可见。
+        self._device_info_container, self._device_info_toggle_btn, self._device_info_content, info_lay = \
+            self._build_collapsible_section(
+                '📊 设备信息 (内存/ANR/电池/设备属性/标识符/应用)',
+                initial_checked=False,
+                border_color='#61afef',
+                accent='#61afef',
+            )
+        lay.addWidget(self._device_info_container)
+
         # ---- 内存泄漏检测栏 ----
         self._leak_label = QLabel('内存泄漏检测: ○ 数据不足 (需 10+ 个采样点)')
         self._leak_label.setStyleSheet(
             f'font: 10pt "{FONT_FAMILY}"; color: #999999; '
             f'background: rgba(255,255,255,0.05); padding: 4px 8px; '
             f'border-radius: 4px;')
-        lay.addWidget(self._leak_label)
+        info_lay.addWidget(self._leak_label)
 
         # ---- hprof 快照状态栏 (默认隐藏, 触发 dump 时显示) ----
         self._hprof_label = QLabel('')
@@ -1369,7 +1381,7 @@ class 应用性能监控(QWidget):
             f'font: 10pt "{FONT_FAMILY}"; color: #999999; '
             f'background: rgba(255,255,255,0.05); padding: 4px 8px; '
             f'border-radius: 4px;')
-        lay.addWidget(self._oom_label)
+        info_lay.addWidget(self._oom_label)
 
         # ---- ANR 检测栏 ----
         self._anr_label = QLabel('ANR 检测: 等待数据…')
@@ -1377,7 +1389,7 @@ class 应用性能监控(QWidget):
             f'font: 10pt "{FONT_FAMILY}"; color: #999999; '
             f'background: rgba(255,255,255,0.05); padding: 4px 8px; '
             f'border-radius: 4px;')
-        lay.addWidget(self._anr_label)
+        info_lay.addWidget(self._anr_label)
 
         # ---- 崩溃/ANR 日志折叠展示框 (默认隐藏, 检测到崩溃时显示) ----
         self._crash_log_container = QFrame()
@@ -1421,7 +1433,7 @@ class 应用性能监控(QWidget):
             f'font: 10pt "{FONT_FAMILY}"; color: #999999; '
             f'background: rgba(255,255,255,0.05); padding: 4px 8px; '
             f'border-radius: 4px;')
-        lay.addWidget(self._power_label)
+        info_lay.addWidget(self._power_label)
 
         # ---- 电池信息栏 (放在设备信息上方) ----
         self._battery_label = QLabel('🔋 电池: 采样中…')
@@ -1429,7 +1441,7 @@ class 应用性能监控(QWidget):
             f'font: 10pt "{FONT_FAMILY}"; color: #999999; '
             f'background: rgba(255,255,255,0.05); padding: 4px 8px; '
             f'border-radius: 4px;')
-        lay.addWidget(self._battery_label)
+        info_lay.addWidget(self._battery_label)
 
         # ---- 设备信息: 两个可折叠框 (getprop 属性 + 设备标识符) ----
         # 与设备信息弹窗保持一致: 上面 getprop, 下面标识符
@@ -1441,7 +1453,7 @@ class 应用性能监控(QWidget):
                 accent='#1de9b6',
                 max_height=280,
             )
-        lay.addWidget(self._device_getprop_container)
+        info_lay.addWidget(self._device_getprop_container)
 
         self._device_ids_container, self._device_ids_toggle_btn, self._device_ids_edit = \
             self._build_collapsible_text_box(
@@ -1451,7 +1463,7 @@ class 应用性能监控(QWidget):
                 accent='#c678dd',
                 max_height=200,
             )
-        lay.addWidget(self._device_ids_container)
+        info_lay.addWidget(self._device_ids_container)
 
         # ---- 应用包信息栏 (版本号/安装时间/SDK等) ----
         self._app_info_label = QLabel('📦 应用信息: 获取中…')
@@ -1460,7 +1472,7 @@ class 应用性能监控(QWidget):
             f'background: rgba(255,255,255,0.05); padding: 8px 10px; '
             f'border-radius: 6px; border-left: 3px solid #61afef;')
         self._app_info_label.setWordWrap(True)
-        lay.addWidget(self._app_info_label)
+        info_lay.addWidget(self._app_info_label)
 
         # ---- 滚动区域容纳所有图表 ----
         scroll = QScrollArea()
@@ -1616,6 +1628,51 @@ class 应用性能监控(QWidget):
             _e.setVisible(checked)
         toggle_btn.toggled.connect(_on_toggle_visible)
         return container, toggle_btn, edit
+
+    # ---- 辅助: 创建通用折叠容器 (标题栏 + 任意内容控件) ----
+    def _build_collapsible_section(self, title, initial_checked, border_color,
+                                   accent='#61afef'):
+        """构造一个 QFrame 折叠容器: 标题栏 (带折叠箭头) + 内容 QWidget。
+
+        与 _build_collapsible_text_box 同款视觉, 但内容由调用方自由填充。
+
+        Returns:
+            (container, toggle_btn, content_widget, content_layout)
+        """
+        container = QFrame()
+        container.setStyleSheet(
+            f'QFrame {{ background: rgba(255,255,255,0.04); '
+            f'border-radius: 6px; border-left: 3px solid {border_color}; }}')
+        v = QVBoxLayout(container)
+        v.setContentsMargins(6, 4, 6, 6)
+        v.setSpacing(4)
+
+        toggle_btn = QToolButton()
+        toggle_btn.setCheckable(True)
+        toggle_btn.setChecked(initial_checked)
+        toggle_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        toggle_btn.setArrowType(Qt.DownArrow if initial_checked else Qt.RightArrow)
+        toggle_btn.setText(title + ('  ▼' if initial_checked else '  ▶'))
+        toggle_btn.setStyleSheet(
+            f'QToolButton {{ font: 10pt "{FONT_FAMILY}"; color: {accent}; '
+            f'border: none; padding: 2px 4px; background: transparent; }} '
+            f'QToolButton:hover {{ color: #fff; }}')
+
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(4)
+        content_widget.setVisible(initial_checked)
+
+        def _on_toggle(checked, _b=toggle_btn, _t=title, _c=content_widget):
+            _b.setArrowType(Qt.DownArrow if checked else Qt.RightArrow)
+            _b.setText(_t + ('  ▼' if checked else '  ▶'))
+            _c.setVisible(checked)
+        toggle_btn.toggled.connect(_on_toggle)
+
+        v.addWidget(toggle_btn)
+        v.addWidget(content_widget)
+        return container, toggle_btn, content_widget, content_layout
 
     # ---- 采样调度 ----
     def _tick(self):

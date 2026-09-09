@@ -1,4 +1,4 @@
-﻿name: Build
+name: Build
 
 # 可复用工作流：CI（每次 PR / push）与 Release（打 tag）共用同一套构建逻辑，
 # 避免两边各写一份、发版时才发现 CI 里的构建早已失效。
@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.14'
 
@@ -102,7 +102,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.14'
           architecture: x64
@@ -175,7 +175,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         id: python
         with:
           python-version: '3.14'

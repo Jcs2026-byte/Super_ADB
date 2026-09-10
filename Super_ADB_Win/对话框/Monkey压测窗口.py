@@ -594,6 +594,17 @@ class Monkey压测窗口(QWidget):
         self.btn_pause.setEnabled(False)
         self.btn_pause.clicked.connect(self._toggle_pause)
         self.btn_replay = QPushButton('↻ 回放')
+        # ★ 悬浮提示：说明回放功能用途
+        self.btn_replay.setToolTip(
+            '把本次 monkey 运行中可映射的事件序列记录下来，按原顺序重放一遍。\n\n'
+            '用途：\n'
+            '· 复现崩溃 —— monkey 跑崩后回放同样序列，确认是否必现\n'
+            '· 验证修复 —— 修完 bug 重放同序列，不再崩即修复有效\n'
+            '· 定位根因 —— 回放列表可单步执行，找到是哪一步导致崩溃\n\n'
+            '仅记录可转为 adb input 命令的事件（触摸/按键/滑动）；\n'
+            '轨迹球、翻转、旋转等无对应命令，自动跳过。\n'
+            '运行结束且有记录事件后本按钮才可用。'
+        )
         self.btn_replay.setFixedWidth(80)
         self.btn_replay.setEnabled(False)
         self.btn_replay.clicked.connect(self._open_replay)

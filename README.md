@@ -4,15 +4,18 @@
 
 ![Super_ADB](docs/主界面.png)
 ![Super_ADB](docs/界面折叠.png)
-**最新版本：`v2026.09.10`**（GitHub / Gitee 均已同步）
+- 这三个分页条都可以折叠界面，折叠后调整窗口大小隐藏不需要的功能，下次需要的时候再展开
+- **最新版本：`v2026.09.10`**（GitHub / Gitee 均已同步）
 
 ## ✨ 功能特性
 
 ### 🔌 设备连接
+![Super_ADB](docs/设备连接.png)
 - **自研 ADB（三平台默认）**：纯 Python 实现的 ADB 协议栈（`工具/android调试工具/自研adb/`），
   TCP 直连 + USB（pyusb）双通道，不依赖官方 adb server、不占用 5037 端口，
   传输速度最高可达官方 2.7 倍
 - **系统 ADB / Socket 直连**：可一键切换回官方 adb（优先 PATH，其次内置 platform-tools）
+![Super_ADB](docs/adb连接.png)
 - **无线调试**：局域网扫描、配对码连接（adb pair）、二维码连接（mDNS）三种方式
 
 ### 📁 文件管理
@@ -36,9 +39,11 @@
 - HTML 报告导出，数据实时刷新
 
 ### 🌐 网络抓包
+![Super_ADB](docs/抓包.png)
 - tcpdump 自动检测架构并推送二进制（arm64/arm）
 - BPF 过滤器、实时包数统计、pcap 自动拉取
 - PCAP 解析器：HTTP/HTTPS/TCP/UDP 协议分析、流重组
+- 代理抓包.你要打开Charles点击设置代理,会将端口指向你电脑的8888端口，点取消代理会清空设备上的代理停止抓取
 
 ### 📺 scrcpy 投屏
 - 低延迟投屏，键鼠反向控制

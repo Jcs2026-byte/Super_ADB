@@ -121,6 +121,9 @@ def _重命名输出文件夹(base_dir, name='Super_ADB'):
 
 
 def install(main):
+    # 构建配置已统一收进 Super_ADB.spec（本地与 CI 共用同一份，SPEC 相对路径）。
+    # 下面 path_args/hidden/hooks/excludes/res_arg/data_arg 等仅保留作 spec
+    # 内容的对照参考，不再拼入构建命令（cmd 只传 spec 文件）。
     # 包式导入改造后，pathex 只需指向 Super_ADB_Win/ 根目录
     # 各子目录（对话框/页面/监控/工具/项目UI）均含 __init__.py 成为正规包，
     # PyInstaller 通过根包路径自动发现所有子包模块。
@@ -242,13 +245,18 @@ def install(main):
                         f'请先关闭它（任务管理器结束 Super_ADB.exe）后重新打包。'
                     )
     if sys.platform == 'darwin':
-        # macOS: 生成 .app，图标用 .icns（如有）否则 .png
-        icon = os.path.join(base_dir, 'adb.icns') if os.path.exists(os.path.join(base_dir, 'adb.icns')) else os.path.join(base_dir, '资源', 'Super_ADB.png')
-        cmd = f'pyinstaller --clean -w -i "{icon}" -n {name} --distpath "{base_dir}/打包/dist" --workpath "{base_dir}/打包/build" {hidden} {hooks} {runtime_hooks} {excludes} {res_arg} {data_arg} {path_args} "{main}"'
+        # macOS: 生成 .app，图标/隐藏依赖/排除项等已全部收进 spec
+        spec_file = os.path.join(here, 'Super_ADB_mac.spec')
+        cmd = f'pyinstaller --noconfirm --clean --distpath "{base_dir}/打包/dist" --workpath "{base_dir}/打包/build" "{spec_file}"'
     else:
         # Windows: 生成 .exe
-        icon = os.path.join(base_dir, '资源', 'Super_ADB.png')
-        cmd = f'pyinstaller --clean -w -i "{icon}" -n {name} --distpath "{base_dir}/打包/dist" --workpath "{base_dir}/打包/build" {hidden} {hooks} {runtime_hooks} {excludes} {res_arg} {data_arg} {path_args} "{main}"'
+        # ★ 必须走 spec 构建（与 CI 的 build.yml 一致）：
+        #   若改用「入口 .py + 命令行参数」，PyInstaller 会在运行目录自动生成
+        #   并覆盖 Super_ADB.spec（硬编码绝对路径版），污染 git 跟踪的 spec，
+        #   且 CI 与本地两份配置漂移。hiddenimports/excludes/datas/hookspath/
+        #   runtime_hooks/icon 均已统一收进 spec（SPEC 相对路径，可移植）。
+        spec_file = os.path.join(here, 'Super_ADB.spec')
+        cmd = f'pyinstaller --noconfirm --clean --distpath "{base_dir}/打包/dist" --workpath "{base_dir}/打包/build" "{spec_file}"'
     os.system(cmd)
     print('配置文件生成成功')
 

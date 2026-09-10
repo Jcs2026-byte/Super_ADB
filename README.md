@@ -4,7 +4,7 @@
 
 ![Super_ADB](Super_ADB_Win/资源/主界面.png)
 ![Super_ADB](Super_ADB_Win/资源/界面折叠.png)
-**最新版本：`v2026.09.10.01`**（GitHub / Gitee 均已同步）
+**最新版本：`v2026.09.10`**（GitHub / Gitee 均已同步）
 
 ## ✨ 功能特性
 

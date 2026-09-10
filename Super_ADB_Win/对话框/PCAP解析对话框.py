@@ -16,6 +16,7 @@ PCAP 解析器对话框
   - 多协议识别：HTTP / HTTPS / DNS / TCP
 """
 
+import os
 import warnings
 warnings.filterwarnings('ignore', category=DeprecationWarning, message='.*FFDH.*')
 

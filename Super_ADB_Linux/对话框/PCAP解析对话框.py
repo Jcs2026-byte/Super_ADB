@@ -19,7 +19,6 @@ PCAP 解析器对话框
 import warnings
 warnings.filterwarnings('ignore', category=DeprecationWarning, message='.*FFDH.*')
 
-import os
 import json
 import csv
 import time
@@ -27,7 +26,7 @@ import threading
 from collections import defaultdict
 from datetime import datetime
 
-from PySide6.QtCore import Qt, Signal, QTimer, QPoint
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import (
     QIcon, QColor, QFont, QAction, QPainter, QPen, QBrush,
     QPixmap, QKeySequence, QCursor,
@@ -37,12 +36,10 @@ from PySide6.QtWidgets import (
     QLineEdit, QComboBox, QPushButton, QTableWidget, QTableWidgetItem,
     QTabWidget, QTextEdit, QTreeWidget, QTreeWidgetItem,
     QHeaderView, QFileDialog, QMessageBox, QAbstractItemView,
-    QMenu, QPlainTextEdit, QProgressBar, QSizePolicy, QApplication,
-    QToolTip,
-)
+    QMenu, QPlainTextEdit, QProgressBar, QSizePolicy, )
 
 from 项目UI.界面样式 import (
-    get_stylesheet, get_current_theme_id,
+    get_current_theme_id,
     THEMES, DEFAULT_THEME, _parse_rgb, FONT_FAMILY,
 )
 from 项目UI.弹窗样式 import add_green_glow
@@ -53,8 +50,7 @@ from 项目UI import png_rc  # noqa: F401
 
 # ──────────────────────── 引入 PCAP 解析工具 ────────────────────────
 
-from 工具.PCAP解析器 import (
-    网络流 as _HttpFlow,
+from 工具.便捷工具.PCAP解析器 import (
     解析PCAP as _parse_pcap_http,
     格式化Body as _format_body,
     _智能解码,
@@ -2477,7 +2473,7 @@ class Pcap解析对话框(QWidget):
     def _check_dependencies(self):
         """检查轻量PCAP解析模块是否可用。"""
         try:
-            from 工具.轻量PCAP解析 import PcapReader
+            from 工具.便捷工具.轻量PCAP解析 import PcapReader
             return True
         except ImportError:
             QMessageBox.critical(

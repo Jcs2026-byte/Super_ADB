@@ -26,7 +26,7 @@ class 弹窗打开Mixin:
             self._dpm_window.raise_()
             self._dpm_window.activateWindow()
             return
-        from 监控.设备性能监控 import 设备性能监控
+        from 工具.android调试工具.设备性能监控 import 设备性能监控
         self._dpm_window = 设备性能监控(serial)
         self._dpm_window.show()
 
@@ -65,7 +65,7 @@ class 弹窗打开Mixin:
             self._app_monitor_window.raise_()
             self._app_monitor_window.activateWindow()
             return
-        from 监控.应用性能监控 import 应用性能监控
+        from 工具.android调试工具.应用性能监控 import 应用性能监控
         self._app_monitor_window = 应用性能监控(serial, pkg)
         self._app_monitor_window.show()
 
@@ -237,6 +237,16 @@ class 弹窗打开Mixin:
         from 对话框.时间戳对话框 import 时间戳对话框
         self._timestamp_dialog = 时间戳对话框()
         self._timestamp_dialog.show()
+
+    def 打开URL编解码(self):
+        """打开URL编解码弹窗（复用窗口，重复点击 raise）。"""
+        if self._url_codec_dialog is not None and self._url_codec_dialog.isVisible():
+            self._url_codec_dialog.raise_()
+            self._url_codec_dialog.activateWindow()
+            return
+        from 对话框.URL编解码对话框 import CUrlCodecDialog
+        self._url_codec_dialog = CUrlCodecDialog()
+        self._url_codec_dialog.show()
 
     def 打开无线调试(self):
         """打开统一无线调试面板（局域网扫描 + WiFi 配对码连接，复用窗口，重复点击 raise）。"""

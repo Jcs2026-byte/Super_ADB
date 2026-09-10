@@ -22,15 +22,13 @@ from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QIcon, QColor
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
-    QLineEdit, QComboBox, QPushButton, QSizePolicy, QApplication,
-    QCheckBox,
-)
+    QLineEdit, QComboBox, QPushButton, QSizePolicy, )
 
-from 工具.ADB工具 import AdbHelper, AdbFileManager, CREATE_NO_WINDOW
-from 工具.自研adb.adb协议 import CMD_OKAY, CMD_WRTE, CMD_CLSE, AdbMessage
-from 工具.自研adb.adb协议 import 借用连接 as _adb_borrow, 剥离连接 as _adb_detach
+from 工具.android调试工具.ADB工具 import AdbHelper, AdbFileManager, CREATE_NO_WINDOW
+from 工具.android调试工具.自研adb.adb协议 import CMD_OKAY, CMD_WRTE, CMD_CLSE, AdbMessage
+from 工具.android调试工具.自研adb.adb协议 import 借用连接 as _adb_borrow, 剥离连接 as _adb_detach
 from 项目UI.界面样式 import (
-    STYLE_SHEET, FONT_FAMILY, get_stylesheet, get_current_theme_id,
+    FONT_FAMILY, get_current_theme_id,
     THEMES, DEFAULT_THEME, _parse_rgb,
 )
 from 项目UI.弹窗样式 import add_green_glow
@@ -962,7 +960,7 @@ class Tcpdump对话框(QWidget):
     def _count_local_packets(self):
         """用轻量解析器统计本地 pcap 文件中的包数，作为交叉校验。"""
         try:
-            from 工具.轻量PCAP解析 import PcapReader
+            from 工具.便捷工具.轻量PCAP解析 import PcapReader
             count = 0
             for _ in PcapReader(self._path):
                 count += 1
@@ -1866,7 +1864,7 @@ class Tcpdump对话框(QWidget):
             
             # 使用轻量PCAP解析器验证
             try:
-                from 工具.轻量PCAP解析 import PcapReader
+                from 工具.便捷工具.轻量PCAP解析 import PcapReader
                 reader = PcapReader(path)
                 count = 0
                 has_error = False

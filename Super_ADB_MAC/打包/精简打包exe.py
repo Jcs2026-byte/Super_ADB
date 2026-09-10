@@ -95,7 +95,7 @@ def install(main):
         'segno', 'segno.helpers',
         'zeroconf', 'ifaddr',
         'pyzbar',   # 二维码扫码解码（替代原 OpenCV，省 ~140MB）
-        '工具.收藏下拉框',  # .ui 自定义控件，显式导入确保打包
+        '工具.android调试工具.收藏下拉框',  # .ui 自定义控件，显式导入确保打包
         'png_rc', '项目UI.png_rc',  # .ui 资源文件，显式导入确保打包
         # ★ 自研ADB新增依赖
         'cryptography', 'cryptography.hazmat', 'cryptography.hazmat.primitives',
@@ -104,10 +104,10 @@ def install(main):
         'cryptography.hazmat.primitives.serialization',
         'cryptography.hazmat.primitives.hashes',
         'cryptography.hazmat.backends',
-        '工具.自研adb.mdns发现',  # 无线调试 mDNS 发现助手（_adb-tls-connect 真实调试端口）
+        '工具.android调试工具.自研adb.mdns发现',  # 无线调试 mDNS 发现助手（_adb-tls-connect 真实调试端口）
         'usb', 'usb.core', 'usb.util', 'usb.backend.libusb1',
     ]
-    # ★ PCAP 解析已弃用 scapy，改用纯 Python 的 工具.轻量PCAP解析（零依赖，
+    # ★ PCAP 解析已弃用 scapy，改用纯 Python 的 工具.便捷工具.轻量PCAP解析（零依赖，
     #   会被 PyInstaller 通过 path_args 自动发现，无需显式声明）。
     #   brotli 是可选依赖（用于解压 HTTP Content-Encoding: br 的响应体），
     #   源码用 try/except 包裹，PyInstaller 静态分析容易漏掉；仅当本机已安装

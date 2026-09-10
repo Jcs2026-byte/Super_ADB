@@ -20,7 +20,7 @@ CREATE_NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
 # 延迟导入 ADB 协议客户端（避免循环导入）
 def _获取协议客户端类():
-    from 工具.ADB协议客户端 import Adb协议客户端
+    from 工具.android调试工具.ADB协议客户端 import Adb协议客户端
     return Adb协议客户端
 
 
@@ -556,7 +556,7 @@ class AdbHelper:
                 host = parts[0]
                 port = int(parts[1]) if len(parts) > 1 else 5555
                 try:
-                    from 工具.自研adb import 自研adb客户端
+                    from 工具.android调试工具.自研adb import 自研adb客户端
                     print(f'[自研adb] 尝试连接 {host}:{port}...')
                     client = 自研adb客户端(host, port)
                     client.log_callback = self.log_callback
@@ -581,7 +581,7 @@ class AdbHelper:
             else:
                 # 不含冒号 → 尝试 USB 设备连接
                 try:
-                    from 工具.自研adb.usb连接 import UsbAdbConnection, 枚举adb设备
+                    from 工具.android调试工具.自研adb.usb连接 import UsbAdbConnection, 枚举adb设备
                     # 先枚举确认设备存在
                     usb_devs = 枚举adb设备()
                     target = None
@@ -619,31 +619,14 @@ class AdbHelper:
             return serial.split(':')[0]
         return None
 
-    def _是配对命令(self, cmd_list):
-        """判断命令是否为 `adb pair`（无线调试配对）。
-
-        该命令在自研 ADB 模式下被特意放行——配对是唯一必须借助官方 adb 的 BoringSSL
-        完成的操作。其余官方 adb 调用在自研模式下仍被禁止。
-        """
-        try:
-            if not cmd_list or len(cmd_list) < 2:
-                return False
-            return cmd_list[1:2] == ['pair']
-        except Exception:
-            return False
-
     def _run(self, cmd_list, timeout=30, shell=False):
         """执行 adb 命令，返回 CompletedProcess；出错时抛出 AdbError。
 
         采用整条命令字符串 + shell=True 方式执行（与 migu 项目一致），
         保证 shell 命令中的管道、重定向等能被正确解析。
         """
-        # 自研 ADB 模式下默认禁止任何 subprocess 调用，从根源防止启动官方 adb server。
-        # 例外：无线调试配对 `adb pair` 必须走官方 adb——它依赖 adb 自带的 BoringSSL/OpenSSL
-        # 完成 SPAKE2 + TLS 密钥材料导出。当前 Python 3.13（静态链接 OpenSSL 3.5）构建的 ssl
-        # 模块不暴露 export_keying_material，也无法从 _ssl._SSLSocket 取到 SSL* 指针，进程内
-        # 纯 Python 配对不可行，只能回退官方 adb pair。
-        if self._用自研adb and not self._是配对命令(cmd_list):
+        # 自研 ADB 模式下禁止任何 subprocess 调用，从根源防止启动官方 adb server
+        if self._用自研adb:
             raise AdbError(f'自研adb模式禁止调用官方adb: {" ".join(str(c) for c in cmd_list)}')
         cmd_str = self._cmd_str(cmd_list)
         if self.log_callback:
@@ -688,13 +671,13 @@ class AdbHelper:
         # 自研 ADB 模式：USB 枚举 + 局域网扫描 + 已连接缓存
         if self._用自研adb:
             try:
-                from 工具.自研adb import 自研adb客户端, 获取已连接设备
+                from 工具.android调试工具.自研adb import 自研adb客户端, 获取已连接设备
                 devices = []
                 seen = set()
                 # 0) USB 设备枚举（pyusb 不可用时静默跳过）
                 try:
-                    from 工具.自研adb.usb连接 import 枚举adb设备 as _枚举usb
-                    from 工具.自研adb.usb传输层 import _native_win as _nw, _pyusb as _pu, _native_error as _ne, _pyusb_error as _pe
+                    from 工具.android调试工具.自研adb.usb连接 import 枚举adb设备 as _枚举usb
+                    from 工具.android调试工具.自研adb import _native_win as _nw, _pyusb as _pu, _native_error as _ne, _pyusb_error as _pe
                     if self.log_callback:
                         try:
                             self.log_callback(f'[自研adb] USB枚举诊断: native={_nw is not None}(err={_ne}), pyusb={_pu}(err={_pe})')
@@ -705,7 +688,7 @@ class AdbHelper:
                         try:
                             self.log_callback(f'[自研adb] USB枚举完成: 找到 {len(usb_devs)} 个设备')
                             # 输出 pyusb 详细诊断
-                            from 工具.自研adb.usb传输层 import _枚举诊断
+                            from 工具.android调试工具.自研adb import _枚举诊断
                             for _diag in _枚举诊断:
                                 self.log_callback(f'[自研adb][USB诊断] {_diag}')
                         except Exception:
@@ -849,7 +832,7 @@ class AdbHelper:
             _err = ''
             try:
                 import time as _t
-                from 工具.自研adb.自研adb客户端 import 自研adb客户端 as _cli
+                from 工具.android调试工具.自研adb.自研adb客户端 import 自研adb客户端 as _cli
                 _host, _, _port = ip.rpartition(':')
                 _key = (_host, int(_port))
                 with _cli._负缓存锁:
@@ -935,127 +918,33 @@ class AdbHelper:
 
         target 形如 ip:port（手机「无线调试」配对弹窗里的地址）。
         成功判定同时兼容中英文回显（successfully paired / 配对成功）。
-
-        实现策略（自研 ADB 模式）：
-          - 默认先尝试纯 Python 自研配对客户端（SPAKE2 + AES-128-GCM）。
-          - 若当前 Python 构建无法在进程内导出 TLS 密钥材料（export_keying_material
-            实测不可用，典型如静态链接 OpenSSL 3.5 的 macOS 打包版），或自研配对失败，
-            **不自动切换**到官方 adb pair，而是提示用户在设置中手动切换到「官方ADB」
-            模式后重试——避免一次注定失败的 TLS 连接占用手机单次配对会话、手机一直转圈。
         """
+        # 自研 ADB 模式：使用纯 Python 实现的配对客户端（SPAKE2 + AES-128-GCM）
         if self._用自研adb:
             if ':' not in target:
-                return False, "pair 目标需包含端口（格式 ip:port）"
+                raise AdbError("pair 目标需包含端口（格式 ip:port）")
             host, _, port_str = target.rpartition(':')
             try:
                 port = int(port_str)
             except ValueError:
-                return False, f'无效的端口: {port_str}'
+                raise AdbError(f'无效的端口: {port_str}')
             try:
-                from 工具.自研adb.配对客户端 import 配对设备 as _py_pair, 进程内配对是否可用
-                # 进程内配对需要 TLS 密钥材料导出（export_keying_material）。当前 macOS
-                # 打包的 CPython 3.13（静态链接 OpenSSL 3.5）无法在进程内导出（实测验证），
-                # 纯 Python 握手注定失败；若仍发起一次注定失败的 TLS 连接，会占用手机扫码
-                # 配对会话（单次连接）、手机一直转圈。因此不自动切换，提示用户手动切到官方。
-                if not 进程内配对是否可用():
-                    if self.log_callback:
-                        self.log_callback(
-                            '[配对] 当前 Python 无法在进程内导出 TLS 密钥材料'
-                            '（export_keying_material 实测不可用），自研配对无法完成，'
-                            '请手动切换到官方ADB模式')
-                    return False, ('当前「自研ADB」模式无法完成无线配对：本机 Python 不支持'
-                                   '导出 TLS 密钥材料（export_keying_material 实测不可用）。'
-                                   '请在设置中手动切换到「官方ADB」模式后重试。')
+                from 工具.android调试工具.自研adb.配对客户端 import 配对设备
                 def _pair_log(msg):
                     if self.log_callback:
                         try:
                             self.log_callback(msg)
                         except Exception:
                             pass
-                ok, msg = _py_pair(host, port, code, timeout=timeout,
-                                  log_callback=_pair_log)
-                if ok:
-                    return ok, msg
-                if self.log_callback:
-                    self.log_callback(f'[配对] 自研配对失败（{msg}），未自动切换，请手动切到官方ADB模式重试')
-                return False, (f'自研配对失败（{msg}）。'
-                               '请在设置中手动切换到「官方ADB」模式后重试。')
+                ok, msg = 配对设备(host, port, code, timeout=timeout,
+                                      log_callback=_pair_log)
+                return ok, msg
             except ImportError as e:
                 return False, f'自研配对模块加载失败: {e}'
             except Exception as e:
                 return False, f'自研配对失败: {e}'
-        # 官方 adb pair：仅在用户在设置中选择了「官方ADB」模式时执行
-        return self._adb_pair(target, code, timeout)
-
-    def _确保adb可执行(self):
-        """确保 adb 二进制有可执行权限（随包 adb 在某些打包/下载后无 +x）。"""
-        import stat as _stat
-        p = self.adb_path
-        if not p or p == 'adb':
-            return
-        if os.path.isfile(p):
-            try:
-                st = os.stat(p)
-                if not (st.st_mode & 0o111):
-                    os.chmod(p, st.st_mode | 0o755)
-            except Exception:
-                pass
-
-    def _释放adb端口(self):
-        """配对前确保 5037 空闲：残留/假死的 adb server 会占住端口，导致 `adb pair`
-        起不来 daemon（报错 'could not install *smartsocket* listener: Address
-        already in use'），配对永远完不成、手机一直转圈。
-
-        步骤：先 `adb kill-server`（对健康的 server 有效）；若端口仍被占用，则按平台
-        强制杀掉占用 5037 的进程（lsof 精确定位 / Windows netstat / pkill 兜底）。
-        """
-        import platform as _plat
-        # 1) 优雅关闭（对仍在正常响应的 server 有效）
-        try:
-            subprocess.run([self.adb_path, 'kill-server'],
-                           capture_output=True, timeout=5,
-                           creationflags=CREATE_NO_WINDOW)
-        except Exception:
-            pass
-        # 2) 仍占用则强制杀
-        sys_name = _plat.system().lower()
-        try:
-            if sys_name == 'windows':
-                out = subprocess.run(['netstat', '-ano'],
-                                     capture_output=True, text=True, timeout=5)
-                for line in (out.stdout or '').splitlines():
-                    if ':5037' in line and 'LISTENING' in line:
-                        pid = line.split()[-1]
-                        try:
-                            subprocess.run(['taskkill', '/F', '/PID', pid],
-                                           capture_output=True, timeout=5)
-                        except Exception:
-                            pass
-            else:
-                if shutil.which('lsof'):
-                    r = subprocess.run(['lsof', '-tiTCP:5037', '-sTCP:LISTEN'],
-                                       capture_output=True, text=True, timeout=5)
-                    for pid in [p for p in (r.stdout or '').split() if p.isdigit()]:
-                        try:
-                            subprocess.run(['kill', '-9', pid], timeout=5)
-                        except Exception:
-                            pass
-                else:
-                    # lsof 不可用时的兜底：只杀 adb 守护进程（匹配 platform-tools/adb）
-                    subprocess.run(['pkill', '-f', 'platform-tools/adb'],
-                                   capture_output=True, timeout=5)
-        except Exception:
-            pass
-        # 给内核回收端口留一点时间
-        time.sleep(0.5)
-
-    def _adb_pair(self, target, code, timeout=20):
-        """通过官方 adb 执行 `adb pair <target> <code>`。"""
-        self._确保adb可执行()
-        # 先释放可能被残留 adb server 占住的 5037，否则 adb pair 起不来 daemon
-        self._释放adb端口()
         if ':' not in target:
-            return False, "pair 目标需包含端口（格式 ip:port）"
+            raise AdbError("pair 目标需包含端口（格式 ip:port）")
         r = self._run([self.adb_path, 'pair', target, code], timeout=timeout)
         out = (r.stdout or '').strip()
         err = (r.stderr or '').strip()
@@ -2025,7 +1914,7 @@ echo "___END___"'''
         # 位于 _internal/ 顶层（base 即项目根），故 base 与其上一级都探测
         base = os.path.dirname(os.path.abspath(__file__))
         parent = os.path.dirname(base)
-        prefix_map = {'darwin': 'scrcpy-mac-', 'linux': 'scrcpy-linux-', 'win32': 'scrcpy-win64-'}
+        prefix_map = {'darwin': 'scrcpy-macos-', 'linux': 'scrcpy-linux-', 'win32': 'scrcpy-win64-'}
         prefix = prefix_map.get(sys.platform, 'scrcpy-win64-')
         candidates = []
         for root in (base, parent, os.getcwd()):
@@ -2050,7 +1939,8 @@ echo "___END___"'''
             return None
 
         def _ver_key(path):
-            ver_str = os.path.basename(path)[len(prefix):]
+            m = re.search(r'v(\d+(?:\.\d+)*)', os.path.basename(path))
+            ver_str = m.group(1) if m else os.path.basename(path)[len(prefix):]
             return [int(t) if t.isdigit() else 0 for t in re.split(r'[.\-]', ver_str)]
 
         candidates.sort(key=_ver_key, reverse=True)
@@ -2095,7 +1985,7 @@ echo "___END___"'''
             if not found:
                 # 动态生成当前平台的目录名和 scrcpy 包前缀
                 _plat_dir = {'darwin': 'Super_ADB_MAC', 'linux': 'Super_ADB_Linux', 'win32': 'Super_ADB_Win'}.get(sys.platform, 'Super_ADB_Win')
-                _scrcpy_prefix = {'darwin': 'scrcpy-mac-', 'linux': 'scrcpy-linux-', 'win32': 'scrcpy-win64-'}.get(sys.platform, 'scrcpy-win64-')
+                _scrcpy_prefix = {'darwin': 'scrcpy-macos-', 'linux': 'scrcpy-linux-', 'win32': 'scrcpy-win64-'}.get(sys.platform, 'scrcpy-win64-')
                 raise FileNotFoundError(
                     '未找到 scrcpy 可执行文件。\n'
                     f'请下载对应平台 release 包并放到 {_plat_dir}/外部扩展/scrcpy/{_scrcpy_prefix}vX.Y/ 下。'
@@ -2474,7 +2364,7 @@ echo "___END___"'''
                     last_err = out2 or last_err
                 except Exception as e2:
                     last_err = f'官方 adb 兜底失败: {e2}'
-                # 走到这里说明所有候选路径都失败
+                # 走到这里说明所有方式都失败
                 if progress_cb:
                     progress_cb(0, '安装失败')
                 diag = self._安装失败诊断(last_err or '', used_remote, client)

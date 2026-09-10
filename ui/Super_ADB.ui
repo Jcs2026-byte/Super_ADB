@@ -767,60 +767,17 @@
                    <x>0</x>
                    <y>0</y>
                    <width>691</width>
-                   <height>593</height>
+                   <height>169</height>
                   </rect>
                  </property>
-                 <layout class="QGridLayout" name="gridLayout_tools">
-                  <property name="spacing">
-                   <number>6</number>
-                  </property>
-                  <item row="0" column="1">
-                   <widget class="QPushButton" name="jsonToolBtn">
-                    <property name="toolTip">
-                     <string>JSON 格式化/压缩 + 差异对比</string>
-                    </property>
-                    <property name="text">
-                     <string>JSON工具</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="1" column="1">
-                   <widget class="QPushButton" name="timestampBtn">
-                    <property name="toolTip">
-                     <string>Unix 时间戳 ↔ 北京时间 互转</string>
-                    </property>
-                    <property name="text">
-                     <string>时间戳</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="0" column="3">
+                 <layout class="QGridLayout" name="gridLayout_4">
+                  <item row="0" column="2">
                    <widget class="QPushButton" name="pcapParserBtn">
                     <property name="toolTip">
                      <string>PCAP 抓包文件解析，类 Charles 展示 HTTP/HTTPS/DNS 请求</string>
                     </property>
                     <property name="text">
                      <string>PCAP解析</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="1" column="0">
-                   <widget class="QPushButton" name="md5Btn">
-                    <property name="toolTip">
-                     <string>文件 MD5 / SHA1 / SHA256 校验（拖入文件即可）</string>
-                    </property>
-                    <property name="text">
-                     <string>哈希校验</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="1" column="3">
-                   <widget class="QPushButton" name="ipScanBtn">
-                    <property name="toolTip">
-                     <string>扫描当前局域网内所有在线 IP 设备</string>
-                    </property>
-                    <property name="text">
-                     <string>IP扫描</string>
                     </property>
                    </widget>
                   </item>
@@ -831,6 +788,130 @@
                     </property>
                     <property name="text">
                      <string>WiFi</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="0" column="1">
+                   <widget class="QPushButton" name="ipScanBtn">
+                    <property name="toolTip">
+                     <string>扫描当前局域网内所有在线 IP 设备</string>
+                    </property>
+                    <property name="text">
+                     <string>IP扫描</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QGroupBox" name="toolsGroup_2">
+             <property name="title">
+              <string>校验工具</string>
+             </property>
+             <layout class="QGridLayout" name="gridLayout_5">
+              <item row="0" column="0">
+               <widget class="QScrollArea" name="toolsScrollArea_2">
+                <property name="frameShape">
+                 <enum>QFrame::Shape::NoFrame</enum>
+                </property>
+                <property name="verticalScrollBarPolicy">
+                 <enum>Qt::ScrollBarPolicy::ScrollBarAsNeeded</enum>
+                </property>
+                <property name="horizontalScrollBarPolicy">
+                 <enum>Qt::ScrollBarPolicy::ScrollBarAsNeeded</enum>
+                </property>
+                <property name="widgetResizable">
+                 <bool>true</bool>
+                </property>
+                <widget class="QWidget" name="toolsScrollContent_2">
+                 <property name="geometry">
+                  <rect>
+                   <x>0</x>
+                   <y>0</y>
+                   <width>691</width>
+                   <height>169</height>
+                  </rect>
+                 </property>
+                 <layout class="QGridLayout" name="gridLayout_6">
+                  <item row="0" column="1">
+                   <widget class="QPushButton" name="jsonToolBtn">
+                    <property name="toolTip">
+                     <string>JSON 格式化/压缩 + 差异对比</string>
+                    </property>
+                    <property name="text">
+                     <string>JSON工具</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="0" column="0">
+                   <widget class="QPushButton" name="md5Btn">
+                    <property name="toolTip">
+                     <string>文件 MD5 / SHA1 / SHA256 校验（拖入文件即可）</string>
+                    </property>
+                    <property name="text">
+                     <string>哈希校验</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QGroupBox" name="toolsGroup_3">
+             <property name="title">
+              <string>编码工具</string>
+             </property>
+             <layout class="QGridLayout" name="gridLayout_7">
+              <item row="0" column="0">
+               <widget class="QScrollArea" name="toolsScrollArea_3">
+                <property name="frameShape">
+                 <enum>QFrame::Shape::NoFrame</enum>
+                </property>
+                <property name="verticalScrollBarPolicy">
+                 <enum>Qt::ScrollBarPolicy::ScrollBarAsNeeded</enum>
+                </property>
+                <property name="horizontalScrollBarPolicy">
+                 <enum>Qt::ScrollBarPolicy::ScrollBarAsNeeded</enum>
+                </property>
+                <property name="widgetResizable">
+                 <bool>true</bool>
+                </property>
+                <widget class="QWidget" name="toolsScrollContent_3">
+                 <property name="geometry">
+                  <rect>
+                   <x>0</x>
+                   <y>0</y>
+                   <width>691</width>
+                   <height>169</height>
+                  </rect>
+                 </property>
+                 <layout class="QGridLayout" name="gridLayout_8">
+                  <item row="0" column="0">
+                   <widget class="QPushButton" name="timestampBtn">
+                    <property name="toolTip">
+                     <string>Unix 时间戳 ↔ 北京时间 互转</string>
+                    </property>
+                    <property name="text">
+                     <string>时间戳</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="0" column="1">
+                   <widget class="QPushButton" name="urlCodecBtn">
+                    <property name="toolTip">
+                     <string>URL 百分号编码 / 解码（UTF-8）</string>
+                    </property>
+                    <property name="text">
+                     <string>URL编解码</string>
                     </property>
                    </widget>
                   </item>

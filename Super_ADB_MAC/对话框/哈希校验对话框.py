@@ -20,7 +20,7 @@
 import csv
 import glob
 import hashlib
-from 工具.JSON读写 import save_json
+from 工具.便捷工具.JSON读写 import save_json
 import os
 import sys
 import time
@@ -29,7 +29,7 @@ import zlib
 if sys.platform == 'win32':
     import winreg  # 注册表「计算哈希」右键菜单，仅 Windows 支持
 
-from PySide6.QtCore import Qt, QThread, Signal, QSemaphore, QSettings, QTimer
+from PySide6.QtCore import Qt, QThread, Signal, QSemaphore, QSettings
 from PySide6.QtGui import QColor, QFont, QFontMetrics
 from PySide6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QLabel, QPushButton,

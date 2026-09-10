@@ -14,7 +14,7 @@ PyInstaller 运行时钩子（runtime hook）：冻结环境下把源码里对�
     import ADB工具                # -> 工具/ADB工具.py
     from 收藏下拉框 import FavComboBox   # -> 工具/收藏下拉框.py
 
-但 PyInstaller 把纯 Python 模块编进 PYZ 归档（包名 项目UI.png_rc / 工具.ADB工具…），
+但 PyInstaller 把纯 Python 模块编进 PYZ 归档（包名 项目UI.png_rc / 工具.android调试工具.ADB工具…），
 冻结后 <root>/工具、<root>/项目UI 并不是磁盘上的真实目录，sys.path 注入失效，
 裸导入便报 ModuleNotFoundError（首杀是 项目UI/Super_ADB.py 的 import png_rc）。
 
@@ -30,8 +30,8 @@ if getattr(sys, 'frozen', False):
     # 裸名 -> 实际被 PyInstaller 收集的包限定模块
     _ALIASES = {
         'png_rc': '项目UI.png_rc',
-        '收藏下拉框': '工具.收藏下拉框',
-        'ADB工具': '工具.ADB工具',
+        '收藏下拉框': '工具.android调试工具.收藏下拉框',
+        'ADB工具': '工具.android调试工具.ADB工具',
         'JSON工具对话框': '对话框.JSON工具对话框',
         '哈希校验对话框': '对话框.哈希校验对话框',
         '局域网扫描对话框': '对话框.局域网扫描对话框',

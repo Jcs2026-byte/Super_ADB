@@ -335,9 +335,9 @@ def build_module_dependency_mermaid(module_deps):
         '项目UI.对话框基类': '对话框基类',
         '项目UI.界面样式': '界面样式',
         '项目UI.弹窗样式': '弹窗样式',
-        '工具.ADB工具': 'ADB工具',
-        '工具.自研adb.adb协议': '自研ADB协议层',
-        '工具.自研adb.自研adb客户端': '自研ADB客户端',
+        '工具.android调试工具.ADB工具': 'ADB工具',
+        '工具.android调试工具.自研adb.adb协议': '自研ADB协议层',
+        '工具.android调试工具.自研adb.自研adb客户端': '自研ADB客户端',
     }
     lines = ['graph LR']
     # 定义节点

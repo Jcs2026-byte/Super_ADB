@@ -18,7 +18,6 @@ ADB 交互式终端弹窗
   - apply_theme() 支持运行时主题切换
 """
 
-import os
 import re
 from collections import deque
 
@@ -30,9 +29,9 @@ from PySide6.QtWidgets import (
 )
 
 from 项目UI import png_rc  # noqa: F401
-from 项目UI.界面样式 import FONT_FAMILY, get_stylesheet, get_current_theme_id, THEMES
+from 项目UI.界面样式 import get_stylesheet, get_current_theme_id, THEMES
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style, _create_popup_card
-from 工具.ADB工具 import 格式化设备标签
+from 工具.android调试工具.ADB工具 import 格式化设备标签
 
 # ANSI 转义序列过滤（字节级，在解码前过滤，避免 UTF-8 多字节字符干扰）
 _ANSI_BYTES_RE = re.compile(
@@ -195,7 +194,7 @@ class ADB终端对话框(QDialog):
                 border-radius: 4px;
                 padding: 6px 8px;
                 selection-background-color: #264f78;
-                font-family: ui-monospace, "Cascadia Code", Consolas, "Courier New", monospace;
+                font-family: "Consolas", "Courier New", "Microsoft YaHei Mono", "SimSun", monospace;
             }
             QScrollBar:vertical {
                 background: #1a1a1a;
@@ -272,7 +271,10 @@ class ADB终端对话框(QDialog):
             prev = self.device_combo.currentData()
             self.device_combo.blockSignals(True)
             self.device_combo.clear()
-            online = [d for d in devices if d.get('state') == 'device']
+            # 防御：上游偶发传入 bool/None 等非列表值
+            if not isinstance(devices, (list, tuple)):
+                devices = []
+            online = [d for d in devices if isinstance(d, dict) and d.get('state') == 'device']
             for d in online:
                 self.device_combo.addItem(格式化设备标签(d), d.get('serial'))
             if not online:
@@ -326,7 +328,7 @@ class ADB终端对话框(QDialog):
                 return
 
             self.status_label.setText('正在打开终端...')
-            from 工具.自研adb.自研adb客户端 import 交互式Shell
+            from 工具.android调试工具.自研adb.自研adb客户端 import 交互式Shell
             self._shell = 交互式Shell(
                 连接源,
                 on_output=lambda data: self._信号桥.输出.emit(data),

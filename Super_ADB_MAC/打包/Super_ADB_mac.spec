@@ -92,7 +92,7 @@ if os.path.isdir(_EXT_DIR):
 # brotli 仅本机已安装才追加（源码用 try/except 包裹，未安装时 PyInstaller 会因
 # 找不到模块而报错，故条件化）。
 _hiddenimports = [
-    'segno', 'segno.helpers', 'zeroconf', 'ifaddr', 'pyzbar', '工具.收藏下拉框',
+    'segno', 'segno.helpers', 'zeroconf', 'ifaddr', 'pyzbar', '工具.android调试工具.收藏下拉框',
     'png_rc', '项目UI.png_rc',
     # ★ 自研ADB新增依赖（与 Super_ADB_Win/打包/Super_ADB.spec 同步，缺一不可）：
     #   cryptography 缺失 → adb pair 配对客户端顶层 import 崩溃 → 手机扫码后一直转圈
@@ -102,10 +102,10 @@ _hiddenimports = [
     'cryptography.hazmat.primitives.asymmetric.padding',
     'cryptography.hazmat.primitives.serialization',
     'cryptography.hazmat.primitives.hashes', 'cryptography.hazmat.backends',
-    '工具.自研adb.mdns发现',   # 无线调试 mDNS 发现助手（_adb-tls-connect 真实调试端口）
+    '工具.android调试工具.自研adb.mdns发现',   # 无线调试 mDNS 发现助手（_adb-tls-connect 真实调试端口）
     'usb', 'usb.core', 'usb.util', 'usb.backend.libusb1',
               '工具.android调试工具.ADB工具', '工具.android调试工具.AXML解码器', '工具.便捷工具.JSON读写', '工具.便捷工具.PCAP解析器', '工具.android调试工具.图表JS',
-              '工具.便捷工具.轻量PCAP解析', '工具.自研adb.adb协议',
+              '工具.便捷工具.轻量PCAP解析', '工具.android调试工具.自研adb.adb协议',
               '对话框.WiFi配对对话框', '对话框.二维码连接页', '对话框.局域网扫描对话框',
               '对话框.设备信息对话框', '对话框.哈希校验对话框', '对话框.环境配置对话框',
               '对话框.JSON工具对话框', '对话框.scrcpy_设置对话框',

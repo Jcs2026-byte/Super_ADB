@@ -19,14 +19,13 @@ import os
 import sys
 
 from 项目UI import png_rc  # noqa: F401   # 注册 :/Super_ADB.png 与 :/qrcode.jpg 资源
-from PySide6.QtCore import Qt, QPoint, QRectF
+from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QFont, QPixmap, QPainter, QColor, QIcon, QPen, QBrush, QPainterPath
 from PySide6.QtWidgets import (QDialog, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
-                               QWidget, QGraphicsDropShadowEffect, QSizePolicy, QApplication)
+                               QWidget, QSizePolicy)
 
 from 项目UI.界面样式 import FONT_FAMILY, THEMES, DEFAULT_THEME, _parse_rgb
 from 项目UI.弹窗样式 import 无边框缩放Mixin
-from 工具.ADB工具 import 加载json配置
 
 VERSION = 'v2026.08.07'
 GITHUB_REPO_URL = 'https://github.com/Jcs2026-byte/Super_ADB.git'

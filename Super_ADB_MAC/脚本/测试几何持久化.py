@@ -18,7 +18,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 MAIN = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.abspath(MAIN))
 sys.path.insert(0, os.path.abspath(os.path.join(MAIN, "工具")))
-from android调试工具.ADB工具 import 加载json配置, 保存json配置  # noqa: E402
+from android调试工具.android调试工具.ADB工具 import 加载json配置, 保存json配置  # noqa: E402
 
 CONFIG_NAME = "geo_test_config.json"  # 独立临时配置，绝不污染真实 Super_ADB配置.json
 

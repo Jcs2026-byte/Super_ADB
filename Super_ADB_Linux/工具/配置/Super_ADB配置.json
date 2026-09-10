@@ -1,0 +1,15 @@
+{
+  "geometry": {
+    "b64": "AdnQywADAAAAAAFnAAAAQwAABJ4AAAOYAAABZwAAAEMAAASeAAADmAAAAAAAAAAABkAAAAFnAAAAQwAABJ4AAAOY"
+  },
+  "default_pages": [
+    0,
+    0
+  ],
+  "adb": {
+    "socket_direct": false,
+    "self_built": true,
+    "system_adb": false,
+    "auto_connect": true
+  }
+}

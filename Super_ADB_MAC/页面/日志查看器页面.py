@@ -59,13 +59,13 @@ from PySide6.QtGui import (QColor, QFont,
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QPushButton,
     QLabel, QLineEdit, QCheckBox, QListWidget, QListWidgetItem,
-    QAbstractSpinBox, QAbstractItemView,
-    QScrollBar, QHeaderView, QListView, QMenu, QFileDialog, QSizePolicy,
+    QAbstractItemView,
+    QMenu, QFileDialog, QSizePolicy,
     QApplication,
 )
 
-from 工具.ADB工具 import AdbHelper, 格式化设备标签, 加载json配置, 保存json配置
-from 工具.收藏下拉框 import 收藏下拉框
+from 工具.android调试工具.ADB工具 import AdbHelper, 格式化设备标签, 加载json配置, 保存json配置
+from 工具.android调试工具.收藏下拉框 import 收藏下拉框
 
 # 缓冲区上限
 BUFFER_MAX = 100_000

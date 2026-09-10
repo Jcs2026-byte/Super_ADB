@@ -20,7 +20,7 @@ CREATE_NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
 # 延迟导入 ADB 协议客户端（避免循环导入）
 def _获取协议客户端类():
-    from 工具.ADB协议客户端 import Adb协议客户端
+    from 工具.android调试工具.ADB协议客户端 import Adb协议客户端
     return Adb协议客户端
 
 
@@ -556,7 +556,7 @@ class AdbHelper:
                 host = parts[0]
                 port = int(parts[1]) if len(parts) > 1 else 5555
                 try:
-                    from 工具.自研adb import 自研adb客户端
+                    from 工具.android调试工具.自研adb import 自研adb客户端
                     print(f'[自研adb] 尝试连接 {host}:{port}...')
                     client = 自研adb客户端(host, port)
                     client.log_callback = self.log_callback
@@ -581,7 +581,7 @@ class AdbHelper:
             else:
                 # 不含冒号 → 尝试 USB 设备连接
                 try:
-                    from 工具.自研adb.usb连接 import UsbAdbConnection, 枚举adb设备
+                    from 工具.android调试工具.自研adb.usb连接 import UsbAdbConnection, 枚举adb设备
                     # 先枚举确认设备存在
                     usb_devs = 枚举adb设备()
                     target = None
@@ -671,13 +671,13 @@ class AdbHelper:
         # 自研 ADB 模式：USB 枚举 + 局域网扫描 + 已连接缓存
         if self._用自研adb:
             try:
-                from 工具.自研adb import 自研adb客户端, 获取已连接设备
+                from 工具.android调试工具.自研adb import 自研adb客户端, 获取已连接设备
                 devices = []
                 seen = set()
                 # 0) USB 设备枚举（pyusb 不可用时静默跳过）
                 try:
-                    from 工具.自研adb.usb连接 import 枚举adb设备 as _枚举usb
-                    from 工具.自研adb.usb传输层 import _native_win as _nw, _pyusb as _pu, _native_error as _ne, _pyusb_error as _pe
+                    from 工具.android调试工具.自研adb.usb连接 import 枚举adb设备 as _枚举usb
+                    from 工具.android调试工具.自研adb import _native_win as _nw, _pyusb as _pu, _native_error as _ne, _pyusb_error as _pe
                     if self.log_callback:
                         try:
                             self.log_callback(f'[自研adb] USB枚举诊断: native={_nw is not None}(err={_ne}), pyusb={_pu}(err={_pe})')
@@ -688,7 +688,7 @@ class AdbHelper:
                         try:
                             self.log_callback(f'[自研adb] USB枚举完成: 找到 {len(usb_devs)} 个设备')
                             # 输出 pyusb 详细诊断
-                            from 工具.自研adb.usb传输层 import _枚举诊断
+                            from 工具.android调试工具.自研adb import _枚举诊断
                             for _diag in _枚举诊断:
                                 self.log_callback(f'[自研adb][USB诊断] {_diag}')
                         except Exception:
@@ -832,7 +832,7 @@ class AdbHelper:
             _err = ''
             try:
                 import time as _t
-                from 工具.自研adb.自研adb客户端 import 自研adb客户端 as _cli
+                from 工具.android调试工具.自研adb.自研adb客户端 import 自研adb客户端 as _cli
                 _host, _, _port = ip.rpartition(':')
                 _key = (_host, int(_port))
                 with _cli._负缓存锁:
@@ -929,7 +929,7 @@ class AdbHelper:
             except ValueError:
                 raise AdbError(f'无效的端口: {port_str}')
             try:
-                from 工具.自研adb.配对客户端 import 配对设备
+                from 工具.android调试工具.自研adb.配对客户端 import 配对设备
                 def _pair_log(msg):
                     if self.log_callback:
                         try:
@@ -1914,7 +1914,7 @@ echo "___END___"'''
         # 位于 _internal/ 顶层（base 即项目根），故 base 与其上一级都探测
         base = os.path.dirname(os.path.abspath(__file__))
         parent = os.path.dirname(base)
-        prefix_map = {'darwin': 'scrcpy-mac-', 'linux': 'scrcpy-linux-', 'win32': 'scrcpy-win64-'}
+        prefix_map = {'darwin': 'scrcpy-macos-', 'linux': 'scrcpy-linux-', 'win32': 'scrcpy-win64-'}
         prefix = prefix_map.get(sys.platform, 'scrcpy-win64-')
         candidates = []
         for root in (base, parent, os.getcwd()):
@@ -1939,7 +1939,8 @@ echo "___END___"'''
             return None
 
         def _ver_key(path):
-            ver_str = os.path.basename(path)[len(prefix):]
+            m = re.search(r'v(\d+(?:\.\d+)*)', os.path.basename(path))
+            ver_str = m.group(1) if m else os.path.basename(path)[len(prefix):]
             return [int(t) if t.isdigit() else 0 for t in re.split(r'[.\-]', ver_str)]
 
         candidates.sort(key=_ver_key, reverse=True)
@@ -1984,7 +1985,7 @@ echo "___END___"'''
             if not found:
                 # 动态生成当前平台的目录名和 scrcpy 包前缀
                 _plat_dir = {'darwin': 'Super_ADB_MAC', 'linux': 'Super_ADB_Linux', 'win32': 'Super_ADB_Win'}.get(sys.platform, 'Super_ADB_Win')
-                _scrcpy_prefix = {'darwin': 'scrcpy-mac-', 'linux': 'scrcpy-linux-', 'win32': 'scrcpy-win64-'}.get(sys.platform, 'scrcpy-win64-')
+                _scrcpy_prefix = {'darwin': 'scrcpy-macos-', 'linux': 'scrcpy-linux-', 'win32': 'scrcpy-win64-'}.get(sys.platform, 'scrcpy-win64-')
                 raise FileNotFoundError(
                     '未找到 scrcpy 可执行文件。\n'
                     f'请下载对应平台 release 包并放到 {_plat_dir}/外部扩展/scrcpy/{_scrcpy_prefix}vX.Y/ 下。'
@@ -2363,7 +2364,7 @@ echo "___END___"'''
                     last_err = out2 or last_err
                 except Exception as e2:
                     last_err = f'官方 adb 兜底失败: {e2}'
-                # 走到这里说明所有候选路径都失败
+                # 走到这里说明所有方式都失败
                 if progress_cb:
                     progress_cb(0, '安装失败')
                 diag = self._安装失败诊断(last_err or '', used_remote, client)

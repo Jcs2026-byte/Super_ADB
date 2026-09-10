@@ -8,7 +8,7 @@ BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Super_ADB_
 sys.path.insert(0, os.path.abspath(BASE))
 sys.path.insert(0, os.path.abspath(os.path.join(BASE, "工具")))
 
-from android调试工具.ADB工具 import _config_path, 加载json配置, 保存json配置
+from android调试工具.android调试工具.ADB工具 import _config_path, 加载json配置, 保存json配置
 
 results = []
 

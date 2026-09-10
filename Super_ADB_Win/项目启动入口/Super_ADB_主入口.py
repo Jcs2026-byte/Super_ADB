@@ -413,6 +413,8 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self._json_tool_dialog = None
         self._md5_dialog = None
         self._timestamp_dialog = None
+        self._url_codec_dialog = None  # URL 编解码弹窗（复用同一窗口实例）
+        self._url_codec_dialog = None
         self._adb_终端_dialog = None  # 自研 ADB 模式交互式终端弹窗
         self._wireless_debug_dialog = None
         self._wifi_dialog = None
@@ -569,6 +571,8 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self.jsonToolBtn.clicked.connect(self.打开json工具)
         self.md5Btn.clicked.connect(self.打开md5校验)
         self.timestampBtn.clicked.connect(self.打开时间戳)
+        self.urlCodecBtn.clicked.connect(self.打开URL编解码)
+        self.urlCodecBtn.clicked.connect(self.打开URL编解码)
         self.btnWirelessDebug.clicked.connect(self.打开无线调试)
         self.wifiBtn.clicked.connect(self.打开wifi)
         self.pcapParserBtn.clicked.connect(self.打开pcap解析器)
@@ -1531,7 +1535,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             lines.append(f'进程 PID: {m.group(1)}')
 
         # 优先用 应用性能监控 里已兼容新旧 Android 的解析器
-        from 监控.应用性能监控 import _parse_meminfo
+        from 工具.android调试工具.应用性能监控 import _parse_meminfo
         parsed = _parse_meminfo(raw)
         if 'pss_mb' in parsed:
             lines.append(f'总 PSS: {cls._格式化千字节(str(int(parsed["pss_mb"] * 1024)))}')

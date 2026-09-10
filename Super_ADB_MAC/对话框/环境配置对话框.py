@@ -15,20 +15,19 @@ Super_ADB 环境配置弹窗
 """
 
 import os
-import sys
 import shutil
 import subprocess
 from PySide6.QtCore import Qt, QPoint, Signal
-from PySide6.QtGui import QFont, QColor, QIcon
+from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QWidget, QSizePolicy, QGraphicsDropShadowEffect, QFrame,
+    QWidget, QSizePolicy, QFrame,
     QPlainTextEdit, QCheckBox,
 )
 
 from 项目UI.界面样式 import FONT_FAMILY, THEMES, DEFAULT_THEME, _parse_rgb
 from 项目UI.弹窗样式 import add_green_glow
-from 工具.ADB工具 import 加载json配置, 保存json配置
+from 工具.android调试工具.ADB工具 import 加载json配置, 保存json配置
 
 # 配置文件名
 CONFIG_NAME = '配置/Super_ADB配置.json'
@@ -67,7 +66,7 @@ def detect_socket_adb():
     启动成功后继续检测；启动失败才返回 None。
     """
     try:
-        from 工具.ADB协议客户端 import Adb协议客户端, 检查server运行, 启动adb服务器
+        from 工具.android调试工具.ADB协议客户端 import Adb协议客户端, 检查server运行, 启动adb服务器
         if not 检查server运行():
             启动adb服务器()
             if not 检查server运行():
@@ -621,7 +620,7 @@ class 环境配置对话框(QDialog):
         """后台线程：探测当前 ADB 状态，返回结果 dict。"""
         if mode == 'system':
             # 系统环境变量 ADB 模式：强制使用 PATH 中的 adb（排除项目自带的）
-            from 工具.ADB工具 import 查找系统adb路径
+            from 工具.android调试工具.ADB工具 import 查找系统adb路径
             system_adb = 查找系统adb路径()
             if system_adb:
                 try:
@@ -684,7 +683,6 @@ class 环境配置对话框(QDialog):
         import subprocess
         import time
         import platform
-        from PySide6.QtCore import QTimer
 
         is_windows = platform.system().lower() == 'windows'
         # Windows 下隐藏 subprocess 弹出的 CMD 窗口（打包后尤其明显）
@@ -710,7 +708,7 @@ class 环境配置对话框(QDialog):
 
         # 2. 按模式决定是否启动 adb server
         if 模式 in ('system', 'socket'):
-            from 工具.ADB工具 import 查找系统adb路径, 查找内置adb路径
+            from 工具.android调试工具.ADB工具 import 查找系统adb路径, 查找内置adb路径
             adb_path = None
             if 模式 == 'system':
                 adb_path = 查找系统adb路径()

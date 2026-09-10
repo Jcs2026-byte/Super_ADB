@@ -9,7 +9,7 @@ Chart.js 本地化加载。
 import os
 import sys
 
-_CHART_JS_FILENAME = '../../../Super_ADB_Win/资源/chart.umd.min.js'
+_CHART_JS_FILENAME = '../../资源/chart.umd.min.js'
 
 
 def load_chart_js():

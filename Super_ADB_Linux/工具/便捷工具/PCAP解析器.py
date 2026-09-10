@@ -10,8 +10,8 @@ import json
 import time
 import gzip
 import zlib
-from typing import List, Dict, Optional, Callable, Tuple
-from 工具.轻量PCAP解析 import DNS, UDP, DNSQR
+from typing import List, Dict, Optional, Tuple
+from 工具.便捷工具.轻量PCAP解析 import DNS, UDP, DNSQR
 
 try:
     import brotli
@@ -149,7 +149,7 @@ def 解析PCAP(文件路径: str, 进度回调=None, 取消回调=None,
     except Exception as e:
         return [], 0, f'读取文件失败: {str(e)}'
     try:
-        from 工具.轻量PCAP解析 import (
+        from 工具.便捷工具.轻量PCAP解析 import (
             PcapReader, Packet,
             IP, IPv6, TCP, UDP, Raw, DNS, DNSQR, DNSRR,
         )

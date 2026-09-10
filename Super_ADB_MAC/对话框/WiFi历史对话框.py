@@ -7,8 +7,7 @@ WiFi 配对/连接历史记录
 """
 
 import csv
-from 工具.JSON读写 import save_json
-import os
+from 工具.便捷工具.JSON读写 import save_json
 import sys
 
 from PySide6.QtCore import Qt
@@ -19,8 +18,8 @@ from PySide6.QtWidgets import (
 )
 
 from 项目UI import png_rc  # noqa: F401
-from 项目UI.界面样式 import STYLE_SHEET, get_stylesheet, get_current_theme_id, THEMES
-from 工具.ADB工具 import 加载json配置, 保存json配置
+from 项目UI.界面样式 import get_stylesheet, get_current_theme_id, THEMES
+from 工具.android调试工具.ADB工具 import 加载json配置, 保存json配置
 
 _HISTORY_CFG = 'wifi_debug_history.json'
 

@@ -16,17 +16,16 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from PySide6.QtCore import Qt, QThread, Signal, QObject
-from PySide6.QtGui import QFont, QIcon, QStandardItemModel, QStandardItem
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QGroupBox, QTableWidget, QTableWidgetItem,
+    QPushButton, QGroupBox, QTableWidget, QTableWidgetItem,
     QProgressBar, QComboBox, QSpinBox, QHeaderView, QMessageBox,
     QAbstractItemView,
 )
 
 from 项目UI import png_rc  # noqa: F401
-from 项目UI.界面样式 import ACCENT, FONT_FAMILY, STYLE_SHEET, get_stylesheet, get_current_theme_id, THEMES
-from 项目UI.弹窗样式 import add_green_glow
+from 项目UI.界面样式 import get_stylesheet, get_current_theme_id, THEMES
 
 ADB_PORT = 5555
 DEFAULT_TIMEOUT = 0.8       # 每个IP的socket超时（秒），WiFi环境建议0.8-1.0
@@ -168,7 +167,7 @@ class _ConnectWorker(QObject):
             return
         target = f"{self._ip}:{self._port}"
         try:
-            from 工具.ADB工具 import AdbHelper
+            from 工具.android调试工具.ADB工具 import AdbHelper
             helper = AdbHelper()
 
             # 自研 ADB 模式：直接用自研客户端连接，不调用 adb.exe
@@ -204,7 +203,7 @@ class _ConnectWorker(QObject):
             creationflags = 0
             try:
                 # Windows: 避免弹黑框
-                from 工具.ADB工具 import CREATE_NO_WINDOW  # type: ignore
+                from 工具.android调试工具.ADB工具 import CREATE_NO_WINDOW  # type: ignore
                 creationflags = CREATE_NO_WINDOW
             except Exception:
                 pass
@@ -288,7 +287,7 @@ class _EnrichWorker(QObject):
             # (host, port, key_path, log_callback)，没有 timeout 参数 —— 旧写法
             # `自研adb客户端(self._ip, self._port, timeout=...)` 必然抛
             # AttributeError/TypeError 并被下面的 except 吞掉，型号永远取不到。
-            from 工具.自研adb import 自研adb客户端
+            from 工具.android调试工具.自研adb import 自研adb客户端
             _port = int(self._serial.rsplit(':', 1)[1]) if ':' in self._serial else ADB_PORT
             client = 自研adb客户端(self._ip, _port)
             if client.连接(timeout=self._timeout):

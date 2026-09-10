@@ -19,29 +19,26 @@ import os
 import sys
 
 from 项目UI import png_rc  # noqa: F401   # 注册 :/Super_ADB.png 与 :/qrcode.jpg 资源
-from PySide6.QtCore import Qt, QPoint, QRectF
+from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QFont, QPixmap, QPainter, QColor, QIcon, QPen, QBrush, QPainterPath
 from PySide6.QtWidgets import (QDialog, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
-                               QWidget, QGraphicsDropShadowEffect, QSizePolicy, QApplication)
+                               QWidget, QSizePolicy)
 
 from 项目UI.界面样式 import FONT_FAMILY, THEMES, DEFAULT_THEME, _parse_rgb
 from 项目UI.弹窗样式 import 无边框缩放Mixin
-from 工具.ADB工具 import 加载json配置
 
 VERSION = 'v2026.08.07'
 GITHUB_REPO_URL = 'https://github.com/Jcs2026-byte/Super_ADB.git'
 
 
 def _获取版本号():
-    """从打包信息.json 读取打包时间作为版本号，缺失时回退到硬编码 VERSION。
+    """从 exe 旁边的 打包信息.json 读取打包时间作为版本号，缺失时回退到硬编码 VERSION。
 
     跨平台路径：
       - Windows/Linux frozen: <exe_dir>/配置/打包信息.json
-      - macOS frozen:          <.app>/Contents/Resources/配置/打包信息.json
+      - macOS frozen:          <.app>/Contents/MacOS/配置/打包信息.json
       - 源码模式:               项目根/配置/打包信息.json
-    注意：macOS 的打包信息在 Contents/Resources/ 下（不能放 MacOS/，否则
-    codesign 会把非 Mach-O 的 json 当作未签名 code object 导致签名校验误报）。
-    不使用 加载json配置()，因为 macOS 上该函数指向 ~/Library/Application Support/，
+    注意：不使用 加载json配置()，因为 macOS 上该函数指向 ~/Library/Application Support/，
     而打包信息在 .app 包内。
     """
     import json as _json
@@ -49,9 +46,6 @@ def _获取版本号():
         if getattr(sys, 'frozen', False):
             # 打包模式：配置文件在可执行文件旁边
             _base = os.path.dirname(sys.executable)
-            if sys.platform == 'darwin':
-                # macOS：可执行在 Contents/MacOS，配置在 Contents/Resources
-                _base = os.path.join(_base, '..', 'Resources')
         else:
             # 源码模式：本文件位于 对话框/ 下，配置在项目根
             _base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -67,13 +61,11 @@ def _获取版本号():
 
 
 def _获取下载地址():
-    """从打包信息.json 读取新版下载地址，缺失时返回空字符串。"""
+    """从 exe 旁边的 打包信息.json 读取新版下载地址，缺失时返回空字符串。"""
     import json as _json
     try:
         if getattr(sys, 'frozen', False):
             _base = os.path.dirname(sys.executable)
-            if sys.platform == 'darwin':
-                _base = os.path.join(_base, '..', 'Resources')
         else:
             _base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         _info_path = os.path.join(_base, '配置', '打包信息.json')

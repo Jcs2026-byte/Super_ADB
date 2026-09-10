@@ -1684,7 +1684,7 @@ def 生成主界面截图(跳过=False):
 
     # ── 4. 性能监控窗口截图（独立窗口，含 CPU/内存/网络/电池图表） ──
     try:
-        from 监控.设备性能监控 import 设备性能监控
+        from 工具.android调试工具.设备性能监控 import 设备性能监控
         perf_win = 设备性能监控(serial='emulator-5554')
         # 停止定时器并标记关闭，避免后台线程持续采样
         try:

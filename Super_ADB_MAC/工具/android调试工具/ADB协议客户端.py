@@ -17,8 +17,7 @@ import socket
 import struct
 import subprocess
 import time
-import sys
-from typing import Optional, List, Tuple
+from typing import Optional, List
 
 CREATE_NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
@@ -71,7 +70,7 @@ def _查找adb路径() -> Optional[str]:
 
     # 回退：scrcpy 发行包自带的官方 adb（删除 外部扩展/adb 后，启动 server 仍可用）
     try:
-        from 工具.ADB工具 import Adb设备操作 as _Adb操作类
+        from 工具.android调试工具.ADB工具 import Adb设备操作 as _Adb操作类
         scrcpy_dirs = _Adb操作类.查找scrcpy目录()
         # 兼容两种返回形态：字符串（单个路径）/ 列表（多版本）
         if isinstance(scrcpy_dirs, str):

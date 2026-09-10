@@ -782,7 +782,7 @@ def load_saved_theme():
     供无父窗口的独立进程/弹窗（如右键菜单「计算哈希」）在启动时跟随主题。
     """
     try:
-        from android调试工具.ADB工具 import 加载json配置
+        from android调试工具.android调试工具.ADB工具 import 加载json配置
         tid = 加载json配置(THEME_CONFIG_FILE).get(THEME_CONFIG_KEY)
         if isinstance(tid, str) and tid in THEMES:
             return tid

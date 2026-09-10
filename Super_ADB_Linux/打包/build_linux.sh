@@ -165,7 +165,7 @@ check_module() {
 }
 
 MISSING_MODULES=()
-for mod in PySide6 PIL segno pyzbar zeroconf ifaddr; do
+for mod in PySide6 PIL segno pyzbar zeroconf ifaddr cryptography usb; do
     if ! check_module "$mod"; then
         MISSING_MODULES+=("$mod")
     fi
@@ -184,7 +184,7 @@ if [[ ${#MISSING_MODULES[@]} -gt 0 ]]; then
             $PYTHON -m pip install -r "$REQUIREMENTS_FILE"
         else
             log_warn "未找到 requirements_linux.txt，直接安装核心依赖"
-            $PYTHON -m pip install PySide6 Pillow segno pyzbar zeroconf ifaddr pyinstaller
+            $PYTHON -m pip install PySide6 Pillow segno pyzbar zeroconf ifaddr cryptography pyusb pyinstaller
         fi
         log_ok "依赖安装完成"
     else

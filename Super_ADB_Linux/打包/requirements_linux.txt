@@ -20,5 +20,9 @@ pyzbar>=0.1.9         # 二维码扫码解码（需系统 libzbar0）
 zeroconf>=0.151.3      # mDNS 服务发现
 ifaddr>=0.2.0         # 网络接口枚举
 
+# === 自研 ADB（无线配对 / USB 直连） ===
+cryptography>=42.0.0   # 无线配对 SPAKE2/TLS 链路（配对客户端顶层 import，缺失则扫码后一直转圈）
+pyusb>=1.2.1           # USB 直连（pyusb/libusb 后端，需系统安装 libusb-1.0）
+
 # === 打包工具（仅打包时需要）===
 pyinstaller==6.22.2

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QLabel, QHeaderView, QFileDialog, QInputDialog, QMessageBox, QMenu,
     QAbstractItemView, QLineEdit, QDialog, QPlainTextEdit, QProgressBar)
 
-from 工具.ADB工具 import (AdbFileManager, 格式化设备标签,
+from 工具.android调试工具.ADB工具 import (AdbFileManager, 格式化设备标签,
                        加载json配置, 保存json配置, AdbError)
 
 

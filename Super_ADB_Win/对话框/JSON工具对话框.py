@@ -38,7 +38,7 @@ from PySide6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat, QFont, QI
 from 项目UI.界面样式 import THEMES, get_stylesheet
 from 项目UI.对话框基类 import 对话框基类
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style, _create_popup_card
-from 工具.收藏下拉框 import 收藏委托, _收藏列表视图
+from 工具.android调试工具.收藏下拉框 import 收藏委托, _收藏列表视图
 
 # ─────────────────── JSON 语法高亮 ───────────────────
 KEY_COLOR = QColor(138, 180, 248)

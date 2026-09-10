@@ -38,7 +38,7 @@ def _save_cfg(d):
 
 
 # 让 Super_ADB_Win 模块读到我们自己的临时配置
-import android调试工具.ADB工具 as adb_utils
+import android调试工具.android调试工具.ADB工具 as adb_utils
 adb_utils.加载json配置.__defaults__ = None
 
 

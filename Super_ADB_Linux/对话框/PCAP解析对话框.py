@@ -26,7 +26,7 @@ import threading
 from collections import defaultdict
 from datetime import datetime
 
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QEvent
 from PySide6.QtGui import (
     QIcon, QColor, QFont, QAction, QPainter, QPen, QBrush,
     QPixmap, QKeySequence, QCursor,
@@ -772,6 +772,24 @@ class Pcap解析对话框(QWidget):
 
     # ── 拖拽支持 ──
 
+    def eventFilter(self, obj, event):
+        """拖拽覆盖层挡住窗口的拖放时，转发事件给窗口自身处理。"""
+        if obj is self._drag_overlay:
+            t = event.type()
+            if t == QEvent.DragEnter:
+                self.dragEnterEvent(event)
+                return event.isAccepted()
+            if t == QEvent.DragMove:
+                self.dragMoveEvent(event)
+                return event.isAccepted()
+            if t == QEvent.Drop:
+                self.dropEvent(event)
+                return event.isAccepted()
+            if t == QEvent.DragLeave:
+                self.dragLeaveEvent(event)
+                return True
+        return super().eventFilter(obj, event)
+
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             urls = event.mimeData().urls()
@@ -842,6 +860,11 @@ class Pcap解析对话框(QWidget):
             btn_wrap.addWidget(btn)
             btn_wrap.addStretch()
             lay.addLayout(btn_wrap)
+            # ★ 拖拽覆盖层铺满 card，Qt 拖放事件只发给鼠标下的最顶层控件且
+            #   不向父级冒泡；必须让覆盖层接受拖放，并转发给窗口处理，
+            #   否则拖文件进来会被覆盖层「吃掉」、完全没反应。
+            self._drag_overlay.setAcceptDrops(True)
+            self._drag_overlay.installEventFilter(self)
         self._drag_overlay.setGeometry(self.card.rect())
         self._drag_overlay.raise_()
         self._drag_overlay.show()

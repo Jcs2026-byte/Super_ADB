@@ -474,8 +474,33 @@ class Monkey压测窗口(QWidget):
 
         self.category_combo = QComboBox()
         self.category_combo.addItems(['LAUNCHER', 'MONKEY', 'LEANBACK_LAUNCHER'])
-        f1.addWidget(QLabel('类别:'), 1, 4)
+        # ★ 类别(-c)参数说明：monkey 只对声明了对应 Intent 类别的 Activity 发事件。
+        #   多选下拉框=单选，对应 monkey -c 参数；不指定则对包内全部 Activity 随机。
+        _cat_tips = {
+            'LAUNCHER': '桌面启动器有图标的 Activity（应用主入口）。\n'
+                        '常规 App 压测选它，monkey 只会点到用户能打开的界面（最常用）。',
+            'MONKEY': '专为 monkey 测试声明的类别。\n'
+                      '普通应用基本不会声明它，一般用不上。',
+            'LEANBACK_LAUNCHER': '电视/盒子（Android TV）主屏入口 Activity。\n'
+                                 '测盒子/TV 应用时选，手机/平板用不到。',
+        }
+        _cat_tip_text = (
+            'monkey 只对声明了对应 Intent 类别的 Activity 发随机事件。\n\n'
+            '· LAUNCHER —— 桌面有图标的 Activity（主入口），常规压测最常用\n'
+            '· MONKEY —— 需应用显式声明的测试类别，普通应用用不上\n'
+            '· LEANBACK_LAUNCHER —— 电视/盒子主屏入口，测 TV 应用时选\n\n'
+            '不指定类别 = 对包内全部 Activity 随机（覆盖更全、但更容易触发崩溃）'
+        )
+        _cat_label = QLabel('类别:')
+        _cat_label.setToolTip(_cat_tip_text)
+        self.category_combo.setToolTip(_cat_tip_text)
+        for _i, _t in enumerate(_cat_tips.values()):
+            self.category_combo.setItemData(_i, _t, Qt.ToolTipRole)
+        f1.addWidget(_cat_label, 1, 4)
         f1.addWidget(self.category_combo, 1, 5)
+        _cat_hint = QLabel('类别: LAUNCHER=桌面主入口(最常用) · MONKEY=需应用声明(一般用不上) · LEANBACK_LAUNCHER=电视盒子入口')
+        _cat_hint.setStyleSheet(f"color: {THEMES[get_current_theme_id(self)]['text_disabled']}; font-size: 11px;")
+        f1.addWidget(_cat_hint, 3, 0, 1, 8)
 
         btn_normalize = QPushButton('归一化 100%')
         btn_normalize.clicked.connect(self._normalize_pct)

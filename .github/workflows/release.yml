@@ -2,12 +2,18 @@ name: Release
 
 # 安装包不入库。打 tag（如 `git tag v1.2.0 && git push origin v1.2.0`）后，
 # 本工作流构建 macOS arm64 / Windows x64 / Linux x86_64 三份产物并挂到 GitHub Release，
-# 并把三平台安装包同步上传到 Gitee「发行版」。Gitee 上传拆两步：
-#   ① 小包（Windows/macOS zip）先行上传：60min/次 × 3 次重试 + 10KB/s×2min 速度底线
-#      （跨境限速恶化时快速失败进入重试，而非干等超时），逐包容错（单包失败不影响
-#      另一包），每包上传后二次核验；全部结束后有失败才报红；
-#   ② Linux 大包（约 107MB）单独一步，同样的长超时 + 重试 + 核验，
-#      超过 Gitee 单附件 100MB 硬限制时主动跳过并提示去 GitHub 下载。
+# 并把三平台安装包同步上传到 Gitee「发行版」。
+#
+# Gitee 上传策略（v2026.09.11 重构）：
+#   · 三个平台各一个独立 job（并行），单包失败不影响其它包，也避免串行把
+#     整个 job 拖到 6h 上限；
+#   · 每个包都走 .github/scripts/gitee_upload.sh：幂等（重跑只补传失败的包）、
+#     动态超时（按 5KB/s 估速，上限 2.5h）+ 动态速度底线（下限 5KB/s，持续
+#     300s 判死重试 1 次）、上传后二次核验；
+#   · 旧版（v2026.09.10）把 Windows/macOS 串在一个 step，动态底线按
+#     size/60min 算到 ~20KB/s，跨境常态 10~20KB/s 链路一低于它即判死，
+#     3 次重试全败 → mac 包一直传不上。新参数让 10~20KB/s 链路稳定传完。
+#   · Linux 大包（>100MB）超过 Gitee 单附件硬限制时主动跳过并提示去 GitHub 下载。
 #
 # 触发方式（任意一种都会自动打包含）：
 #   1. git push origin vX.Y.Z          —— 推荐，全自动建 Release + 上传包
@@ -69,11 +75,28 @@ jobs:
           generate_release_notes: true
           draft: false
 
-      # ── Gitee「发行版」同步（幂等，可安全重跑）────────────────────────
-      # 前置：GitHub 仓库 Settings -> Secrets -> Actions 添加 GITEE_TOKEN
-      # （Gitee 私人令牌，勾选 projects 权限）；Gitee 仓库需已推送同名 tag。
-      # 拆分原则：Windows/macOS 小包先上传（不阻塞用户下载），
-      # Linux 大包单独一步用长超时重试，失败报红并给出补救提示。
+  # ── Gitee「发行版」同步（幂等，可安全重跑）────────────────────────────
+  # 前置：GitHub 仓库 Settings -> Secrets -> Actions 添加 GITEE_TOKEN
+  # （Gitee 私人令牌，勾选 projects 权限）；Gitee 仓库需已推送同名 tag。
+  # 本 job 只创建/定位 Gitee 发行版，输出 rid/api 供三个上传 job 并行使用。
+  gitee-prepare:
+    name: Prepare Gitee release
+    needs: [release]
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.gitee.outputs.ready }}
+      rid: ${{ steps.gitee.outputs.rid }}
+      api: ${{ steps.gitee.outputs.api }}
+    steps:
+      - name: Resolve tag name
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Prepare Gitee release
         id: gitee
         env:
@@ -105,139 +128,61 @@ jobs:
           echo "rid=${RID}" >> "$GITHUB_OUTPUT"
           echo "api=${API}" >> "$GITHUB_OUTPUT"
 
-      # 小包先行：Windows / macOS 各 50~60MB。
-      # 逐包容错：单包失败不中断另一包，全部结束后若有失败统一报红；
-      # 幂等：重跑时已成功附件自动跳过，只补传失败的包。
-      # curl 加固（v2026.09.09 macOS 包曾因跨境限速 30min 超时 exit 28）：
-      #   --max-time 3600            单次尝试上限 30min → 60min
-      #   --retry 3 --retry-delay 60 失败重试 1 次 → 3 次，间隔 60s
-      #   --retry-all-errors         POST 已发出部分数据也允许重试
-      #   --speed-limit 10240 --speed-time 120
-      #                              速度低于 10KB/s 持续 2min 即快速失败进入重试，
-      #                              避免在已死的慢速链路上干等 60min
-      - name: Upload Windows/macOS artifacts to Gitee
-        if: steps.gitee.outputs.ready == 'true'
-        env:
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-          API: ${{ steps.gitee.outputs.api }}
-          RID: ${{ steps.gitee.outputs.rid }}
+  # 三平台各自独立 job 并行上传：单包失败不阻塞其它包；
+  # 幂等：重跑时已成功附件自动跳过，只补传失败的包。
+  gitee-upload-windows:
+    name: Upload Windows artifact to Gitee
+    needs: [gitee-prepare]
+    if: needs.gitee-prepare.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+      API: ${{ needs.gitee-prepare.outputs.api }}
+      RID: ${{ needs.gitee-prepare.outputs.rid }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: Super_ADB-windows-x64
+          path: artifact
+      - name: Upload to Gitee
         run: |
-          set -u
-          FAILURES=""
-          for f in artifacts/Super_ADB-windows-x64.zip artifacts/Super_ADB-macos-arm64.zip; do
-            [ -e "${f}" ] || { echo "::warning::缺少附件 ${f}，跳过"; continue; }
-            base=$(basename "${f}")
-            # 幂等：同名附件已存在则跳过
-            if curl -s --max-time 60 "${API}/releases/${RID}/attach_files?per_page=100&access_token=${GITEE_TOKEN}" \
-                | python -c "import json,sys; data=json.load(sys.stdin); names=[a.get('name','') for a in data]; sys.exit(0 if '${base}' in names else 1)" 2>/dev/null; then
-              echo "==> 已存在附件 ${base}，跳过"
-              continue
-            fi
-            size=$(stat -c %s "${f}")
-            # 动态超时：按 25KB/s 估算 + 600s 固定余量；上限 3600s，下限 900s
-            timeout=$(( size / 25600 + 600 ))
-            [ "${timeout}" -lt 900 ] && timeout=900
-            [ "${timeout}" -gt 3600 ] && timeout=3600
-            # 动态速度底线：低于"能在超时内传完"的最低平均速度且持续 180s → 判死重试
-            # （v2026.09.10 教训：56MB 包在 ~12KB/s 慢速链路空耗 74min，固定 10KB/s 底线太低）
-            speed_limit=$(( size / timeout ))
-            [ "${speed_limit}" -lt 10240 ] && speed_limit=10240
-            echo "==> 上传 ${base} ($(du -h "${f}" | cut -f1)) -> release ${RID}（timeout=${timeout}s, 底线=${speed_limit}B/s）"
-            TMPRESP=$(mktemp)
-            # -o 写响应体、-w 写统计到 stdout，互不污染；HTTP 码 + 耗时 + 速度一并输出
-            STATS=$(curl -s --connect-timeout 30 --max-time "${timeout}" \
-              --retry 3 --retry-all-errors --retry-delay 60 \
-              --speed-limit "${speed_limit}" --speed-time 180 \
-              -o "${TMPRESP}" \
-              -w 'http=%{http_code} time=%{time_total}s speed=%{speed_download}B/s' \
-              -X POST "${API}/releases/${RID}/attach_files" \
-              -F "access_token=${GITEE_TOKEN}" -F "file=@${f}")
-            RESP=$(cat "${TMPRESP}")
-            rm -f "${TMPRESP}"
-            echo "    curl: ${STATS}"
-            [ -n "${RESP}" ] || RESP="(无响应体)"
-            # 上传后二次核验：确认附件真实出现在 Gitee 附件列表（防半截上传）
-            if echo "${RESP}" | python -c "import json,sys; d=json.load(sys.stdin); assert d.get('id'); print('    uploaded id=', d.get('id'))" 2>/dev/null \
-              && sleep 3 \
-              && curl -s --max-time 60 "${API}/releases/${RID}/attach_files?per_page=100&access_token=${GITEE_TOKEN}" \
-                   | python -c "import json,sys; data=json.load(sys.stdin); names=[a.get('name','') for a in data]; sys.exit(0 if '${base}' in names else 1)" 2>/dev/null; then
-              echo "    ${base} 上传成功并通过核验"
-            else
-              echo "::error::Gitee 上传 ${base} 失败: ${RESP:0:300}"
-              echo "::error::补救：1) Re-run failed jobs（幂等，已成功附件跳过）；"
-              echo "::error::      2) 手动上传：从 GitHub Release 下载 ${base} 后到 Gitee 发行版页添加附件。"
-              FAILURES="${FAILURES} ${base}"
-            fi
-          done
-          if [ -n "${FAILURES}" ]; then
-            echo "::error::以下附件上传失败：${FAILURES}"
-            exit 1
-          fi
+          bash .github/scripts/gitee_upload.sh \
+            artifact/Super_ADB-windows-x64.zip "${API}" "${RID}" Super_ADB-windows-x64.zip
 
-      # Linux 大包单独一步：与小包同样的长超时 + 重试 + 速度底线 + 上传后二次核验。
-      # 仍失败 → step 报红，日志给出补救方式（幂等重跑 / 手动上传 / Gitee Go 兜底）。
-      - name: Upload Linux artifact to Gitee (large file, long timeout)
-        if: steps.gitee.outputs.ready == 'true'
-        env:
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-          API: ${{ steps.gitee.outputs.api }}
-          RID: ${{ steps.gitee.outputs.rid }}
+  gitee-upload-macos:
+    name: Upload macOS artifact to Gitee
+    needs: [gitee-prepare]
+    if: needs.gitee-prepare.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+      API: ${{ needs.gitee-prepare.outputs.api }}
+      RID: ${{ needs.gitee-prepare.outputs.rid }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: Super_ADB-macos-arm64
+          path: artifact
+      - name: Upload to Gitee
         run: |
-          set -e
-          f=artifacts/Super_ADB-linux-x86_64.tar.gz
-          base=$(basename "${f}")
-          if [ ! -e "${f}" ]; then
-            echo "::warning::缺少附件 ${f}，跳过（GitHub Release 仍已正常发布）"
-            exit 0
-          fi
-          # Gitee 单附件硬限制 100MB：超限则跳过上传并提示去 GitHub 下载（上传必败，不再空耗）
-          SIZE=$(stat -c %s "${f}")
-          if [ "${SIZE}" -gt 104857600 ]; then
-            echo "::warning::${base} 大小 ${SIZE} 字节（约 $((SIZE/1024/1024))MB）超过 Gitee 单附件 100MB 限制，跳过上传"
-            echo "::warning::Linux 安装包仅提供 GitHub Release 下载：https://github.com/Jcs2026-byte/Super_ADB/releases"
-            exit 0
-          fi
-          # 幂等：同名附件已存在则跳过
-          if curl -s --max-time 60 "${API}/releases/${RID}/attach_files?per_page=100&access_token=${GITEE_TOKEN}" \
-              | python -c "import json,sys; data=json.load(sys.stdin); names=[a.get('name','') for a in data]; sys.exit(0 if '${base}' in names else 1)" 2>/dev/null; then
-            echo "==> 已存在附件 ${base}，跳过"
-            exit 0
-          fi
-          size=$(stat -c %s "${f}")
-          # 动态超时：按 25KB/s 估算 + 600s 固定余量；上限 3600s，下限 900s
-          timeout=$(( size / 25600 + 600 ))
-          [ "${timeout}" -lt 900 ] && timeout=900
-          [ "${timeout}" -gt 3600 ] && timeout=3600
-          # 动态速度底线：低于"能在超时内传完"的最低平均速度且持续 180s → 判死重试
-          speed_limit=$(( size / timeout ))
-          [ "${speed_limit}" -lt 10240 ] && speed_limit=10240
-          echo "==> 上传 ${base} ($(du -h "${f}" | cut -f1)) -> release ${RID}（timeout=${timeout}s, 底线=${speed_limit}B/s）"
-          TMPRESP=$(mktemp)
-          STATS=$(curl -s --connect-timeout 30 --max-time "${timeout}" \
-            --retry 3 --retry-all-errors --retry-delay 60 \
-            --speed-limit "${speed_limit}" --speed-time 180 \
-            -o "${TMPRESP}" \
-            -w 'http=%{http_code} time=%{time_total}s speed=%{speed_download}B/s' \
-            -X POST "${API}/releases/${RID}/attach_files" \
-            -F "access_token=${GITEE_TOKEN}" -F "file=@${f}")
-          RESP=$(cat "${TMPRESP}")
-          rm -f "${TMPRESP}"
-          echo "    curl: ${STATS}"
-          [ -n "${RESP}" ] || RESP="(无响应体)"
-          if echo "${RESP}" | python -c "import json,sys; d=json.load(sys.stdin); assert d.get('id'); print('    uploaded id=', d.get('id'))" 2>/dev/null; then
-            # 二次核验：响应虽成功，再确认附件真实出现在列表中（防半截上传）
-            sleep 3
-            if curl -s --max-time 60 "${API}/releases/${RID}/attach_files?per_page=100&access_token=${GITEE_TOKEN}" \
-                | python -c "import json,sys; data=json.load(sys.stdin); names=[a.get('name','') for a in data]; sys.exit(0 if '${base}' in names else 1)" 2>/dev/null; then
-              echo "    ${base} 上传成功并通过核验"
-            else
-              echo "::error::${base} 上传响应成功但 Gitee 附件列表中未出现，视为失败"
-              exit 1
-            fi
-          else
-            echo "::error::Gitee 上传 ${base} 失败: ${RESP:0:300}"
-            echo "::error::补救方式：1) 本页右上角 Re-run all jobs 重跑（幂等，已存在附件跳过）；"
-            echo "::error::2) 手动上传：从 GitHub Release 下载 ${base}，到 Gitee 发行版页面添加附件；"
-            echo "::error::3) 在 Gitee 仓库配置 Gitee Go 流水线兜底构建/发布 Linux 包。"
-            exit 1
-          fi
+          bash .github/scripts/gitee_upload.sh \
+            artifact/Super_ADB-macos-arm64.zip "${API}" "${RID}" Super_ADB-macos-arm64.zip
+
+  gitee-upload-linux:
+    name: Upload Linux artifact to Gitee
+    needs: [gitee-prepare]
+    if: needs.gitee-prepare.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+      API: ${{ needs.gitee-prepare.outputs.api }}
+      RID: ${{ needs.gitee-prepare.outputs.rid }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: Super_ADB-linux-x86_64
+          path: artifact
+      - name: Upload to Gitee
+        run: |
+          bash .github/scripts/gitee_upload.sh \
+            artifact/Super_ADB-linux-x86_64.tar.gz "${API}" "${RID}" Super_ADB-linux-x86_64.tar.gz

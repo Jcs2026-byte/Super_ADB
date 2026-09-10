@@ -503,6 +503,13 @@ class Monkey压测窗口(QWidget):
         f1.addWidget(_cat_hint, 3, 0, 1, 8)
 
         btn_normalize = QPushButton('归一化 100%')
+        # ★ 悬浮提示：说明归一化作用，避免用户不理解按钮行为
+        btn_normalize.setToolTip(
+            '把「事件比例」中已填写的各项（≥0）按权重缩放到合计 100%。\n'
+            '值为 -1（不指定）的项保持不变，仍走 monkey 默认。\n\n'
+            '例：触摸 50 + 滑动 20 → 归一化后约 触摸 71 + 滑动 29。\n'
+            '全部为 -1（都未填写）时点击无效。'
+        )
         btn_normalize.clicked.connect(self._normalize_pct)
         f1.addWidget(btn_normalize, 1, 7)
 

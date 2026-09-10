@@ -290,15 +290,26 @@ def _report(base):
 
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
-    internal = os.path.join(here, 'dist', 'Super_ADB', '_internal')
-    app_contents = os.path.join(here, 'dist', 'Super_ADB.app', 'Contents')
-    if os.path.isdir(internal):
-        _trim_windows(internal)
-    elif os.path.isdir(app_contents):
-        _trim_mac(app_contents)
-    else:
-        print('未找到构建产物 dist/Super_ADB/_internal 或 dist/Super_ADB.app（先跑 精简打包exe.py）')
-        return
+    # 兼容不同命名阶段 / 平台的产物目录（按优先级依次探测）：
+    #   标准构建后（未重命名）：dist/Super_ADB/_internal、dist/Super_ADB.app/Contents
+    #   已按平台重命名后（精简打包exe.py 末尾改名）：dist/Super_ADB_Win|_Linux/_internal、
+    #                      dist/Super_ADB_MAC.app/Contents
+    #   CI 与本地两条链路都能命中，避免"构建成功但裁剪静默跳过"导致体积膨胀。
+    candidates = (
+        ('dist', 'Super_ADB', '_internal', '_trim_windows'),
+        ('dist', 'Super_ADB_Win', '_internal', '_trim_windows'),
+        ('dist', 'Super_ADB_Linux', '_internal', '_trim_windows'),
+        ('dist', 'Super_ADB.app', 'Contents', '_trim_mac'),
+        ('dist', 'Super_ADB_MAC.app', 'Contents', '_trim_mac'),
+    )
+    for sub, name, tail, fn in candidates:
+        p = os.path.join(here, sub, name, tail)
+        if os.path.isdir(p):
+            print(f'找到构建产物: {sub}/{name}/{tail}')
+            getattr(sys.modules[__name__], fn)(p)
+            return
+    print('未找到构建产物 dist/Super_ADB/_internal、dist/Super_ADB_Win/_internal 或 dist/Super_ADB.app（先跑 精简打包exe.py）')
+    return
 
 
 if __name__ == '__main__':

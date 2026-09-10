@@ -133,11 +133,29 @@ jobs:
               echo "==> 已存在附件 ${base}，跳过"
               continue
             fi
-            echo "==> 上传 ${base} ($(du -h "${f}" | cut -f1)) -> release ${RID}"
-            RESP=$(curl -s --connect-timeout 30 --max-time 3600 --retry 3 --retry-all-errors --retry-delay 60 \
-              --speed-limit 10240 --speed-time 120 \
+            size=$(stat -c %s "${f}")
+            # 动态超时：按 25KB/s 估算 + 600s 固定余量；上限 3600s，下限 900s
+            timeout=$(( size / 25600 + 600 ))
+            [ "${timeout}" -lt 900 ] && timeout=900
+            [ "${timeout}" -gt 3600 ] && timeout=3600
+            # 动态速度底线：低于"能在超时内传完"的最低平均速度且持续 180s → 判死重试
+            # （v2026.09.10 教训：56MB 包在 ~12KB/s 慢速链路空耗 74min，固定 10KB/s 底线太低）
+            speed_limit=$(( size / timeout ))
+            [ "${speed_limit}" -lt 10240 ] && speed_limit=10240
+            echo "==> 上传 ${base} ($(du -h "${f}" | cut -f1)) -> release ${RID}（timeout=${timeout}s, 底线=${speed_limit}B/s）"
+            TMPRESP=$(mktemp)
+            # -o 写响应体、-w 写统计到 stdout，互不污染；HTTP 码 + 耗时 + 速度一并输出
+            STATS=$(curl -s --connect-timeout 30 --max-time "${timeout}" \
+              --retry 3 --retry-all-errors --retry-delay 60 \
+              --speed-limit "${speed_limit}" --speed-time 180 \
+              -o "${TMPRESP}" \
+              -w 'http=%{http_code} time=%{time_total}s speed=%{speed_download}B/s' \
               -X POST "${API}/releases/${RID}/attach_files" \
               -F "access_token=${GITEE_TOKEN}" -F "file=@${f}")
+            RESP=$(cat "${TMPRESP}")
+            rm -f "${TMPRESP}"
+            echo "    curl: ${STATS}"
+            [ -n "${RESP}" ] || RESP="(无响应体)"
             # 上传后二次核验：确认附件真实出现在 Gitee 附件列表（防半截上传）
             if echo "${RESP}" | python -c "import json,sys; d=json.load(sys.stdin); assert d.get('id'); print('    uploaded id=', d.get('id'))" 2>/dev/null \
               && sleep 3 \
@@ -185,12 +203,27 @@ jobs:
             echo "==> 已存在附件 ${base}，跳过"
             exit 0
           fi
-          echo "==> 上传 ${base} ($(du -h "${f}" | cut -f1)) -> release ${RID}"
-          echo "    大文件：60min/次 × 3 次重试，低于 10KB/s×2min 快速失败进入重试"
-          RESP=$(curl -s --connect-timeout 30 --max-time 3600 --retry 3 --retry-all-errors --retry-delay 60 \
-            --speed-limit 10240 --speed-time 120 \
+          size=$(stat -c %s "${f}")
+          # 动态超时：按 25KB/s 估算 + 600s 固定余量；上限 3600s，下限 900s
+          timeout=$(( size / 25600 + 600 ))
+          [ "${timeout}" -lt 900 ] && timeout=900
+          [ "${timeout}" -gt 3600 ] && timeout=3600
+          # 动态速度底线：低于"能在超时内传完"的最低平均速度且持续 180s → 判死重试
+          speed_limit=$(( size / timeout ))
+          [ "${speed_limit}" -lt 10240 ] && speed_limit=10240
+          echo "==> 上传 ${base} ($(du -h "${f}" | cut -f1)) -> release ${RID}（timeout=${timeout}s, 底线=${speed_limit}B/s）"
+          TMPRESP=$(mktemp)
+          STATS=$(curl -s --connect-timeout 30 --max-time "${timeout}" \
+            --retry 3 --retry-all-errors --retry-delay 60 \
+            --speed-limit "${speed_limit}" --speed-time 180 \
+            -o "${TMPRESP}" \
+            -w 'http=%{http_code} time=%{time_total}s speed=%{speed_download}B/s' \
             -X POST "${API}/releases/${RID}/attach_files" \
             -F "access_token=${GITEE_TOKEN}" -F "file=@${f}")
+          RESP=$(cat "${TMPRESP}")
+          rm -f "${TMPRESP}"
+          echo "    curl: ${STATS}"
+          [ -n "${RESP}" ] || RESP="(无响应体)"
           if echo "${RESP}" | python -c "import json,sys; d=json.load(sys.stdin); assert d.get('id'); print('    uploaded id=', d.get('id'))" 2>/dev/null; then
             # 二次核验：响应虽成功，再确认附件真实出现在列表中（防半截上传）
             sleep 3

@@ -1,0 +1,68 @@
+name: Wiki Sync
+
+# 把仓库 wiki/ 目录自动同步到 GitHub Wiki 站点。
+#
+# 说明：
+#   - 触发：master 分支上 wiki/** 有变更，或手动触发（workflow_dispatch）
+#   - Wiki 是独立的 git 仓库（<owner>/<repo>.wiki.git），GITHUB_TOKEN 默认
+#     不一定有推送权限；优先使用仓库 Secret「WIKI_TOKEN」（PAT，需勾选 repo
+#     权限），未配置时回退用 GITHUB_TOKEN 尝试。
+#   - 首次使用前需在 GitHub 网页端打开 Wiki 选项卡并创建第一个页面，
+#     否则 wiki 仓库尚未初始化，clone 会失败。
+
+on:
+  push:
+    branches: [master]
+    paths: ['wiki/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Sync wiki pages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: main
+
+      - name: Clone wiki repository
+        env:
+          # PAT 优先；未配置则回退 GITHUB_TOKEN
+          TOKEN: ${{ secrets.WIKI_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "$TOKEN" ]; then
+            echo "::error::WIKI_TOKEN secret is not set"
+            exit 1
+          fi
+          if ! git clone --quiet \
+            "https://x-access-token:${TOKEN}@github.com/${REPO}.wiki.git" wiki; then
+            echo "::error::Wiki 仓库克隆失败：请先在 GitHub 网页端打开 Wiki 选项卡并创建第一个页面，或检查 WIKI_TOKEN 权限"
+            exit 1
+          fi
+
+      - name: Copy wiki pages
+        run: |
+          set -euo pipefail
+          # 清空旧页面（保留 .git），再复制新页面
+          find wiki -name '*.md' -delete
+          cp main/wiki/*.md wiki/
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          cd wiki
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No wiki changes, skip push."
+            exit 0
+          fi
+          git commit -m "Sync wiki from main repo (${GITHUB_SHA})"
+          git push --quiet
+          echo "Wiki synced."

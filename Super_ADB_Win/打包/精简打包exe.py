@@ -259,6 +259,9 @@ def install(main):
     # 说明：PyInstaller 的 additional-hooks-dir 是「追加」而非「覆盖」内置
     # hook-PySide6，内置 hook 会把整套 Qt6 DLL + 全部翻译收进来；无法靠 hook
     # 覆盖，故改为构建后按「保留 .pyd 的 DLL 依赖闭包」物理删除闭包外的文件。
+    # 注意：三平台都有 打包/ 目录（同名包），包名导入可能命中其他平台的
+    # 裁剪脚本；为此三平台 裁剪_qt.py 已统一为「候选路径探测」——无论命中
+    # 哪份脚本，都能找到本机任意平台的产物（dist/Super_ADB(_Win/_Linux)/ 等）。
     try:
         from 打包 import 裁剪_qt
         裁剪_qt.main()

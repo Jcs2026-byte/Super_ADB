@@ -1,4 +1,4 @@
-# -*- coding: UTF-8 -*-
+﻿# -*- coding: UTF-8 -*-
 """
 构建后裁剪：Super_ADB 只用 QtCore/Gui/Widgets/Network + OpenGL（投屏渲染）。
 PyInstaller 内置 hook-PySide6 会把整套 Qt6 DLL + 全部插件 + 全部翻译收进 dist，
@@ -315,15 +315,26 @@ def main():
             print('未找到构建产物 dist/Super_ADB_MAC.app/Contents 或'
                   ' dist/Super_ADB.app/Contents（先跑构建）')
         return
-    internal = os.path.join(here, 'dist', 'Super_ADB', '_internal')
-    app_contents = os.path.join(here, 'dist', 'Super_ADB.app', 'Contents')
-    if os.path.isdir(internal):
-        _trim_windows(internal)
-    elif os.path.isdir(app_contents):
-        _trim_mac(app_contents)
-    else:
-        print('未找到构建产物 dist/Super_ADB/_internal 或 dist/Super_ADB.app（先跑 精简打包exe.py）')
+    # 非 Mac 平台（如误在 Win/Linux 导入本脚本）：按候选路径探测，避免静默跳过
+    candidates = (
+        ('dist', 'Super_ADB', '_internal'),
+        ('dist', 'Super_ADB_Win', '_internal'),
+        ('dist', 'Super_ADB_Linux', '_internal'),
+        ('dist', 'Super_ADB.app', 'Contents'),
+        ('dist', 'Super_ADB_MAC.app', 'Contents'),
+    )
+    for sub, name, tail in candidates:
+        p = os.path.join(here, sub, name, tail)
+        if not os.path.isdir(p):
+            continue
+        print('找到构建产物: ' + sub + '/' + name + '/' + tail)
+        if tail == 'Contents':
+            _trim_mac(p)
+        else:
+            _trim_windows(p)
         return
+    print('未找到构建产物 dist/Super_ADB/_internal、dist/Super_ADB_Win/_internal 等（先跑构建）')
+    return
 
 
 if __name__ == '__main__':

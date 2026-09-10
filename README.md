@@ -17,6 +17,7 @@
 - **系统 ADB / Socket 直连**：可一键切换回官方 adb（优先 PATH，其次内置 platform-tools）
 ![Super_ADB](docs/adb连接.png)
 - **无线调试**：局域网扫描、配对码连接（adb pair）、二维码连接（mDNS）三种方式
+- （会在本地起一个服务接受设备端广播发来的授权信息，首次PC端会要求授权，本软件不会连接互联网）
 
 ### 📁 文件管理
 - 设备文件树浏览器，支持上传/下载/删除/重命名
@@ -103,6 +104,9 @@ python 项目启动入口/Super_ADB_主入口.py
 - **GitHub Releases**（主选，CI 自动打包）：https://github.com/Jcs2026-byte/Super_ADB/releases
 - **Gitee 发行版**（GitHub 跨网不一定能同步过来）：https://gitee.com/Jcs2026/super_adb/releases
 - 夸克网盘：https://pan.quark.cn/s/2b7b11ebe1e5?pwd=fAXN#/list/share
+![Super_ADB](docs/ci打包警告.png)
+- 安装包是通过 CI 打包的，会被打上网络标签，因为没钱买签名所有第一次运行会提示未知警告，点击允许允许即可，
+- 本地打的包不会被打上网络来源标签不会触发警告
 
 | 平台 | 产物 |
 |------|------|

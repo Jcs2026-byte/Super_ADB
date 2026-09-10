@@ -2,8 +2,8 @@
 
 > 一款跨平台的 ADB 集成调试工具，集设备连接、应用管理、文件传输、日志抓取、性能监控、网络抓包等功能于一体。
 
-![Super_ADB](Super_ADB_Win/资源/Super_ADB.png)
-
+![Super_ADB](Super_ADB_Win/资源/主界面.png)
+![Super_ADB](Super_ADB_Win/资源/界面折叠.png)
 **最新版本：`v2026.09.10.01`**（GitHub / Gitee 均已同步）
 
 ## ✨ 功能特性

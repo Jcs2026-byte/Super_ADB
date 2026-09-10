@@ -3,8 +3,9 @@ name: Release
 # 安装包不入库。打 tag（如 `git tag v1.2.0 && git push origin v1.2.0`）后，
 # 本工作流构建 macOS arm64 / Windows x64 / Linux x86_64 三份产物并挂到 GitHub Release，
 # 并把三平台安装包同步上传到 Gitee「发行版」。Gitee 上传拆两步：
-#   ① 小包（Windows/macOS zip）先行上传，快速完成；
-#   ② Linux 大包（约 107MB）单独一步，长超时（30min/次）× 5 次重试 + 上传后核验，
+#   ① 小包（Windows/macOS zip）先行上传：逐包容错，失败汇总统一报红（不中断其余包）；
+#   ② Linux 大包（约 107MB）单独一步：60min/次 × 3 次重试（含已发数据重试）+
+#      速度底线（<10KB/s 持续 2min 快速失败进重试）+ 上传后二次核验；
 #      仍失败时该 step 报红并提示补救（重跑 / 手动上传 / Gitee Go 流水线兜底）。
 #
 # 触发方式（任意一种都会自动打包含）：
@@ -103,8 +104,8 @@ jobs:
           echo "rid=${RID}" >> "$GITHUB_OUTPUT"
           echo "api=${API}" >> "$GITHUB_OUTPUT"
 
-      # 小包先行：Windows / macOS 各 50~60MB，普通超时即可，失败即报错中断
-      # （小包都传不上，说明 token / 网络有真问题，需要人工介入）。
+      # 小包先行：Windows / macOS 各 50~60MB。逐包容错：某个包失败不中断其余包，
+      # 结束后统一汇总 FAILURES 并报红；每包上传后做「附件列表」二次核验。
       - name: Upload Windows/macOS artifacts to Gitee
         if: steps.gitee.outputs.ready == 'true'
         env:
@@ -113,6 +114,7 @@ jobs:
           RID: ${{ steps.gitee.outputs.rid }}
         run: |
           set -e
+          FAILURES=""
           for f in artifacts/Super_ADB-windows-x64.zip artifacts/Super_ADB-macos-arm64.zip; do
             [ -e "${f}" ] || { echo "::warning::缺少附件 ${f}，跳过"; continue; }
             base=$(basename "${f}")
@@ -123,19 +125,35 @@ jobs:
               continue
             fi
             echo "==> 上传 ${base} ($(du -h "${f}" | cut -f1)) -> release ${RID}"
-            RESP=$(curl -s --connect-timeout 30 --max-time 1800 --retry 1 --retry-delay 5 \
+            # 60min/次 × 3 次重试（--retry-all-errors：POST 发过数据也能重试）
+            # 速度底线 10KB/s × 2min：慢死链路快速失败进重试，不干等
+            RESP=$(curl -s --connect-timeout 30 --max-time 3600 --retry 3 --retry-all-errors --retry-delay 60 \
+              --speed-limit 10240 --speed-time 120 \
               -X POST "${API}/releases/${RID}/attach_files" \
               -F "access_token=${GITEE_TOKEN}" -F "file=@${f}")
             if echo "${RESP}" | python -c "import json,sys; d=json.load(sys.stdin); assert d.get('id'); print('    uploaded id=', d.get('id'))" 2>/dev/null; then
-              echo "    ${base} 上传成功"
+              # 二次核验：响应虽成功，再确认附件真实出现在列表中（防半截上传）
+              sleep 3
+              if curl -s --max-time 60 "${API}/releases/${RID}/attach_files?per_page=100&access_token=${GITEE_TOKEN}" \
+                  | python -c "import json,sys; data=json.load(sys.stdin); names=[a.get('name','') for a in data]; sys.exit(0 if '${base}' in names else 1)" 2>/dev/null; then
+                echo "    ${base} 上传成功并通过核验"
+              else
+                echo "::error::${base} 上传响应成功但 Gitee 附件列表中未出现，视为失败"
+                FAILURES="${FAILURES} ${base}(响应成功但附件列表未见)"
+              fi
             else
               echo "::error::Gitee 上传 ${base} 失败: ${RESP:0:300}"
-              exit 1
+              FAILURES="${FAILURES} ${base}"
             fi
           done
+          if [ -n "${FAILURES}" ]; then
+            echo "::error::小包上传失败汇总:${FAILURES}（重跑幂等，已成功附件跳过）"
+            exit 1
+          fi
 
-      # Linux 大包单独一步：跨境限速，5min×1 重试快速失败 + 上传后二次核验。
-      # 仍失败 → step 报红，日志给出三种补救方式（幂等重跑 / 手动上传 / Gitee Go 兜底）。
+      # Linux 大包单独一步：跨境限速，60min×3 重试（含已发数据重试）+ 速度底线
+      # 快速失败 + 上传后二次核验。仍失败 → step 报红，日志给出三种补救方式
+      # （幂等重跑 / 手动上传 / Gitee Go 兜底）。
       - name: Upload Linux artifact to Gitee (large file, long timeout)
         if: steps.gitee.outputs.ready == 'true'
         env:
@@ -164,8 +182,9 @@ jobs:
             exit 0
           fi
           echo "==> 上传 ${base} ($(du -h "${f}" | cut -f1)) -> release ${RID}"
-          echo "    大文件：跨境限速，5min/次 × 1 次重试，超时即快速失败"
-          RESP=$(curl -s --connect-timeout 30 --max-time 1800 --retry 1 --retry-delay 5 \
+          echo "    大文件：跨境限速，60min/次 × 3 次重试（含已发数据），速度底线 10KB/s×2min"
+          RESP=$(curl -s --connect-timeout 30 --max-time 3600 --retry 3 --retry-all-errors --retry-delay 60 \
+            --speed-limit 10240 --speed-time 120 \
             -X POST "${API}/releases/${RID}/attach_files" \
             -F "access_token=${GITEE_TOKEN}" -F "file=@${f}")
           if echo "${RESP}" | python -c "import json,sys; d=json.load(sys.stdin); assert d.get('id'); print('    uploaded id=', d.get('id'))" 2>/dev/null; then

@@ -123,3 +123,7 @@ nul
 git_issue.png
 Super_ADB_MAC/截图_方法名.png
 **/scripts/_投屏测试输出/
+
+# 历史 UI 备份目录（中文路径，不纳入版本控制，避免 CI 非 ASCII 检查误报）
+ui/历史ui/
+

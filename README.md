@@ -47,8 +47,10 @@
 ![Super_ADB](docs/证书安装.png)
 - 证书安装可以把抓包软件的证书编译成设备使用的格式，自动推到设备系统从而实现抓取HTTPS数据(需要root)
 ![Super_ADB](docs/tcpdump.png)
-- tcpdump 会使用设备自动的抓包工具抓取数据包
-
+- tcpdump 会使用设备自动的抓包工具抓取数据包( 默认抓http 需要抓tcp udp 可选择抓取范围
+- （受设备上自带抓包工具限制范围较大会有丢包情况）)
+![Super_ADB](docs/pcap解析.png)
+- pcap解析器：HTTP/HTTPS/TCP/UDP 协议分析、流重组  可以把抓到的数据包拖进去解析
 ### 📺 scrcpy 投屏
 - 低延迟投屏，键鼠反向控制
 - 分辨率/码率/帧率/编码器/渲染驱动自定义

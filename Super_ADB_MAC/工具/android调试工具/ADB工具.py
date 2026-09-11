@@ -216,6 +216,35 @@ def 查找系统adb路径():
     return None
 
 
+def _外部扩展根候选():
+    """从模块文件位置与当前工作目录向上回溯目录树，收集可能含 外部扩展/ 的根目录。
+
+    覆盖三种布局，任一台电脑/任意启动位置都能命中：
+    - 源码模式：项目根/外部扩展/（模块在 工具/android调试工具/ 下，上溯两层即项目根）
+    - 冻结模式：_internal/外部扩展/（PyInstaller onedir 保留包结构，模块实际在
+      _internal/工具/android调试工具/ 下，必须上溯到 _internal 顶层才能命中；
+      旧实现只探测模块父目录 + cwd，够不到 _internal 顶层 → 打包版投屏找不到 scrcpy）
+    - 用户双击启动的任意 cwd（若恰好在项目根内也能兜底命中）
+    """
+    # 模块位置最多上溯 6 层（覆盖 工具/android调试工具 → 项目根 / _internal → dist 顶层）；
+    # cwd 最多 2 层（双击启动目录若恰好在项目根内可兜底）。
+    # 限制深度避免上溯到盘符根误命中用户机器上无关的 外部扩展 目录。
+    seen = set()
+    roots = []
+    for start, max_up in ((os.path.dirname(os.path.abspath(__file__)), 6), (os.getcwd(), 2)):
+        cur = os.path.abspath(start)
+        up = 0
+        while cur not in seen and up < max_up:
+            seen.add(cur)
+            roots.append(cur)
+            nxt = os.path.dirname(cur)
+            if nxt == cur:  # 已到盘符根
+                break
+            cur = nxt
+            up += 1
+    return roots
+
+
 def 查找内置adb路径():
     """按当前操作系统探测本工具内置 adb 的绝对路径，找不到返回 None。
 
@@ -225,8 +254,8 @@ def 查找内置adb路径():
     - **macOS**：   ``platform-tools-latest-darwin/platform-tools/adb``
     - **Linux**：   ``platform-tools-latest-linux/platform-tools/adb``
 
-    路径回退（与 ``find_scrcpy_dir`` 同款）：源码模式基目录 → 父目录 → 当前工作目录，
-    兼容 ``Super_ADB_Win/外部扩展/...`` 与 ``_internal/外部扩展/...``（冻结模式）两种布局。
+    路径回退（与 ``find_scrcpy_dir`` 同款）：从模块位置与 cwd 向上回溯目录树，
+    兼容源码与 ``_internal/外部扩展/...``（冻结模式）两种布局。
     """
     import platform
     sysname = platform.system().lower()
@@ -240,12 +269,7 @@ def 查找内置adb路径():
         suffix = os.path.join('外部扩展', 'adb', 'platform-tools-latest-linux',
                               'platform-tools', 'adb')
 
-    here = os.path.dirname(os.path.abspath(__file__))
-    candidates_root = [
-        os.path.dirname(here),  # Super_ADB_Win/（源码模式）
-        here,                   # _internal/工具/（冻结模式）
-        os.getcwd(),
-    ]
+    candidates_root = _外部扩展根候选()
     for root in candidates_root:
         full = os.path.join(root, suffix)
         if os.path.isfile(full):
@@ -339,18 +363,17 @@ class AdbHelper:
             self._用协议客户端 = adb_cfg.get('socket_direct', False)
             self._用自研adb = adb_cfg.get('self_built', False)
             self._用系统adb = adb_cfg.get('system_adb', False)
-            # 全新安装（三项均未配置）时默认自研 ADB，避免无官方 adb 时无法连接
+            # 全新安装（三项均未配置）时默认使用系统环境变量的 ADB
             if not (self._用协议客户端 or self._用自研adb or self._用系统adb):
-                self._用自研adb = True
+                self._用系统adb = True
         except Exception as e:
-            # 配置加载失败（如干净打包后未包含 配置/ 目录）：默认自研 adb，
-            # 避免静默回退到官方 adb 导致用户困惑。
+            # 配置加载失败（如干净打包后未包含 配置/ 目录）：默认使用系统环境变量的 ADB
             import logging as _lg
             _lg.getLogger(__name__).warning(
-                'ADB 配置加载失败（%s），默认使用自研 adb。请确认 配置/Super_ADB配置.json 存在。', e)
+                'ADB 配置加载失败（%s），默认使用系统环境变量的 ADB。请确认 配置/Super_ADB配置.json 存在。', e)
             self._用协议客户端 = False
-            self._用自研adb = True
-            self._用系统adb = False
+            self._用自研adb = False
+            self._用系统adb = True
 
         # 如果勾选了使用系统环境变量的 adb，强制用 PATH 中的 adb（排除项目自带的）
         # 即使没找到也用 'adb'（让系统去 PATH 中找），绝不回退到内置 adb
@@ -435,16 +458,16 @@ class AdbHelper:
             self._用协议客户端 = adb_cfg.get('socket_direct', False)
             self._用自研adb = adb_cfg.get('self_built', False)
             self._用系统adb = adb_cfg.get('system_adb', False)
-            # 全新安装（三项均未配置）时默认自研 ADB，避免无官方 adb 时无法连接
+            # 全新安装（三项均未配置）时默认使用系统环境变量的 ADB
             if not (self._用协议客户端 or self._用自研adb or self._用系统adb):
-                self._用自研adb = True
+                self._用系统adb = True
         except Exception as e:
             import logging as _lg
             _lg.getLogger(__name__).warning(
-                '刷新设置时配置加载失败（%s），默认使用自研 adb。', e)
+                '刷新设置时配置加载失败（%s），默认使用系统环境变量的 ADB。', e)
             self._用协议客户端 = False
-            self._用自研adb = True
-            self._用系统adb = False
+            self._用自研adb = False
+            self._用系统adb = True
 
         # 如果勾选了使用系统环境变量的 adb，强制用 PATH 中的 adb（排除项目自带的）
         # 即使没找到也用 'adb'（让系统去 PATH 中找），绝不回退到内置 adb
@@ -657,8 +680,14 @@ class AdbHelper:
         # 自研 ADB 模式：不依赖官方 adb，直接返回可用
         if self._用自研adb:
             return True
+        # 系统adb/socket模式：直接调用subprocess检测，不通过_run（避免启动时向日志栏输出adb命令）
         try:
-            r = self._run([self.adb_path, 'version'], timeout=10)
+            import subprocess as _sp
+            r = _sp.run(
+                [self.adb_path, 'version'],
+                capture_output=True, text=True, timeout=10,
+                creationflags=CREATE_NO_WINDOW,
+            )
             return r.returncode == 0
         except Exception:
             return False
@@ -1910,14 +1939,12 @@ echo "___END___"'''
           - 外部扩展/scrcpy/scrcpy-win64-vX.Y/...
         按目录名中的版本号降序取最新版本。
         """
-        # 本文件位于 工具/ 下，外部扩展/ 在项目根（上一级）；冻结后 __file__
-        # 位于 _internal/ 顶层（base 即项目根），故 base 与其上一级都探测
-        base = os.path.dirname(os.path.abspath(__file__))
-        parent = os.path.dirname(base)
+        # 本文件位于 工具/android调试工具/ 下；冻结后位于 _internal/工具/android调试工具/。
+        # 从模块位置与 cwd 向上回溯目录树探测 外部扩展/（覆盖源码、_internal 两种布局）
         prefix_map = {'darwin': 'scrcpy-macos-', 'linux': 'scrcpy-linux-', 'win32': 'scrcpy-win64-'}
         prefix = prefix_map.get(sys.platform, 'scrcpy-win64-')
         candidates = []
-        for root in (base, parent, os.getcwd()):
+        for root in _外部扩展根候选():
             data_dir = os.path.join(root, '外部扩展')
             if not os.path.isdir(data_dir):
                 continue
@@ -1998,6 +2025,11 @@ echo "___END___"'''
         # 再启动官方 scrcpy；adbd 支持多连接，与自研直连并存。
         if ':' in serial:
             try:
+                # ★ 投屏前先清理残留官方 adb 进程：单客户设备只允许 1 个连接，
+                # 残留的 adb server 会抢占槽位，导致自研直连和投屏都失败。
+                # 干净启动后再 adb connect，确保槽位干净。
+                self._清理残留adb()
+                time.sleep(0.5)  # 等旧进程完全退出
                 connect_adb = getattr(self, 'adb_path', None) or 查找内置adb路径() or 'adb'
                 connect_kwargs = {}
                 if sys.platform == 'win32':

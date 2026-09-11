@@ -62,8 +62,22 @@ def _查找adb路径() -> Optional[str]:
         suffix = os.path.join('外部扩展', 'adb', 'platform-tools-latest-linux',
                               'platform-tools', 'adb')
 
+    # 从模块位置与 cwd 向上回溯目录树（旧实现只探测模块父目录 + cwd，
+    # 打包版 _internal/ 冻结布局下够不到 _internal 顶层，导致找不到 adb）
     here = os.path.dirname(os.path.abspath(__file__))
-    for root in (os.path.dirname(here), here, os.getcwd()):
+    _seen, _stack = set(), []
+    for _start, _max_up in ((here, 6), (os.getcwd(), 2)):
+        _cur = os.path.abspath(_start)
+        _up = 0
+        while _cur not in _seen and _up < _max_up:
+            _seen.add(_cur)
+            _stack.append(_cur)
+            _nxt = os.path.dirname(_cur)
+            if _nxt == _cur:
+                break
+            _cur = _nxt
+            _up += 1
+    for root in _stack:
         full = os.path.join(root, suffix)
         if os.path.isfile(full):
             return os.path.abspath(full)

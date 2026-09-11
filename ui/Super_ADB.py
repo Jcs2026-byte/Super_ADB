@@ -8,20 +8,22 @@
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
 
-from PySide6.QtCore import (QCoreApplication, QMetaObject, QRect,
-                            QSize, Qt)
-from PySide6.QtGui import (QCursor,
-                           QIcon,
-                           QPixmap)
-from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox,
-                               QFrame, QGridLayout, QGroupBox, QHBoxLayout,
-                               QLabel, QLineEdit, QListWidget,
-                               QPushButton, QScrollArea, QSizePolicy,
-                               QSpacerItem, QSplitter, QStatusBar, QTabWidget,
-                               QTextEdit, QTreeView, QVBoxLayout, QWidget)
+from PySide6.QtCore import (QCoreApplication, QDate, QDateTime, QLocale,
+    QMetaObject, QObject, QPoint, QRect,
+    QSize, QTime, QUrl, Qt)
+from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
+    QFont, QFontDatabase, QGradient, QIcon,
+    QImage, QKeySequence, QLinearGradient, QPainter,
+    QPalette, QPixmap, QRadialGradient, QTransform)
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox,
+    QFrame, QGridLayout, QGroupBox, QHBoxLayout,
+    QHeaderView, QLabel, QLineEdit, QListWidget,
+    QListWidgetItem, QPushButton, QScrollArea, QSizePolicy,
+    QSpacerItem, QSplitter, QStatusBar, QTabWidget,
+    QTextEdit, QTreeView, QVBoxLayout, QWidget)
 
 from 工具.android调试工具.收藏下拉框 import 收藏下拉框
-
+import png_rc
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -93,10 +95,13 @@ class Ui_MainWindow(object):
 
         self.horizontalLayout_4.addWidget(self.winBtnClose)
 
-        self.horizontalLayout_3 = QHBoxLayout()
-        self.horizontalLayout_3.setObjectName(u"horizontalLayout_3")
+        self.winBtnExit = QPushButton(MainWindow)
+        self.winBtnExit.setObjectName(u"winBtnExit")
+        self.winBtnExit.setMinimumSize(QSize(34, 26))
+        self.winBtnExit.setMaximumSize(QSize(34, 26))
+        self.winBtnExit.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
-        self.horizontalLayout_4.addLayout(self.horizontalLayout_3)
+        self.horizontalLayout_4.addWidget(self.winBtnExit)
 
 
         self.verticalLayout_5.addLayout(self.horizontalLayout_4)
@@ -553,10 +558,11 @@ class Ui_MainWindow(object):
         self.timestampBtn = QPushButton(self.toolsScrollContent_3)
         self.timestampBtn.setObjectName(u"timestampBtn")
 
+        self.gridLayout_8.addWidget(self.timestampBtn, 0, 0, 1, 1)
+
         self.urlCodecBtn = QPushButton(self.toolsScrollContent_3)
         self.urlCodecBtn.setObjectName(u"urlCodecBtn")
 
-        self.gridLayout_8.addWidget(self.timestampBtn, 0, 0, 1, 1)
         self.gridLayout_8.addWidget(self.urlCodecBtn, 0, 1, 1, 1)
 
         self.toolsScrollArea_3.setWidget(self.toolsScrollContent_3)
@@ -869,6 +875,10 @@ class Ui_MainWindow(object):
         self.winBtnClose.setToolTip(QCoreApplication.translate("MainWindow", u"\u9690\u85cf\u5230\u7cfb\u7edf\u6258\u76d8", None))
 #endif // QT_CONFIG(tooltip)
         self.winBtnClose.setText("")
+#if QT_CONFIG(tooltip)
+        self.winBtnExit.setToolTip(QCoreApplication.translate("MainWindow", u"\u5173\u95ed\u7a0b\u5e8f", None))
+#endif // QT_CONFIG(tooltip)
+        self.winBtnExit.setText(QCoreApplication.translate("MainWindow", u"\u2715", None))
         self.groupBox.setTitle(QCoreApplication.translate("MainWindow", u"\u8fde\u63a5\u7684\u8bbe\u5907", None))
         self.lblDevice.setText(QCoreApplication.translate("MainWindow", u"\u8fde\u63a5\u7684\u8bbe\u5907:", None))
         self.btnRefresh.setText(QCoreApplication.translate("MainWindow", u"\u5237\u65b0\u8fde\u63a5\u5217\u8868", None))
@@ -947,6 +957,9 @@ class Ui_MainWindow(object):
         self.timestampBtn.setToolTip(QCoreApplication.translate("MainWindow", u"Unix \u65f6\u95f4\u6233 \u2194 \u5317\u4eac\u65f6\u95f4 \u4e92\u8f6c", None))
 #endif // QT_CONFIG(tooltip)
         self.timestampBtn.setText(QCoreApplication.translate("MainWindow", u"\u65f6\u95f4\u6233", None))
+#if QT_CONFIG(tooltip)
+        self.urlCodecBtn.setToolTip(QCoreApplication.translate("MainWindow", u"URL \u767e\u5206\u53f7\u7f16\u7801 / \u89e3\u7801\uff08UTF-8\uff09", None))
+#endif // QT_CONFIG(tooltip)
         self.urlCodecBtn.setText(QCoreApplication.translate("MainWindow", u"URL\u7f16\u89e3\u7801", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_2), QCoreApplication.translate("MainWindow", u"\u4fbf\u6377\u5de5\u5177", None))
         self.fileMgrLblDevice.setText(QCoreApplication.translate("MainWindow", u"\u8bbe\u5907:", None))

@@ -157,7 +157,29 @@
       </widget>
      </item>
      <item>
-      <layout class="QHBoxLayout" name="horizontalLayout_3"/>
+      <widget class="QPushButton" name="winBtnExit">
+       <property name="minimumSize">
+        <size>
+         <width>34</width>
+         <height>26</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>34</width>
+         <height>26</height>
+        </size>
+       </property>
+       <property name="cursor">
+        <cursorShape>PointingHandCursor</cursorShape>
+       </property>
+       <property name="toolTip">
+        <string>关闭程序</string>
+       </property>
+       <property name="text">
+        <string>✕</string>
+       </property>
+      </widget>
      </item>
     </layout>
    </item>
@@ -1441,7 +1463,7 @@
   <customwidget>
    <class>收藏下拉框</class>
    <extends>QComboBox</extends>
-   <header>工具.收藏下拉框</header>
+   <header>工具.android调试工具.收藏下拉框</header>
   </customwidget>
  </customwidgets>
  <resources>

@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 ADB Shell 整合工具 —— 主入口
 ==============================
@@ -33,7 +33,7 @@ try:
     from PySide6.QtCore import (Qt, QThreadPool, QRunnable, Signal, QObject,
                                 QMetaObject, Q_ARG, QTimer, QEvent, QRect, QPoint,
                                 QTranslator, QByteArray, QThread)
-    from PySide6.QtGui import (QIcon, QPixmap, QPainter, QColor, QFont, QAction, QPen, QPainterPath)
+    from PySide6.QtGui import (QIcon, QPixmap, QPainter, QColor, QFont, QAction, QPen, QPainterPath, QCursor)
     from PySide6.QtWidgets import (
         QApplication, QWidget, QPushButton, QTextEdit, QPlainTextEdit,
         QMessageBox, QSystemTrayIcon, QMenu, QLayout,
@@ -444,9 +444,15 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self._设置列表背景色(self._current_theme)
         # 无边框窗口标题栏按钮：仅关闭按钮由 .ui 定义；关于/主题在 __init__ 上方代码创建
         self._no_track = set()
-        self._btn_close = self.winBtnClose
-        self._btn_close.setStyleSheet(self._窗口按钮样式(True))
+        self._btn_close = self.winBtnClose  # 隐藏到托盘按钮（旋转图标）
+        self._btn_close.setStyleSheet(self._窗口按钮样式(False))
         self._no_track.add(self._btn_close)
+
+        # 右上角 X 关闭程序按钮（由 ui 文件定义，点击弹确认框，防止误关）
+        self._btn_exit = self.winBtnExit
+        self._btn_exit.setStyleSheet(self._窗口按钮样式(True))
+        self._btn_exit.clicked.connect(self._确认退出)
+        self._no_track.add(self._btn_exit)
 
         self._btn_about = self.btnAbout
         self._btn_about.setStyleSheet(self._关于按钮样式())
@@ -1868,10 +1874,40 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             popup.close()
 
     def closeEvent(self, ev):
-        """点 ✕ 直接关闭窗口并退出程序。"""
-        self._保存几何()
-        self._保存默认页()
-        ev.accept()
+        """关闭窗口时弹确认框，防止误关。"""
+        # 如果是用户主动确认退出，直接接受
+        if getattr(self, '_force_close', False):
+            self._保存几何()
+            self._保存默认页()
+            ev.accept()
+            return
+        # 否则弹确认框
+        reply = QMessageBox.question(
+            self,
+            "确认退出",
+            "确定要关闭 Super_ADB 吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._保存几何()
+            self._保存默认页()
+            ev.accept()
+        else:
+            ev.ignore()
+
+    def _确认退出(self):
+        """点击右上角 X 按钮：弹确认框，确认后真正退出程序。"""
+        reply = QMessageBox.question(
+            self,
+            "确认退出",
+            "确定要关闭 Super_ADB 吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._force_close = True
+            self.close()
 
     def _隐藏到托盘(self):
         self._保存几何()
@@ -2160,13 +2196,8 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
 
 
     def _重定位窗口按钮(self):
-        """把关闭按钮钉在窗口右上角，在 resizeEvent 和初始化时调用。"""
-        if not hasattr(self, '_btn_close'):
-            return
-        m = 4
-        bw = self._btn_close.width()
-        self._btn_close.move(self.width() - bw - m, m)
-        self._btn_close.raise_()
+        """标题栏按钮已由 ui 布局自动定位，此方法保留以兼容调用，无需手动移动。"""
+        pass
 
     def mousePressEvent(self, event):
         """边缘区域进入缩放模式，其余区域进入拖拽模式。"""
@@ -2456,3 +2487,5 @@ def 设置自启动(enable):
 
 if __name__ == '__main__':
     main()
+
+

@@ -275,12 +275,17 @@ class 哈希结果行(QWidget):
             return
         self._results = result
         self.bar.setValue(100)
+        # 获取父窗口的大小写设置
+        dlg = self.window()
+        upper = getattr(dlg, '_upper_case', True)
         for key, val in result.items():
             if key in ('size', 'elapsed'):
                 continue
             lbl = self._val_labels.get(key)
             if lbl:
-                lbl.setText(val)
+                display_val = val.upper() if upper else val
+                lbl.setText(display_val)
+                lbl.setProperty('raw_value', val)  # 保存原始小写值
                 lbl.setStyleSheet(f"color: {self._clr_ok}; background: transparent;")
                 self._roles[lbl] = 'hash_ok'
             btn = self._copy_btns.get(key)
@@ -307,6 +312,12 @@ class 哈希结果行(QWidget):
     def _copy_hash(self, val_label):
         text = val_label.text()
         if text and text not in ("计算中...", "失败"):
+            # 优先使用保存的原始值，按当前大小写设置转换
+            raw = val_label.property('raw_value')
+            if raw and isinstance(raw, str):
+                dlg = self.window()
+                upper = getattr(dlg, '_upper_case', True)
+                text = raw.upper() if upper else raw
             QApplication.clipboard().setText(text)
             btn = self.sender()
             if btn:
@@ -347,13 +358,16 @@ class 哈希结果行(QWidget):
 
     def get_result_text(self):
         """复制全部 / 导出用的单行文本：文件名 + 大小 + 各算法哈希。"""
+        dlg = self.window()
+        upper = getattr(dlg, '_upper_case', True)
         lines = [os.path.basename(self.filepath)]
         size = self._results.get('size')
         lines.append(f"大小: {self._fmt_size(size) if size else '?'}")
         for key in self.algo_keys:
             v = self._results.get(key)
             if v:
-                lines.append(f"{key}: {v}")
+                display_v = v.upper() if upper else v
+                lines.append(f"{key}: {display_v}")
         return "\n".join(lines)
 
 
@@ -513,6 +527,8 @@ class 哈希校验对话框(对话框基类):
         # ── 持久化（#10）──
         self._settings = QSettings('Super_ADB', 'Md5Tool')
         self._concurrency = int(self._settings.value('concurrency', 4))
+        # 大小写偏好（默认勾选=大写）
+        self._upper_case = self._settings.value('upper_case', True, type=bool)
         # PEM_SUBJECT_HASH 永远默认勾选（用户偏好：「PEM 默认勾选」）。
         # 即使 saved 里被别人清空，加载时仍强制回写一次，避免被空白结果列表误导。
         saved = self._settings.value('algos', 'MD5,SHA1,SHA256,PEM_SUBJECT_HASH')
@@ -556,6 +572,12 @@ class 哈希校验对话框(对话框基类):
         btn_all.clicked.connect(self._select_all_algos)
         algo_layout.addWidget(btn_all)
         algo_layout.addStretch()
+        # 大小写勾选框（默认勾选=大写显示）
+        self.chk_upper = QCheckBox("大写")
+        self.chk_upper.setChecked(self._upper_case)
+        self.chk_upper.setToolTip("勾选时哈希值字母显示为大写")
+        self.chk_upper.toggled.connect(self._on_case_toggled)
+        algo_layout.addWidget(self.chk_upper)
         algo_layout.addWidget(QLabel("并发"))
         self.spin_conc = QSpinBox()
         self.spin_conc.setRange(1, 8)
@@ -673,6 +695,17 @@ class 哈希校验对话框(对话框基类):
         self._concurrency = val
         self._sem = QSemaphore(val)
         self._settings.setValue('concurrency', val)
+
+    def _on_case_toggled(self, checked):
+        """切换大小写时，实时更新所有已显示的哈希值。"""
+        self._upper_case = checked
+        self._settings.setValue('upper_case', checked)
+        # 遍历所有结果行的哈希标签，更新显示
+        for row in self.findChildren(哈希结果行):
+            for lbl in row._val_labels.values():
+                raw = lbl.property('raw_value')
+                if raw and isinstance(raw, str):
+                    lbl.setText(raw.upper() if checked else raw)
 
     def _enabled(self):
         if not self._enabled_algos:
@@ -802,7 +835,10 @@ class 哈希校验对话框(对话框基类):
                 'size_bytes': r._results.get('size', 0),
             }
             for k in self._enabled_algos:
-                rec[k] = r._results.get(k, '')
+                v = r._results.get(k, '')
+                if v and self._upper_case:
+                    v = v.upper()
+                rec[k] = v
             records.append(rec)
         try:
             if fmt == 'json':

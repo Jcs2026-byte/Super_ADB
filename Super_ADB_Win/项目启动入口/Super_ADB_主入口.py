@@ -861,16 +861,17 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self._异步运行(self.adb.重启设备, serial)
 
     def 启动scrcpy(self):
-        """启动投屏（官方 scrcpy，独立窗口）。"""
+        """启动投屏（官方 scrcpy，独立窗口）。异步执行，不卡界面。"""
         serial = self._确保序列号()
         if not serial:
             return
-        try:
-            msg = self.adb.投屏(serial)
-            self.日志(msg)
-        except Exception as e:
-            self.日志(f'启动投屏失败: {e}')
-            QMessageBox.warning(self, '投屏失败', f'启动投屏失败:\n{e}')
+        # 先清空日志栏，提示设备通道限制
+        self.output.clear()
+        self.日志('━━ 开始投屏 ━━')
+        self.日志('提示：部分设备只支持单通道连接，投屏将自动切换到官方 adb 通道')
+        self.日志('')
+        self._异步运行(self.adb.投屏, serial)
+
 
 
     def 打开scrcpy设置(self):
@@ -1586,7 +1587,9 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         pkg = self._包名()
         if not serial or not pkg:
             return
-        self._异步运行(self.adb.获取应用信息, serial, pkg)
+        from 对话框.包信息对话框 import 包信息对话框
+        dlg = 包信息对话框(self.adb, serial, pkg, self._current_theme, parent=self)
+        dlg.show()
 
     def 列出第三方应用(self):
         serial = self._确保序列号()

@@ -51,7 +51,7 @@ def _run_keytool(args: List[str], timeout: int = 30) -> tuple[int, str, str]:
         proc = subprocess.run(
             cmd, capture_output=True, text=True, timeout=timeout,
             encoding='utf-8', errors='replace',
-            creationflags=subprocess.CREATE_NO_WINDOW,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         return proc.returncode, proc.stdout, proc.stderr
     except FileNotFoundError:

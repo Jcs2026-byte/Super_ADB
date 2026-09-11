@@ -833,6 +833,9 @@ class 哈希校验对话框(对话框基类):
     _CTX_NAME = "计算哈希 (Super ADB)"
 
     def _ctx_menu_installed(self):
+        # 非 Windows：winreg 未导入（条件导入），直接视为未安装
+        if sys.platform != 'win32':
+            return False
         try:
             h = winreg.OpenKey(winreg.HKEY_CURRENT_USER, self._CTX_KEY)
             winreg.CloseKey(h)
@@ -841,6 +844,12 @@ class 哈希校验对话框(对话框基类):
             return False
 
     def _toggle_context_menu(self):
+        # 注册表右键菜单仅 Windows 支持：非 Windows 直接提示
+        if sys.platform != 'win32':
+            QMessageBox.information(
+                self, "右键菜单",
+                "文件管理器右键菜单依赖 Windows 注册表，\nmacOS / Linux 不支持此功能。")
+            return
         if self._ctx_menu_installed():
             if QMessageBox.question(
                     self, "右键菜单",

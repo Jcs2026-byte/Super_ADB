@@ -90,7 +90,7 @@ def 读取自研adb设置() -> bool:
     cfg = 加载json配置(CONFIG_NAME)
     adb_cfg = cfg.get(ADB_CONFIG_KEY, {}) if isinstance(cfg, dict) else {}
     if not any(adb_cfg.get(k) for k in ('socket_direct', 'self_built', 'system_adb')):
-        return True
+        return False  # 全新安装默认使用系统adb
     return adb_cfg.get('self_built', False)
 
 
@@ -98,6 +98,8 @@ def 读取系统adb设置() -> bool:
     """读取是否使用系统环境变量的 adb。"""
     cfg = 加载json配置(CONFIG_NAME)
     adb_cfg = cfg.get(ADB_CONFIG_KEY, {})
+    if not any(adb_cfg.get(k) for k in ('socket_direct', 'self_built', 'system_adb')):
+        return True  # 全新安装默认使用系统环境变量的 adb
     return adb_cfg.get('system_adb', False)
 
 

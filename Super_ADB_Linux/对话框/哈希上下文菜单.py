@@ -12,12 +12,21 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# 加上项目根目录和工具目录，保证独立运行时能找到所有模块
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+for _sub in ('工具', '项目UI'):
+    _p = os.path.join(_project_root, _sub)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QColor, QFont, QIcon
 from PySide6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QLabel, QPushButton,
     QHBoxLayout, QScrollArea, QWidget, QGroupBox, QMessageBox,
+    QCheckBox,
 )
 
 from 项目UI import png_rc  # noqa: F401
@@ -31,6 +40,7 @@ class 哈希上下文菜单(QDialog):
     def __init__(self, results, algo_keys=None, parent=None):
         super().__init__(parent)
         self._algo_keys = list(algo_keys) if algo_keys else ['MD5', 'SHA1', 'SHA256']
+        self._results_raw = results  # 保存原始小写哈希值
         if results:
             first_name = os.path.basename(results[0][0])
             title = f"哈希计算结果 - {first_name}"
@@ -42,8 +52,12 @@ class 哈希上下文菜单(QDialog):
         self._theme_id = get_current_theme_id(self)
         self._accent = THEMES[self._theme_id]['accent']
         self.setStyleSheet(get_stylesheet(self._theme_id))
-        self.setMinimumWidth(640)
+        self.setMinimumSize(640, 480)
         self.setWindowIcon(QIcon(':/Super_ADB.png'))
+
+        # 大小写偏好持久化（默认勾选=大写）
+        self._settings = QSettings('Super_ADB', 'Md5Tool')
+        self._upper_case = self._settings.value('upper_case', True, type=bool)
 
         # 内层亮边卡片（与 TCPDump/PCAP 弹窗同款 4px 主题色边框）
         self.card, _ = _create_popup_card(self, self._theme_id)
@@ -78,10 +92,11 @@ class 哈希上下文菜单(QDialog):
                     tag.setFixedWidth(64)
                     tag.setStyleSheet(f"color: {self._accent}; font-weight: bold;")
                     row.addWidget(tag)
-                    val_lbl = QLabel(val)
+                    val_lbl = QLabel(self._fmt_case(val))
                     val_lbl.setFont(QFont(FONT_FAMILY, 10))
                     val_lbl.setWordWrap(True)
                     val_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
+                    val_lbl.setProperty('raw_value', val)  # 保存原始小写值
                     row.addWidget(val_lbl, 1)
                     btn = QPushButton("复制")
                     btn.setFixedWidth(60)
@@ -100,12 +115,32 @@ class 哈希上下文菜单(QDialog):
         btn_all.setFixedWidth(100)
         btn_all.clicked.connect(lambda: self._copy_all(results))
         bottom.addWidget(btn_all)
+        # 大小写勾选框（默认勾选=大写）
+        self.chk_upper = QCheckBox("大写")
+        self.chk_upper.setChecked(self._upper_case)
+        self.chk_upper.setToolTip("勾选时哈希值字母显示为大写")
+        self.chk_upper.toggled.connect(self._on_case_toggled)
+        bottom.addWidget(self.chk_upper)
         bottom.addStretch()
         btn_close = QPushButton("关闭")
         btn_close.setFixedWidth(100)
         btn_close.clicked.connect(self.accept)
         bottom.addWidget(btn_close)
         root.addLayout(bottom)
+
+    def _fmt_case(self, text):
+        """按当前大小写设置格式化文本。"""
+        return text.upper() if self._upper_case else text
+
+    def _on_case_toggled(self, checked):
+        """切换大小写时，实时更新所有哈希标签显示。"""
+        self._upper_case = checked
+        self._settings.setValue('upper_case', checked)
+        # 遍历所有哈希值标签，更新显示
+        for lbl in self.findChildren(QLabel):
+            raw = lbl.property('raw_value')
+            if raw and isinstance(raw, str):
+                lbl.setText(self._fmt_case(raw))
 
     def apply_theme(self, theme_id):
         """运行时切换主题。"""
@@ -119,7 +154,7 @@ class 哈希上下文菜单(QDialog):
         self.update()
 
     def _copy(self, text, btn):
-        QApplication.clipboard().setText(text)
+        QApplication.clipboard().setText(self._fmt_case(text))
         old = btn.text()
         btn.setText("已复制")
         btn.setEnabled(False)
@@ -136,7 +171,7 @@ class 哈希上下文菜单(QDialog):
                 continue
             for key in self._algo_keys:
                 if res.get(key):
-                    lines.append(f"  {key}: {res[key]}")
+                    lines.append(f"  {key}: {self._fmt_case(res[key])}")
         QApplication.clipboard().setText("\n".join(lines))
         QMessageBox.information(self, "已复制", "所有哈希已复制到剪贴板。")
 

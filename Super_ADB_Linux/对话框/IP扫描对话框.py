@@ -61,20 +61,36 @@ class _扫描工作器(QObject):
         self._取消 = True
 
     def _加载arp缓存(self):
-        """执行 arp -a 加载当前ARP缓存，用于获取已通信设备的MAC。"""
+        """执行 arp -a 加载当前ARP缓存，用于获取已通信设备的MAC。
+
+        兼容三种平台输出格式：
+        - Windows:  ``192.168.1.1  aa-bb-cc-dd-ee-ff  动态``
+        - macOS:    ``? (192.168.1.1) at aa:bb:cc:dd:ee:ff on en0 ifscope [ethernet]``
+        - Linux:    ``? (192.168.1.1) at aa:bb:cc:dd:ee:ff [ether] on eth0``
+        """
         try:
             r = subprocess.run(
                 ['arp', '-a'],
-                capture_output=True, text=True, encoding='gbk', errors='replace',
-                timeout=5, creationflags=_NO_WINDOW,
+                capture_output=True, text=True,
+                encoding='gbk' if sys.platform == 'win32' else 'utf-8',
+                errors='replace', timeout=5, creationflags=_NO_WINDOW,
             )
             for line in (r.stdout or '').splitlines():
                 parts = line.split()
                 if len(parts) >= 2:
+                    # 平台1（Windows）：首列 IP，第二列 MAC
                     ip = parts[0].strip('()')
                     mac = parts[1]
-                    if self._看起来像ip(ip) and '-' in mac:
+                    if self._看起来像ip(ip) and ('-' in mac or ':' in mac):
                         self._arp_cache[ip] = mac
+                        continue
+                    # 平台2/3（macOS / Linux）：? (IP) at MAC [ether] on 网卡
+                    if '(' in line and 'at' in parts:
+                        _at_idx = parts.index('at')
+                        if _at_idx >= 1 and self._看起来像ip(parts[_at_idx - 1].strip('()')):
+                            _mac = parts[_at_idx + 1] if _at_idx + 1 < len(parts) else ''
+                            if '-' in _mac or ':' in _mac:
+                                self._arp_cache[parts[_at_idx - 1].strip('()')] = _mac
         except Exception:
             pass
 

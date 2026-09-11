@@ -570,6 +570,9 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self.urlCodecBtn.clicked.connect(self.打开URL编解码)
         self.btnWirelessDebug.clicked.connect(self.打开无线调试)
         self.wifiBtn.clicked.connect(self.打开wifi)
+        if sys.platform != 'win32':
+            # 本机已保存 WiFi 密码查看依赖 Windows netsh，macOS/Linux 不支持：隐藏入口
+            self.wifiBtn.setVisible(False)
         self.pcapParserBtn.clicked.connect(self.打开pcap解析器)
         # PCAP解析 / IP扫描 两按钮已定义在 ui/Super_ADB.ui（便捷工具区 col5/col6），
         # 由 setupUi 创建，此处仅连接信号
@@ -1933,16 +1936,18 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         show_action.triggered.connect(self.show)
         tray_menu.addAction(show_action)
 
-        # 开机自动启动（仅打包后的 exe 生效；勾选写入当前用户 Run 键）
-        autostart_action = QAction('开机自动启动', self)
-        autostart_action.setCheckable(True)
-        autostart_action.setChecked(自启动是否启用())
-        autostart_action.setToolTip('勾选后开机自动在后台托盘运行（不弹主窗口）')
-        def _自启动切换时(checked):
-            设置自启动(checked)
+        # 开机自动启动（仅 Windows 注册表 Run 键 + 打包后的 exe 生效）
+        # macOS / Linux 无对应机制：隐藏菜单项，避免点击后无效果
+        if sys.platform == 'win32':
+            autostart_action = QAction('开机自动启动', self)
+            autostart_action.setCheckable(True)
             autostart_action.setChecked(自启动是否启用())
-        autostart_action.triggered.connect(_自启动切换时)
-        tray_menu.addAction(autostart_action)
+            autostart_action.setToolTip('勾选后开机自动在后台托盘运行（不弹主窗口）')
+            def _自启动切换时(checked):
+                设置自启动(checked)
+                autostart_action.setChecked(自启动是否启用())
+            autostart_action.triggered.connect(_自启动切换时)
+            tray_menu.addAction(autostart_action)
 
         exit_action = QAction('退出', self)
         exit_action.triggered.connect(self._退出应用)

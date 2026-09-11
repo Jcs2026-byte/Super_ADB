@@ -188,37 +188,30 @@ class 自研adb客户端:
         """连接失败时诊断：若官方 adb server 正占用该设备（单客户端机顶盒
         adbd 只允许 1 个 TCP 客户端），改写 最后错误 为可操作提示。
 
-        通过 `adb devices` 查官方 adb server 的设备表：若目标 host:port 已在
-        其中（device/offline/unauthorized 任一状态），说明槽位被官方通道占用，
-        自研直连必然超时——提示用户先 `adb disconnect` 再重试。
+        通过 socket 探测 127.0.0.1:5037 端口判断是否有官方 adb server 运行。
+        ★ 严禁执行 `adb devices` 命令——那会拉起新的 adb server 进程，
+        反而抢占单客户设备的唯一槽位，形成恶性循环。
         """
         msg = str(err).lower()
         if not any(k in msg for k in self._占用诊断触发):
             return
         target = f'{self.host}:{self.port}'
         try:
-            import shutil
-            import subprocess
-            adb = shutil.which('adb') or 'adb'
-            # CREATE_NO_WINDOW=0x08000000 仅 Windows 有效（避免诊断时闪黑框）；
-            # mac/linux 的 subprocess 对非 0 的 creationflags 会抛 ValueError，
-            # 故仅 Windows 附带该参数。
-            run_kwargs = dict(capture_output=True, text=True, timeout=3)
-            if os.name == 'nt':
-                run_kwargs['creationflags'] = 0x08000000
-            r = subprocess.run([adb, 'devices'], **run_kwargs)
-            for line in r.stdout.splitlines():
-                parts = line.split()
-                if len(parts) >= 2 and parts[0] == target:
-                    self.最后错误 = (
-                        f'设备 {target} 正被官方 adb server 占用'
-                        f'（adb devices 状态: {parts[1]}）。该机顶盒 adbd 仅支持'
-                        f'单客户端连接，请先执行 adb disconnect {target} 后重试')
-                    self._日志(f'[自研adb] 诊断: {self.最后错误}')
-                    return
+            import socket as _sock
+            # 仅通过 socket 探测 5037 端口，不执行任何 adb 命令
+            s = _sock.create_connection(('127.0.0.1', 5037), timeout=0.5)
+            s.close()
+            # 能连上说明有官方 adb server 在运行
+            self.最后错误 = (
+                f'设备 {target} 连接失败。检测到本机有官方 adb server 在运行（端口5037），'
+                f'单客户端机顶盒 adbd 仅支持单连接，可能被官方通道占用。'
+                f'请先执行 adb disconnect {target} 后重试，或关闭官方 adb 进程。')
+            self._日志(f'[自研adb] 诊断: {self.最后错误}')
+        except (ConnectionRefusedError, OSError):
+            # 5037 端口没人监听 → 没有官方 adb server，是其他原因导致的连接失败
+            pass
         except Exception:
             pass  # 诊断失败不掩盖原始错误
-
     def 自动重连(self, timeout: float = 15.0) -> bool:
         """root 重启 adbd 后调用：清池 + 重建。"""
         _池关闭设备(self.host, self.port)

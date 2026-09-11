@@ -632,7 +632,7 @@
                       <item row="1" column="2">
                        <widget class="QPushButton" name="btnAppInfo">
                         <property name="text">
-                         <string>path</string>
+                         <string>包信息获取</string>
                         </property>
                        </widget>
                       </item>

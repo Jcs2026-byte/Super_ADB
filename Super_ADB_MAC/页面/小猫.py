@@ -519,14 +519,29 @@ class DeskCatWidget(QWidget):
         ))
 
     def _move_to_position(self):
-        """把自身控件移动到 _pos（父窗口局部坐标），并通知父窗口重绘消除残影。"""
+        """把自身控件移动到 _pos（父窗口局部坐标），并通知父窗口重绘消除残影。
+
+        在部分电脑（不同显卡驱动 / DWM 合成行为）上，仅局部 update 旧矩形
+        不足以擦除半透明子控件的残影，会出现「小猫拖着主窗口内容走」的现象。
+        解决方案：
+        1. 移动前先让父窗口重绘旧位置（确保旧位置的像素被正确覆盖）
+        2. 移动后让父窗口重绘新位置 + 整个窗口兜底
+        """
         old_rect = self.geometry()
         self.move(self._pos)
         new_rect = self.geometry()
-        # 通知父窗口重绘旧位置和新位置，消除半透明窗口下的残影
         if self._parent is not None:
-            self._parent.update(old_rect)
-            self._parent.update(new_rect)
+            # 扩大重绘矩形：加上边距，确保覆盖小猫阴影/半透明边缘
+            pad = 8
+            old_padded = old_rect.adjusted(-pad, -pad, pad, pad)
+            new_padded = new_rect.adjusted(-pad, -pad, pad, pad)
+            # 移动前先重绘旧位置（此时小猫还在新位置，旧位置需要父窗口覆盖）
+            self._parent.update(old_padded)
+            # 移动后重绘新位置
+            self._parent.update(new_padded)
+            # 兜底：部分显卡/远程桌面下局部 update 不生效，强制整窗重绘
+            # （40ms 定时器调用频率下，整窗重绘开销可接受）
+            self._parent.update()
 
     # ------------------------------------------------------------------
     # 坐标工具

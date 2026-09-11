@@ -1657,16 +1657,29 @@ class Tcpdump对话框(QWidget):
 
             # 3. 检查本地 外部扩展/tcpdump/ 文件夹有没有对应架构的二进制
             import glob
-            # 兼容源码模式（Super_ADB_Win/外部扩展/）与冻结模式（_internal/外部扩展/）
+            # 兼容源码模式（Super_ADB_Win/外部扩展/）与冻结模式（_internal/外部扩展/）：
+            # 从模块位置与 cwd 向上回溯目录树（旧实现只探测模块父目录 + cwd，够不到 _internal 顶层）
             here = os.path.dirname(os.path.abspath(__file__))
             ext_dir = None
-            for root in [os.path.dirname(here), here, os.getcwd()]:
+            _seen, _stack = set(), []
+            for _start, _max_up in ((here, 6), (os.getcwd(), 2)):
+                _cur = os.path.abspath(_start)
+                _up = 0
+                while _cur not in _seen and _up < _max_up:
+                    _seen.add(_cur)
+                    _stack.append(_cur)
+                    _nxt = os.path.dirname(_cur)
+                    if _nxt == _cur:
+                        break
+                    _cur = _nxt
+                    _up += 1
+            for root in _stack:
                 candidate = os.path.join(root, '外部扩展', 'tcpdump')
                 if os.path.isdir(candidate):
                     ext_dir = candidate
                     break
             if ext_dir is None:
-                ext_dir = os.path.join(os.path.dirname(here), '外部扩展', 'tcpdump')
+                ext_dir = os.path.join(here, '外部扩展', 'tcpdump')
             local_bin = os.path.join(ext_dir, f'tcpdump_{arch}')
             if not os.path.isfile(local_bin):
                 candidates = glob.glob(os.path.join(ext_dir, f'tcpdump_{arch}*'))

@@ -1,9 +1,9 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 ADB Shell 整合工具 —— 主入口
 ==============================
 整合常用 ADB 快捷命令、文件管理器、日志查看器于一体。
-UI 布局由 Super_ADB.ui 定义，通过 Ui_MainWindow 驱动。
+UI 布局由 Super_ADB悦.ui 定义，通过 Ui_MainWindow 驱动。
 Super_ADB
 # -*- coding: UTF-8 -*-
 @author:JCS
@@ -329,7 +329,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
                 _tb.setObjectName(_tw.objectName() + '_tabBar')
             _tb.setStyleSheet(f"#{_tb.objectName()} {{ background-color: transparent; }}")
             _tb.setAutoFillBackground(False)
-        # leftPanel / splitter_main 也透明
+        # leftPanel / splitter 也透明
         for _name in ('leftPanel', 'splitter_main'):
             _w = getattr(self, _name, None)
             if _w is not None:
@@ -360,7 +360,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover)
         self.setMouseTracking(True)
-        # 窗口标题由 .ui 文件 (Super_ADB.ui) 的 windowTitle 定义，
+        # 窗口标题由 .ui 文件 (Super_ADB悦.ui) 的 windowTitle 定义，
         # 这里不再硬覆盖，保持 UI 与逻辑分离。
         # 页面容器不再用工具栏最小宽度顶住 splitter，
         # 修复左侧折叠/窗口变窄后右侧内容溢出被裁剪、需手动拉窗口才恢复的问题
@@ -383,6 +383,15 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self.splitter_main.setStretchFactor(1, 0)
         self.splitter_main.setSizes([1, 0])
         self.splitter_main.splitterMoved.connect(self._分割条移动时)
+        # ── splitter_3：默认折叠上方（adb 调试模块），下方 便捷工具/输出 占满 ──
+        # 上下两个子面板都可折叠（让用户能拖手柄再次展开）；
+        # 拉伸因子给下方 1，上方 0，保证窗口缩放时下方跟着伸缩。
+        self.splitter_3.setCollapsible(0, True)
+        self.splitter_3.setCollapsible(1, True)
+        self.splitter_3.setStretchFactor(0, 0)
+        self.splitter_3.setStretchFactor(1, 1)
+        self._恢复分割条3()  # 从配置读，否则用默认 [1, 1]（不折叠）
+        self.splitter_3.splitterMoved.connect(self._防抖保存分割条3)
         # 压小设备下拉框最小宽度，让右栏可以缩得更窄而不裁剪控件
         self.deviceCombo.setMinimumWidth(160)
         self.fileMgr_deviceCombo.setMinimumWidth(160)
@@ -404,6 +413,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self._json_tool_dialog = None
         self._md5_dialog = None
         self._timestamp_dialog = None
+        self._url_codec_dialog = None  # URL 编解码弹窗（复用同一窗口实例）
         self._url_codec_dialog = None
         self._adb_终端_dialog = None  # 自研 ADB 模式交互式终端弹窗
         self._wireless_debug_dialog = None
@@ -442,7 +452,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             except Exception:
                 pass
         self._设置列表背景色(self._current_theme)
-        # 无边框窗口标题栏按钮：仅关闭按钮由 .ui 定义；关于/主题在 __init__ 上方代码创建
+        # 无边框窗口标题栏按钮：关闭/隐藏按钮由 .ui 定义；关于/主题在 __init__ 上方代码创建
         self._no_track = set()
         self._btn_close = self.winBtnClose  # 隐藏到托盘按钮（旋转图标）
         self._btn_close.setStyleSheet(self._窗口按钮样式(False))
@@ -568,13 +578,11 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self.md5Btn.clicked.connect(self.打开md5校验)
         self.timestampBtn.clicked.connect(self.打开时间戳)
         self.urlCodecBtn.clicked.connect(self.打开URL编解码)
+        self.urlCodecBtn.clicked.connect(self.打开URL编解码)
         self.btnWirelessDebug.clicked.connect(self.打开无线调试)
         self.wifiBtn.clicked.connect(self.打开wifi)
-        if sys.platform != 'win32':
-            # 本机已保存 WiFi 密码查看依赖 Windows netsh，macOS/Linux 不支持：隐藏入口
-            self.wifiBtn.setVisible(False)
         self.pcapParserBtn.clicked.connect(self.打开pcap解析器)
-        # PCAP解析 / IP扫描 两按钮已定义在 ui/Super_ADB.ui（便捷工具区 col5/col6），
+        # PCAP解析 / IP扫描 两按钮已定义在 ui/Super_ADB悦.ui（便捷工具区 col5/col6），
         # 由 setupUi 创建，此处仅连接信号
         self.ipScanBtn.clicked.connect(self.打开ip扫描)
         # 输出
@@ -853,16 +861,17 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self._异步运行(self.adb.重启设备, serial)
 
     def 启动scrcpy(self):
-        """启动投屏（官方 scrcpy，独立窗口）。"""
+        """启动投屏（官方 scrcpy，独立窗口）。异步执行，不卡界面。"""
         serial = self._确保序列号()
         if not serial:
             return
-        try:
-            msg = self.adb.投屏(serial)
-            self.日志(msg)
-        except Exception as e:
-            self.日志(f'启动投屏失败: {e}')
-            QMessageBox.warning(self, '投屏失败', f'启动投屏失败:\n{e}')
+        # 先清空日志栏，提示设备通道限制
+        self.output.clear()
+        self.日志('━━ 开始投屏 ━━')
+        self.日志('提示：部分设备只支持单通道连接，投屏将自动切换到官方 adb 通道')
+        self.日志('')
+        self._异步运行(self.adb.投屏, serial)
+
 
 
     def 打开scrcpy设置(self):
@@ -1578,7 +1587,18 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         pkg = self._包名()
         if not serial or not pkg:
             return
-        self._异步运行(self.adb.获取应用信息, serial, pkg)
+        from 对话框.包信息对话框 import 包信息对话框
+        # 存到 self 上，避免局部变量被垃圾回收导致弹窗一闪而过
+        if not hasattr(self, '_包信息对话框实例'):
+            self._包信息对话框实例 = None
+        # 如果旧对话框还开着，先关掉
+        if self._包信息对话框实例 is not None:
+            try:
+                self._包信息对话框实例.close()
+            except Exception:
+                pass
+        self._包信息对话框实例 = 包信息对话框(self.adb, serial, pkg, self._current_theme, parent=self)
+        self._包信息对话框实例.show()
 
     def 列出第三方应用(self):
         serial = self._确保序列号()
@@ -1624,7 +1644,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
     # PC 本机 IP 输入框（系统操作栏）
     # ------------------------------------------------------------------
     def _初始化电脑ip输入(self):
-        """系统操作栏「PC本机IP」输入框与「tcpdump 抓包」按钮已在 ui/Super_ADB.ui
+        """系统操作栏「PC本机IP」输入框与「tcpdump 抓包」按钮已在 ui/Super_ADB悦.ui
         的 sysGroup 顶部定义（pcIpLabel / pcIpInput / btnRefreshIp / btnTcpdump），
         由 setupUi 创建。这里只补设动态属性与信号连接（控件本身不再由代码 new）。"""
         self.pcIpInput.setPlaceholderText('本机IP:端口')
@@ -1749,6 +1769,40 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             self._geo_timer.setSingleShot(True)
             self._geo_timer.timeout.connect(self._保存几何)
         self._geo_timer.start(300)
+
+    # ------------------------------------------------------------------
+    # splitter_3 持久化：启动读、拖动写、关闭再写
+    # 与 _恢复几何 / _保存几何 同样套路；key 用 'splitter_3_sizes'。
+    # ------------------------------------------------------------------
+    def _恢复分割条3(self):
+        """从配置恢复 splitter_3 的两个面板高度。
+        缺失或损坏时使用默认 [1, 1]（不折叠，上下面板均可见）。"""
+        sizes = 加载json配置(CONFIG_NAME).get('splitter_3_sizes')
+        if isinstance(sizes, list) and len(sizes) == 2 and all(isinstance(s, int) and s >= 0 for s in sizes):
+            self.splitter_3.setSizes(sizes)
+        else:
+            # 默认：不折叠，上下面板均可见；[1, 1] 表示各占一半高度。
+            self.splitter_3.setSizes([1, 1])
+
+    def _保存分割条3(self):
+        """把当前 splitter_3 的两个面板高度写入配置。"""
+        sizes = self.splitter_3.sizes()
+        # 防御：极端 resize 后 sizes 偶尔会返回 [-1]，跳过保存避免污染配置
+        if any(s < 0 for s in sizes) or len(sizes) != 2:
+            return
+        cfg = 加载json配置(CONFIG_NAME)
+        cfg['splitter_3_sizes'] = list(sizes)
+        保存json配置(CONFIG_NAME, cfg)
+
+    def _防抖保存分割条3(self, *_):
+        """splitterMoved 防抖：拖动结束后 300ms 才写盘，避免高频 IO。
+        注意：折叠/展开（sizes 从 [N, M] 变 [0, M]）时 splitterMoved 也会触发，
+        会被这条路径捕获，下次启动即还原。"""
+        if not hasattr(self, '_splitter3_timer'):
+            self._splitter3_timer = QTimer(self)
+            self._splitter3_timer.setSingleShot(True)
+            self._splitter3_timer.timeout.connect(self._保存分割条3)
+        self._splitter3_timer.start(300)
 
     # ------------------------------------------------------------------
     # 默认页持久化：启动读、切换写、退出再写
@@ -1881,6 +1935,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         # 如果是用户主动确认退出，直接接受
         if getattr(self, '_force_close', False):
             self._保存几何()
+            self._保存分割条3()
             self._保存默认页()
             ev.accept()
             return
@@ -1894,6 +1949,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         )
         if reply == QMessageBox.StandardButton.Yes:
             self._保存几何()
+            self._保存分割条3()
             self._保存默认页()
             ev.accept()
         else:
@@ -1914,6 +1970,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
 
     def _隐藏到托盘(self):
         self._保存几何()
+        self._保存分割条3()
         self._保存默认页()
         self.hide()
         self.tray_icon.showMessage(
@@ -1936,18 +1993,16 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         show_action.triggered.connect(self.show)
         tray_menu.addAction(show_action)
 
-        # 开机自动启动（仅 Windows 注册表 Run 键 + 打包后的 exe 生效）
-        # macOS / Linux 无对应机制：隐藏菜单项，避免点击后无效果
-        if sys.platform == 'win32':
-            autostart_action = QAction('开机自动启动', self)
-            autostart_action.setCheckable(True)
+        # 开机自动启动（仅打包后的 exe 生效；勾选写入当前用户 Run 键）
+        autostart_action = QAction('开机自动启动', self)
+        autostart_action.setCheckable(True)
+        autostart_action.setChecked(自启动是否启用())
+        autostart_action.setToolTip('勾选后开机自动在后台托盘运行（不弹主窗口）')
+        def _自启动切换时(checked):
+            设置自启动(checked)
             autostart_action.setChecked(自启动是否启用())
-            autostart_action.setToolTip('勾选后开机自动在后台托盘运行（不弹主窗口）')
-            def _自启动切换时(checked):
-                设置自启动(checked)
-                autostart_action.setChecked(自启动是否启用())
-            autostart_action.triggered.connect(_自启动切换时)
-            tray_menu.addAction(autostart_action)
+        autostart_action.triggered.connect(_自启动切换时)
+        tray_menu.addAction(autostart_action)
 
         exit_action = QAction('退出', self)
         exit_action.triggered.connect(self._退出应用)
@@ -2001,6 +2056,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
     def _退出应用(self):
         """托盘退出：先保存窗口几何，再退出程序。"""
         self._保存几何()
+        self._保存分割条3()
         self._保存默认页()
         QApplication.instance().quit()
 
@@ -2492,5 +2548,3 @@ def 设置自启动(enable):
 
 if __name__ == '__main__':
     main()
-
-

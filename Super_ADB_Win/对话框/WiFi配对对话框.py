@@ -29,7 +29,6 @@ from PySide6.QtWidgets import (
 
 from 项目UI import png_rc  # noqa: F401
 from 项目UI.界面样式 import ACCENT, get_stylesheet, get_current_theme_id, THEMES
-from 项目UI.弹窗样式 import add_green_glow
 from 工具.android调试工具.ADB工具 import 加载json配置, 保存json配置
 
 _PAIRED_CFG = 'wifi_paired_devices.json'      # 已配对设备指纹持久化
@@ -179,7 +178,7 @@ class WiFi配对对话框(QDialog):
         self._theme_id = get_current_theme_id(self)
         self._accent = THEMES[self._theme_id]['accent']
         self.setStyleSheet(get_stylesheet(self._theme_id))
-        add_green_glow(self)
+        # 不再给整个对话框加绿光效果，只给特定按钮加
 
         # 配对成功后回调（主窗口用来刷新设备列表）
         self._on_pair_success = on_pair_success

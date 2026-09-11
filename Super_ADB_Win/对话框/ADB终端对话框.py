@@ -768,17 +768,19 @@ class ADB终端对话框(QDialog):
     def showEvent(self, event):
         """窗口显示时异步加载设备列表（不阻塞UI，避免弹窗延迟出现）。"""
         super().showEvent(event)
-        # 后台线程加载设备列表（自研模式下 USB枚举+局域网扫描 耗时2-4秒）
-        import threading as _th
-        def _加载():
-            try:
-                if hasattr(self._主窗口, 'adb'):
-                    devices = self._主窗口.adb.获取设备列表()
-                    current = self._主窗口.当前序列号()
-                    self._设备列表已加载.emit(devices, current or '')
-            except Exception:
-                pass
-        _th.Thread(target=_加载, daemon=True).start()
+        # 直接用主窗口已加载好的设备列表，不需要重新扫描
+        try:
+            devices = []
+            combo = getattr(self._主窗口, 'deviceCombo', None)
+            if combo:
+                for i in range(combo.count()):
+                    serial = combo.itemData(i)
+                    if serial:
+                        devices.append({'serial': serial, 'model': '', 'state': 'device'})
+            current = self._主窗口.当前序列号()
+            self._设备列表已加载.emit(devices, current or '')
+        except Exception:
+            pass
 
     def _设备列表加载完成(self, devices, current):
         """后台线程加载完成 → 主线程更新下拉框。"""
@@ -876,37 +878,42 @@ class _自定义命令配置对话框(QDialog):
         self.table_widget.doubleClicked.connect(self._编辑当前选中)
         # 隐藏行号列
         self.table_widget.verticalHeader().setVisible(False)
-        # 表格样式：和整体主题统一
-        self.table_widget.setStyleSheet('''
-            QTableWidget {
+        # 表格样式：跟随主题 accent 颜色
+        accent_rgb = THEMES[self._theme_id]['accent']  # 格式: 'rgb(r,g,b)'
+        # 提取 rgb 数值，方便生成带透明度的 rgba
+        import re
+        nums = re.findall(r'\d+', accent_rgb)
+        r, g, b = int(nums[0]), int(nums[1]), int(nums[2])
+        self.table_widget.setStyleSheet(f'''
+            QTableWidget {{
                 background-color: transparent;
-                border: 1px solid rgba(0, 229, 255, 0.3);
+                border: 1px solid rgba({r}, {g}, {b}, 0.3);
                 border-radius: 6px;
-                gridline-color: rgba(0, 229, 255, 0.15);
+                gridline-color: rgba({r}, {g}, {b}, 0.15);
                 outline: none;
-            }
-            QTableWidget::item {
+            }}
+            QTableWidget::item {{
                 padding: 6px 8px;
                 border: none;
-            }
-            QTableWidget::item:selected {
-                background-color: rgba(0, 229, 255, 0.15);
+            }}
+            QTableWidget::item:selected {{
+                background-color: rgba({r}, {g}, {b}, 0.15);
                 color: #ffffff;
-            }
-            QHeaderView::section {
-                background-color: rgba(0, 229, 255, 0.1);
-                color: rgb(0, 229, 255);
+            }}
+            QHeaderView::section {{
+                background-color: rgba({r}, {g}, {b}, 0.1);
+                color: {accent_rgb};
                 border: none;
-                border-bottom: 1px solid rgba(0, 229, 255, 0.3);
+                border-bottom: 1px solid rgba({r}, {g}, {b}, 0.3);
                 padding: 6px 8px;
                 font-weight: bold;
-            }
-            QHeaderView::section:first {
+            }}
+            QHeaderView::section:first {{
                 border-top-left-radius: 6px;
-            }
-            QHeaderView::section:last {
+            }}
+            QHeaderView::section:last {{
                 border-top-right-radius: 6px;
-            }
+            }}
         ''')
         root.addWidget(self.table_widget, 1)
 

@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 ################################################################################
 ## Form generated from reading UI file 'Super_ADB.ui'
@@ -23,11 +23,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComb
     QTextEdit, QTreeView, QVBoxLayout, QWidget)
 
 from 工具.android调试工具.收藏下拉框 import 收藏下拉框
-
-try:
-    import png_rc  # noqa: F401
-except ImportError:
-    pass
+import png_rc
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -922,7 +918,7 @@ class Ui_MainWindow(object):
         self.btnStopApp.setText(QCoreApplication.translate("MainWindow", u"\u5173\u95ed", None))
         self.btnpm.setText(QCoreApplication.translate("MainWindow", u"\u76d1\u63a7", None))
         self.lblPkg.setText(QCoreApplication.translate("MainWindow", u"\u5305\u540d:", None))
-        self.btnAppInfo.setText(QCoreApplication.translate("MainWindow", u"包信息获取", None))
+        self.btnAppInfo.setText(QCoreApplication.translate("MainWindow", u"\u5305\u4fe1\u606f\u83b7\u53d6", None))
         self.btnClearApp.setText(QCoreApplication.translate("MainWindow", u"\u6e05\u7406\u6570\u636e", None))
         self.btnStartApp.setText(QCoreApplication.translate("MainWindow", u"\u542f\u52a8", None))
         self.pkgInput.setPlaceholderText(QCoreApplication.translate("MainWindow", u"com.example.app", None))

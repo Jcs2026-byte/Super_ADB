@@ -3,7 +3,7 @@
 ADB Shell 整合工具 —— 主入口
 ==============================
 整合常用 ADB 快捷命令、文件管理器、日志查看器于一体。
-UI 布局由 Super_ADB.ui 定义，通过 Ui_MainWindow 驱动。
+UI 布局由 Super_ADB悦.ui 定义，通过 Ui_MainWindow 驱动。
 Super_ADB
 # -*- coding: UTF-8 -*-
 @author:JCS
@@ -360,7 +360,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover)
         self.setMouseTracking(True)
-        # 窗口标题由 .ui 文件 (Super_ADB.ui) 的 windowTitle 定义，
+        # 窗口标题由 .ui 文件 (Super_ADB悦.ui) 的 windowTitle 定义，
         # 这里不再硬覆盖，保持 UI 与逻辑分离。
         # 页面容器不再用工具栏最小宽度顶住 splitter，
         # 修复左侧折叠/窗口变窄后右侧内容溢出被裁剪、需手动拉窗口才恢复的问题
@@ -582,7 +582,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self.btnWirelessDebug.clicked.connect(self.打开无线调试)
         self.wifiBtn.clicked.connect(self.打开wifi)
         self.pcapParserBtn.clicked.connect(self.打开pcap解析器)
-        # PCAP解析 / IP扫描 两按钮已定义在 ui/Super_ADB.ui（便捷工具区 col5/col6），
+        # PCAP解析 / IP扫描 两按钮已定义在 ui/Super_ADB悦.ui（便捷工具区 col5/col6），
         # 由 setupUi 创建，此处仅连接信号
         self.ipScanBtn.clicked.connect(self.打开ip扫描)
         # 输出
@@ -1588,8 +1588,17 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         if not serial or not pkg:
             return
         from 对话框.包信息对话框 import 包信息对话框
-        dlg = 包信息对话框(self.adb, serial, pkg, self._current_theme, parent=self)
-        dlg.show()
+        # 存到 self 上，避免局部变量被垃圾回收导致弹窗一闪而过
+        if not hasattr(self, '_包信息对话框实例'):
+            self._包信息对话框实例 = None
+        # 如果旧对话框还开着，先关掉
+        if self._包信息对话框实例 is not None:
+            try:
+                self._包信息对话框实例.close()
+            except Exception:
+                pass
+        self._包信息对话框实例 = 包信息对话框(self.adb, serial, pkg, self._current_theme, parent=self)
+        self._包信息对话框实例.show()
 
     def 列出第三方应用(self):
         serial = self._确保序列号()
@@ -1635,7 +1644,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
     # PC 本机 IP 输入框（系统操作栏）
     # ------------------------------------------------------------------
     def _初始化电脑ip输入(self):
-        """系统操作栏「PC本机IP」输入框与「tcpdump 抓包」按钮已在 ui/Super_ADB.ui
+        """系统操作栏「PC本机IP」输入框与「tcpdump 抓包」按钮已在 ui/Super_ADB悦.ui
         的 sysGroup 顶部定义（pcIpLabel / pcIpInput / btnRefreshIp / btnTcpdump），
         由 setupUi 创建。这里只补设动态属性与信号连接（控件本身不再由代码 new）。"""
         self.pcIpInput.setPlaceholderText('本机IP:端口')

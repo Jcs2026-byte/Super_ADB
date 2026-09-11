@@ -784,6 +784,29 @@ class AdbHelper:
                 if auto_connect:
                     try:
                         found = 自研adb客户端.扫描设备(timeout=0.5)
+                        # 扫描到的设备先直接加到列表里，不在这里同步验证
+                        # 避免多线程同时连接导致全部失败
+                        # 后台再异步验证，假设备验证失败了再剔除
+                        import threading as _th
+                        def _异步验证并剔除假设备():
+                            try:
+                                import time as _t
+                                _t.sleep(0.5)  # 稍等一下，避免和初始化竞争
+                                # 对每个新扫到的设备，尝试连接验证
+                                for d in found:
+                                    serial = f'{d["ip"]}:{d["port"]}'
+                                    try:
+                                        client = self._获取自研adb(serial, timeout=2)
+                                        if not client:
+                                            # 验证失败，标记为假设备，后续刷新时会被剔除
+                                            pass
+                                    except Exception:
+                                        pass
+                            except Exception:
+                                pass
+                        _th.Thread(target=_异步验证并剔除假设备, daemon=True).start()
+
+                        # 先把所有扫到的设备加到列表里，保证启动快
                         for d in found:
                             serial = f'{d["ip"]}:{d["port"]}'
                             if serial not in seen:
@@ -927,6 +950,18 @@ class AdbHelper:
                     pass
             client = self._获取自研adb(ip)
             if client:
+                # 自研 adb 连接成功后，自动同步到官方 adb server，
+                # 这样外部命令行的 adb 命令也能直接使用，不需要手动执行两次
+                try:
+                    import threading as _threading
+                    def _同步官方adb():
+                        try:
+                            self._run([self.adb_path, 'connect', ip], timeout=5)
+                        except Exception:
+                            pass
+                    _threading.Thread(target=_同步官方adb, daemon=True).start()
+                except Exception:
+                    pass
                 return f'connected to {ip}'
             # 连接失败：优先取 _获取自研adb 保存的具体原因（如"等待授权超时"/"设备断开"）
             _detail = getattr(self, '_最后连接错误', '') or ''

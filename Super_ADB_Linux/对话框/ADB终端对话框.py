@@ -26,6 +26,8 @@ from PySide6.QtGui import QFont, QIcon, QColor, QTextCursor
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QComboBox, QPushButton,
     QLabel, QLineEdit, QPlainTextEdit, QSizePolicy,
+    QTableWidget, QTableWidgetItem, QHeaderView, QInputDialog, QMessageBox,
+    QScrollArea, QWidget,
 )
 
 from 项目UI import png_rc  # noqa: F401
@@ -89,11 +91,15 @@ class ADB终端对话框(QDialog):
         self._输出残余 = b''  # 防止 ANSI 序列被 ADB 流分割的残余缓冲区
         self._不完整行 = ''  # 行级残余缓冲：上一包末尾不完整的行
 
+        # 加载自定义命令配置
+        self._自定义命令配置文件 = '配置/终端自定义命令.json'
+        self._自定义命令列表 = self._加载自定义命令()
+
         # 窗口设置
         self.setWindowTitle("adb shell 交互式终端")
         self.setWindowIcon(QIcon(":/Super_ADB.png"))
-        self.setMinimumSize(700, 450)
-        self.resize(820, 520)
+        self.setMinimumSize(900, 600)
+        self.resize(1100, 750)
         self.setAcceptDrops(True)  # 支持拖文件进来追加路径
         self._theme_id = get_current_theme_id(self)
         self.setStyleSheet(get_stylesheet(self._theme_id))
@@ -233,6 +239,34 @@ class ADB终端对话框(QDialog):
         doc = self.output.document()
         doc.setDocumentMargin(4)
         root.addWidget(self.output, 1)
+
+        # 自定义命令快捷按钮行
+        custom_row = QHBoxLayout()
+        custom_row.setSpacing(6)
+        # 自定义命令按钮滚动区域
+        self.custom_scroll = QScrollArea()
+        self.custom_scroll.setWidgetResizable(True)
+        self.custom_scroll.setFixedHeight(38)
+        self.custom_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.custom_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.custom_scroll.setStyleSheet('QScrollArea { background: transparent; border: none; }')
+        # 按钮容器
+        self._custom_btn_container = QWidget()
+        self._custom_btn_container.setStyleSheet('background: transparent;')
+        self._自定义按钮容器 = QHBoxLayout(self._custom_btn_container)
+        self._自定义按钮容器.setContentsMargins(2, 0, 2, 0)
+        self._自定义按钮容器.setSpacing(6)
+        self.custom_scroll.setWidget(self._custom_btn_container)
+        custom_row.addWidget(self.custom_scroll, 1)
+        # 右下角：自定义配置按钮
+        self.btn_custom_config = QPushButton('⚙ 常用命令配置')
+        self.btn_custom_config.setFixedWidth(130)
+        self.btn_custom_config.setToolTip('配置自定义快捷命令')
+        self.btn_custom_config.clicked.connect(self._打开自定义配置)
+        custom_row.addWidget(self.btn_custom_config)
+        root.addLayout(custom_row)
+        # 初始刷新自定义按钮
+        self._刷新自定义按钮()
 
         # 底部输入栏
         bottom = QHBoxLayout()
@@ -734,17 +768,19 @@ class ADB终端对话框(QDialog):
     def showEvent(self, event):
         """窗口显示时异步加载设备列表（不阻塞UI，避免弹窗延迟出现）。"""
         super().showEvent(event)
-        # 后台线程加载设备列表（自研模式下 USB枚举+局域网扫描 耗时2-4秒）
-        import threading as _th
-        def _加载():
-            try:
-                if hasattr(self._主窗口, 'adb'):
-                    devices = self._主窗口.adb.获取设备列表()
-                    current = self._主窗口.当前序列号()
-                    self._设备列表已加载.emit(devices, current or '')
-            except Exception:
-                pass
-        _th.Thread(target=_加载, daemon=True).start()
+        # 直接用主窗口已加载好的设备列表，不需要重新扫描
+        try:
+            devices = []
+            combo = getattr(self._主窗口, 'deviceCombo', None)
+            if combo:
+                for i in range(combo.count()):
+                    serial = combo.itemData(i)
+                    if serial:
+                        devices.append({'serial': serial, 'model': '', 'state': 'device'})
+            current = self._主窗口.当前序列号()
+            self._设备列表已加载.emit(devices, current or '')
+        except Exception:
+            pass
 
     def _设备列表加载完成(self, devices, current):
         """后台线程加载完成 → 主线程更新下拉框。"""
@@ -757,3 +793,259 @@ class ADB终端对话框(QDialog):
             # 自动连接到当前选中的设备（延迟避免与 UI 初始化竞争）
             if self._shell is None or self._shell.已关闭:
                 QTimer.singleShot(300, lambda: self._连接终端(current))
+
+    # ── 自定义快捷命令 ──
+
+    def _加载自定义命令(self):
+        """从配置文件加载自定义命令列表。"""
+        from 工具.android调试工具.ADB工具 import 加载json配置
+        data = 加载json配置(self._自定义命令配置文件)
+        if isinstance(data, list):
+            return data
+        return []
+
+    def _保存自定义命令(self):
+        """保存自定义命令列表到配置文件。"""
+        from 工具.android调试工具.ADB工具 import 保存json配置
+        保存json配置(self._自定义命令配置文件, self._自定义命令列表)
+
+    def _刷新自定义按钮(self):
+        """根据配置刷新自定义命令按钮显示。"""
+        # 清除旧按钮
+        while self._自定义按钮容器.count():
+            item = self._自定义按钮容器.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+        # 创建新按钮（固定宽度，不拉伸）
+        for cmd in self._自定义命令列表:
+            name = cmd.get('name', '')
+            if not name:
+                continue
+            btn = QPushButton(name)
+            btn.setFixedHeight(28)
+            btn.setMinimumWidth(80)
+            btn.setMaximumWidth(160)
+            btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            btn.setToolTip(cmd.get('command', ''))
+            cmd_text = cmd.get('command', '')
+            btn.clicked.connect(lambda checked=False, t=cmd_text: self._填充命令到输入框(t))
+            self._自定义按钮容器.addWidget(btn)
+
+    def _填充命令到输入框(self, command):
+        """点击自定义按钮 → 把命令填充到输入框。"""
+        self.input_edit.setText(command)
+        self.input_edit.setFocus()
+
+    def _打开自定义配置(self):
+        """打开自定义命令配置对话框。"""
+        dlg = _自定义命令配置对话框(self._自定义命令列表, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._自定义命令列表 = dlg.获取配置()
+            self._保存自定义命令()
+            self._刷新自定义按钮()
+
+
+class _自定义命令配置对话框(QDialog):
+    """自定义快捷命令配置对话框：增删改查。"""
+
+    def __init__(self, commands, parent=None):
+        super().__init__(parent)
+        self._commands = [c.copy() for c in commands]  # 深拷贝，取消时不影响原列表
+        self.setWindowTitle('自定义快捷命令配置')
+        self.setMinimumSize(560, 460)
+        self._theme_id = get_current_theme_id(self)
+        self.setStyleSheet(get_stylesheet(self._theme_id))
+
+        # 内层亮边卡片（与其他弹窗同款）
+        self.card, _ = _create_popup_card(self, self._theme_id)
+
+        self._构建UI()
+        self._刷新列表()
+
+    def _构建UI(self):
+        root = QVBoxLayout(self.card)
+        root.setSpacing(8)
+        root.setContentsMargins(14, 14, 14, 14)
+
+        # 命令表格（两列：名称 + 内容）
+        self.table_widget = QTableWidget(0, 2)
+        self.table_widget.setHorizontalHeaderLabels(['名称', '内容'])
+        self.table_widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.table_widget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.table_widget.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table_widget.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table_widget.doubleClicked.connect(self._编辑当前选中)
+        # 隐藏行号列
+        self.table_widget.verticalHeader().setVisible(False)
+        # 表格样式：跟随主题 accent 颜色
+        accent_rgb = THEMES[self._theme_id]['accent']  # 格式: 'rgb(r,g,b)'
+        # 提取 rgb 数值，方便生成带透明度的 rgba
+        import re
+        nums = re.findall(r'\d+', accent_rgb)
+        r, g, b = int(nums[0]), int(nums[1]), int(nums[2])
+        self.table_widget.setStyleSheet(f'''
+            QTableWidget {{
+                background-color: transparent;
+                border: 1px solid rgba({r}, {g}, {b}, 0.3);
+                border-radius: 6px;
+                gridline-color: rgba({r}, {g}, {b}, 0.15);
+                outline: none;
+            }}
+            QTableWidget::item {{
+                padding: 6px 8px;
+                border: none;
+            }}
+            QTableWidget::item:selected {{
+                background-color: rgba({r}, {g}, {b}, 0.15);
+                color: #ffffff;
+            }}
+            QHeaderView::section {{
+                background-color: rgba({r}, {g}, {b}, 0.1);
+                color: {accent_rgb};
+                border: none;
+                border-bottom: 1px solid rgba({r}, {g}, {b}, 0.3);
+                padding: 6px 8px;
+                font-weight: bold;
+            }}
+            QHeaderView::section:first {{
+                border-top-left-radius: 6px;
+            }}
+            QHeaderView::section:last {{
+                border-top-right-radius: 6px;
+            }}
+        ''')
+        root.addWidget(self.table_widget, 1)
+
+        # 按钮行
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(6)
+
+        self.btn_add = QPushButton('添加')
+        self.btn_add.clicked.connect(self._添加命令)
+        btn_row.addWidget(self.btn_add)
+
+        self.btn_edit = QPushButton('编辑')
+        self.btn_edit.clicked.connect(self._编辑当前选中)
+        btn_row.addWidget(self.btn_edit)
+
+        self.btn_del = QPushButton('删除')
+        self.btn_del.clicked.connect(self._删除命令)
+        btn_row.addWidget(self.btn_del)
+
+        btn_row.addStretch()
+
+        self.btn_ok = QPushButton('确定')
+        self.btn_ok.clicked.connect(self.accept)
+        btn_row.addWidget(self.btn_ok)
+
+        self.btn_cancel = QPushButton('取消')
+        self.btn_cancel.clicked.connect(self.reject)
+        btn_row.addWidget(self.btn_cancel)
+
+        root.addLayout(btn_row)
+
+    def _刷新列表(self):
+        self.table_widget.setRowCount(len(self._commands))
+        for i, cmd in enumerate(self._commands):
+            name_item = QTableWidgetItem(cmd.get('name', ''))
+            name_item.setData(Qt.ItemDataRole.UserRole, i)
+            self.table_widget.setItem(i, 0, name_item)
+            self.table_widget.setItem(i, 1, QTableWidgetItem(cmd.get('command', '')))
+            self.table_widget.setRowHeight(i, 32)
+
+    def _添加命令(self):
+        dlg = _命令编辑对话框(parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            name, command = dlg.获取值()
+            if name:
+                self._commands.append({'name': name, 'command': command})
+                self._刷新列表()
+
+    def _编辑当前选中(self):
+        row = self.table_widget.currentRow()
+        if row < 0:
+            return
+        self._编辑命令_at(row)
+
+    def _编辑命令_at(self, idx):
+        if idx < 0 or idx >= len(self._commands):
+            return
+        old = self._commands[idx]
+        dlg = _命令编辑对话框(
+            name=old.get('name', ''),
+            command=old.get('command', ''),
+            parent=self
+        )
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            name, command = dlg.获取值()
+            if name:
+                self._commands[idx] = {'name': name, 'command': command}
+                self._刷新列表()
+
+    def _删除命令(self):
+        row = self.table_widget.currentRow()
+        if row < 0 or row >= len(self._commands):
+            return
+        name = self._commands[row].get('name', '')
+        reply = QMessageBox.question(
+            self, '确认删除', f'确定删除命令「{name}」吗？',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            del self._commands[row]
+            self._刷新列表()
+
+    def 获取配置(self):
+        """返回当前配置的命令列表。"""
+        return self._commands
+
+
+class _命令编辑对话框(QDialog):
+    """编辑单个命令的对话框：名称 + 内容同时编辑。"""
+
+    def __init__(self, name='', command='', parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('编辑命令')
+        self.setMinimumSize(440, 260)
+        self._theme_id = get_current_theme_id(self)
+        self.setStyleSheet(get_stylesheet(self._theme_id))
+
+        # 内层亮边卡片（与其他弹窗同款）
+        self.card, _ = _create_popup_card(self, self._theme_id)
+
+        self._构建UI(name, command)
+
+    def _构建UI(self, name, command):
+        root = QVBoxLayout(self.card)
+        root.setSpacing(10)
+        root.setContentsMargins(14, 14, 14, 14)
+
+        # 名称输入
+        name_layout = QHBoxLayout()
+        name_layout.addWidget(QLabel('名称:'))
+        self.name_edit = QLineEdit(name)
+        self.name_edit.setPlaceholderText('按钮显示名称，如：查看日志')
+        name_layout.addWidget(self.name_edit, 1)
+        root.addLayout(name_layout)
+
+        # 内容输入（多行）
+        root.addWidget(QLabel('命令内容:'))
+        self.command_edit = QPlainTextEdit(command)
+        self.command_edit.setPlaceholderText('要执行的命令，如：logcat -d | grep AndroidRuntime')
+        root.addWidget(self.command_edit, 1)
+
+        # 按钮行
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        self.btn_ok = QPushButton('确定')
+        self.btn_ok.clicked.connect(self.accept)
+        btn_row.addWidget(self.btn_ok)
+        self.btn_cancel = QPushButton('取消')
+        self.btn_cancel.clicked.connect(self.reject)
+        btn_row.addWidget(self.btn_cancel)
+        root.addLayout(btn_row)
+
+    def 获取值(self):
+        """返回 (名称, 内容)。"""
+        return self.name_edit.text().strip(), self.command_edit.toPlainText().strip()

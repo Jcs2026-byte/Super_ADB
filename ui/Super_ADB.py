@@ -918,7 +918,7 @@ class Ui_MainWindow(object):
         self.btnStopApp.setText(QCoreApplication.translate("MainWindow", u"\u5173\u95ed", None))
         self.btnpm.setText(QCoreApplication.translate("MainWindow", u"\u76d1\u63a7", None))
         self.lblPkg.setText(QCoreApplication.translate("MainWindow", u"\u5305\u540d:", None))
-        self.btnAppInfo.setText(QCoreApplication.translate("MainWindow", u"path", None))
+        self.btnAppInfo.setText(QCoreApplication.translate("MainWindow", u"\u5305\u4fe1\u606f\u83b7\u53d6", None))
         self.btnClearApp.setText(QCoreApplication.translate("MainWindow", u"\u6e05\u7406\u6570\u636e", None))
         self.btnStartApp.setText(QCoreApplication.translate("MainWindow", u"\u542f\u52a8", None))
         self.pkgInput.setPlaceholderText(QCoreApplication.translate("MainWindow", u"com.example.app", None))

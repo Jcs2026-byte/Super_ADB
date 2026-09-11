@@ -1,7 +1,7 @@
 [
   {
-    "name": "1",
-    "command": "2"
+    "name": "ls",
+    "command": "ls"
   },
   {
     "name": "23",

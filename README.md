@@ -46,10 +46,15 @@ c
 - 多设备同时监控，日志导出保存
 
 ### 💻 ADB 交互式终端
+![img.png](docs/adbshell命令行.png)
+注意  这个进入adb shell 了，不是cmd 命令行，部分cmd命令 不适用，需要替换成 shell ,
+例如：adb shell pm dump com.migu.aijia | findstr version    findstr要改成grep
+adb shell pm dump com.migu.aijia | grep version发送，会自动改成shell 命令 pm dump com.migu.aijia | grep version
 - 自研 ADB 协议栈驱动，支持 TCP + USB 双通道
 - 命令历史（上下箭头）、Ctrl+C / Ctrl+D、清屏
 - **常用命令快捷按钮**：自定义常用命令，点击自动填充到输入框，支持增删改查、持久化保存
 - ANSI 转义序列过滤，深色终端风格
+- 支持设置常用命令、命令历史记录、命令别名
 
 ### 📊 性能监控
 - 设备级：CPU 多核分核/内存/温度/FPS/网络速率
@@ -130,6 +135,8 @@ python 项目启动入口/Super_ADB_主入口.py
 ![Super_ADB](docs/ci打包警告.png)
 - 安装包是通过 CI 打包的，会被打上网络标签，因为没钱买签名所有第一次运行会提示未知警告，点击允许允许即可，
 - 本地打的包不会被打上网络来源标签不会触发警告
+
+解压后找个盘放一下，右击执行文件创建快捷方式放桌面就行
 
 | 平台 | 产物 |
 |------|------|

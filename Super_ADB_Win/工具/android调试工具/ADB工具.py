@@ -363,18 +363,17 @@ class AdbHelper:
             self._用协议客户端 = adb_cfg.get('socket_direct', False)
             self._用自研adb = adb_cfg.get('self_built', False)
             self._用系统adb = adb_cfg.get('system_adb', False)
-            # 全新安装（三项均未配置）时默认自研 ADB，避免无官方 adb 时无法连接
+            # 全新安装（三项均未配置）时默认使用系统环境变量的 ADB
             if not (self._用协议客户端 or self._用自研adb or self._用系统adb):
-                self._用自研adb = True
+                self._用系统adb = True
         except Exception as e:
-            # 配置加载失败（如干净打包后未包含 配置/ 目录）：默认自研 adb，
-            # 避免静默回退到官方 adb 导致用户困惑。
+            # 配置加载失败（如干净打包后未包含 配置/ 目录）：默认使用系统环境变量的 ADB
             import logging as _lg
             _lg.getLogger(__name__).warning(
-                'ADB 配置加载失败（%s），默认使用自研 adb。请确认 配置/Super_ADB配置.json 存在。', e)
+                'ADB 配置加载失败（%s），默认使用系统环境变量的 ADB。请确认 配置/Super_ADB配置.json 存在。', e)
             self._用协议客户端 = False
-            self._用自研adb = True
-            self._用系统adb = False
+            self._用自研adb = False
+            self._用系统adb = True
 
         # 如果勾选了使用系统环境变量的 adb，强制用 PATH 中的 adb（排除项目自带的）
         # 即使没找到也用 'adb'（让系统去 PATH 中找），绝不回退到内置 adb
@@ -459,16 +458,16 @@ class AdbHelper:
             self._用协议客户端 = adb_cfg.get('socket_direct', False)
             self._用自研adb = adb_cfg.get('self_built', False)
             self._用系统adb = adb_cfg.get('system_adb', False)
-            # 全新安装（三项均未配置）时默认自研 ADB，避免无官方 adb 时无法连接
+            # 全新安装（三项均未配置）时默认使用系统环境变量的 ADB
             if not (self._用协议客户端 or self._用自研adb or self._用系统adb):
-                self._用自研adb = True
+                self._用系统adb = True
         except Exception as e:
             import logging as _lg
             _lg.getLogger(__name__).warning(
-                '刷新设置时配置加载失败（%s），默认使用自研 adb。', e)
+                '刷新设置时配置加载失败（%s），默认使用系统环境变量的 ADB。', e)
             self._用协议客户端 = False
-            self._用自研adb = True
-            self._用系统adb = False
+            self._用自研adb = False
+            self._用系统adb = True
 
         # 如果勾选了使用系统环境变量的 adb，强制用 PATH 中的 adb（排除项目自带的）
         # 即使没找到也用 'adb'（让系统去 PATH 中找），绝不回退到内置 adb
@@ -681,8 +680,14 @@ class AdbHelper:
         # 自研 ADB 模式：不依赖官方 adb，直接返回可用
         if self._用自研adb:
             return True
+        # 系统adb/socket模式：直接调用subprocess检测，不通过_run（避免启动时向日志栏输出adb命令）
         try:
-            r = self._run([self.adb_path, 'version'], timeout=10)
+            import subprocess as _sp
+            r = _sp.run(
+                [self.adb_path, 'version'],
+                capture_output=True, text=True, timeout=10,
+                creationflags=CREATE_NO_WINDOW,
+            )
             return r.returncode == 0
         except Exception:
             return False
@@ -734,18 +739,15 @@ class AdbHelper:
                             self.log_callback(f'[自研adb] USB 枚举跳过: {_e}')
                         except Exception:
                             pass
-                # 1) 局域网扫描
-                if self.log_callback:
-                    try:
-                        self.log_callback('$ 局域网扫描 ADB 设备 [自研adb]')
-                    except Exception:
-                        pass
-                found = 自研adb客户端.扫描设备(timeout=0.5)
-                for d in found:
-                    serial = f'{d["ip"]}:{d["port"]}'
-                    if serial not in seen:
-                        seen.add(serial)
-                        devices.append({'serial': serial, 'model': '', 'state': 'device'})
+                # 1) 局域网扫描（已禁用：避免自动扫描影响他人设备）
+                # 改为只显示已连接的设备，与官方 adb devices 行为一致
+                # found = 自研adb客户端.扫描设备(timeout=0.5)
+                # for d in found:
+                #     serial = f'{d["ip"]}:{d["port"]}'
+                #     if serial not in seen:
+                #         seen.add(serial)
+                #         devices.append({'serial': serial, 'model': '', 'state': 'device'})
+
                 # 2) 连接池中已连接的设备（可能扫描超时没扫到，但已认证连接）
                 try:
                     for host, port in 获取已连接设备():
@@ -2020,6 +2022,11 @@ echo "___END___"'''
         # 再启动官方 scrcpy；adbd 支持多连接，与自研直连并存。
         if ':' in serial:
             try:
+                # ★ 投屏前先清理残留官方 adb 进程：单客户设备只允许 1 个连接，
+                # 残留的 adb server 会抢占槽位，导致自研直连和投屏都失败。
+                # 干净启动后再 adb connect，确保槽位干净。
+                self._清理残留adb()
+                time.sleep(0.5)  # 等旧进程完全退出
                 connect_adb = getattr(self, 'adb_path', None) or 查找内置adb路径() or 'adb'
                 connect_kwargs = {}
                 if sys.platform == 'win32':

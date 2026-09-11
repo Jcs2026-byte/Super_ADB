@@ -739,18 +739,15 @@ class AdbHelper:
                             self.log_callback(f'[自研adb] USB 枚举跳过: {_e}')
                         except Exception:
                             pass
-                # 1) 局域网扫描
-                if self.log_callback:
-                    try:
-                        self.log_callback('$ 局域网扫描 ADB 设备 [自研adb]')
-                    except Exception:
-                        pass
-                found = 自研adb客户端.扫描设备(timeout=0.5)
-                for d in found:
-                    serial = f'{d["ip"]}:{d["port"]}'
-                    if serial not in seen:
-                        seen.add(serial)
-                        devices.append({'serial': serial, 'model': '', 'state': 'device'})
+                # 1) 局域网扫描（已禁用：避免自动扫描影响他人设备）
+                # 改为只显示已连接的设备，与官方 adb devices 行为一致
+                # found = 自研adb客户端.扫描设备(timeout=0.5)
+                # for d in found:
+                #     serial = f'{d["ip"]}:{d["port"]}'
+                #     if serial not in seen:
+                #         seen.add(serial)
+                #         devices.append({'serial': serial, 'model': '', 'state': 'device'})
+
                 # 2) 连接池中已连接的设备（可能扫描超时没扫到，但已认证连接）
                 try:
                     for host, port in 获取已连接设备():

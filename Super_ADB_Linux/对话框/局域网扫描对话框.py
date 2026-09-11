@@ -703,10 +703,8 @@ class 局域网扫描对话框(QDialog):
             self.btn_connect_all.setEnabled(True)
             self.btn_copy_all.setEnabled(True)
             self._resort_by_latency()
-            # 扫描完成后对所有发现设备异步回填机型（不管是否已连接，
-            # 未连接设备自研adb连接失败则静默跳过，不影响UI）。
-            for ip in self._found_ips:
-                self._enrich_after_connect(ip)
+            # 扫描完成后**不自动连接**获取机型名，避免抢占单客户设备的连接槽位。
+            # 只有用户手动点击「连接」按钮后，才在连接成功的回调里回填机型名。
         elif total_scanned > 0:
             # 全部离线时也加一行提示
             self.table.insertRow(0)

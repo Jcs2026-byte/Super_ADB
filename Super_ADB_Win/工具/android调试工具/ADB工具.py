@@ -774,14 +774,23 @@ class AdbHelper:
                 except Exception:
                     # USB 枚举失败静默跳过（没有 USB 设备是常态）
                     pass
-                # 1) 局域网扫描（已禁用：避免自动扫描影响他人设备）
-                # 改为只显示已连接的设备，与官方 adb devices 行为一致
-                # found = 自研adb客户端.扫描设备(timeout=0.5)
-                # for d in found:
-                #     serial = f'{d["ip"]}:{d["port"]}'
-                #     if serial not in seen:
-                #         seen.add(serial)
-                #         devices.append({'serial': serial, 'model': '', 'state': 'device'})
+                # 1) 局域网扫描（仅在用户开启「自动连接」时执行，默认不扫描避免影响他人）
+                try:
+                    cfg = 加载json配置('配置/Super_ADB配置.json')
+                    auto_connect = bool(cfg.get('adb', {}).get('auto_connect', False))
+                except Exception:
+                    auto_connect = False
+
+                if auto_connect:
+                    try:
+                        found = 自研adb客户端.扫描设备(timeout=0.5)
+                        for d in found:
+                            serial = f'{d["ip"]}:{d["port"]}'
+                            if serial not in seen:
+                                seen.add(serial)
+                                devices.append({'serial': serial, 'model': '', 'state': 'device'})
+                    except Exception:
+                        pass
 
                 # 2) 连接池中已连接的设备（可能扫描超时没扫到，但已认证连接）
                 try:

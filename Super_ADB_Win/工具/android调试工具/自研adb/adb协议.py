@@ -2025,6 +2025,12 @@ class AdbConnection:
 # ─────────────────── 局域网扫描 ───────────────────
 
 def 扫描局域网设备(port: int = 5555, timeout: float = 0.5, 网段: str = None) -> list:
+    """局域网扫描。只做 TCP 端口探测，不发送 CNXN 消息，避免触发设备端连接逻辑。
+
+    之前发送 CNXN 验证的方式会触发单客户设备的连接槽位抢占，
+    导致别人的设备被踢掉。现在只检测 5555 端口是否开放，
+    不建立真正的 adb 连接，用户需要用的时候再手动连接。
+    """
     if 网段 is None:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -2035,79 +2041,25 @@ def 扫描局域网设备(port: int = 5555, timeout: float = 0.5, 网段: str = 
         except Exception:
             网段 = '192.168.1.'
 
-    import struct as _struct
-
-    # ADB CNXN 消息常量
-    _CNXN = 0x4e584e43
-    _AUTH = 0x48545541
-
-    def _验证adb设备(ip):
-        """TCP 连上后发送 CNXN 验证是否真的是 ADB 设备。"""
+    def _端口开放(ip):
+        """只做 TCP connect 探测，不发送任何数据，避免触发设备端连接逻辑。"""
         try:
             s = socket.create_connection((ip, port), timeout=timeout)
-            try:
-                # 发送 CNXN 消息
-                banner = b'host::features=shell_v2,cmd'
-                checksum = sum(banner) & 0xffffffff
-                header = _struct.pack('<IIIIII',
-                    _CNXN,          # command
-                    0x01000000,    # version
-                    1048576,       # max_payload
-                    len(banner),   # data_length
-                    checksum,      # data_checksum
-                    _CNXN ^ 0xffffffff  # magic
-                )
-                s.sendall(header + banner)
-                s.settimeout(2.0)
-                # 读取 24 字节响应头
-                resp = b''
-                while len(resp) < 24:
-                    chunk = s.recv(24 - len(resp))
-                    if not chunk:
-                        break
-                    resp += chunk
-                if len(resp) < 24:
-                    return None
-                # 解析响应
-                cmd, arg0, arg1, data_len, data_crc, magic = _struct.unpack('<IIIIII', resp)
-                # 验证 magic
-                if magic != (cmd ^ 0xffffffff):
-                    return None
-                # 验证 data_len 合理性
-                if data_len > 1024 * 1024:
-                    return None
-                # 必须是 AUTH 或 CNXN 响应
-                if cmd not in (_AUTH, _CNXN):
-                    return None
-                # AUTH 时 arg0 应为 1
-                if cmd == _AUTH and arg0 != 1:
-                    return None
-                # 读取可能的 payload（banner）
-                if data_len > 0 and data_len < 1024:
-                    try:
-                        payload = s.recv(data_len)
-                        # payload 应以 "host::" 开头
-                        if payload and b'host::' in payload:
-                            pass  # 确认是 ADB banner
-                    except Exception:
-                        pass
-                return {'ip': ip, 'port': port}
-            finally:
-                s.close()
+            s.close()
+            return True
         except Exception:
-            return None
+            return False
 
     devices = []
     ips = [f'{网段}{i}' for i in range(1, 255)]
     with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
-        futures = {executor.submit(_验证adb设备, ip): ip for ip in ips}
+        futures = {executor.submit(_端口开放, ip): ip for ip in ips}
         for future in concurrent.futures.as_completed(futures):
             result = future.result()
             if result:
-                devices.append(result)
+                devices.append({'ip': futures[future], 'port': port})
     devices.sort(key=lambda d: [int(x) for x in d['ip'].split('.')])
     return devices
-
 
 def 测试连接(host: str, port: int = 5555):
     print(f'连接 {host}:{port}...')

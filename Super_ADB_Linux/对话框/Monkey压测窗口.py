@@ -347,7 +347,6 @@ class Monkey压测窗口(QWidget):
 
     _line_arrived = Signal(str)
     _version_ready = Signal(str, str)  # text, stylesheet
-    _pause_state_ready = Signal(bool, str)  # is_resume, message
     _tombstone_done = Signal(bool, str)     # ok, message
     # 后台监视/读输出线程结束时回主线程收尾。
     # 后台线程不能调 QTimer.singleShot（无事件循环，回调永不触发），
@@ -372,8 +371,6 @@ class Monkey压测窗口(QWidget):
         self._proc_returncode = None  # 由 _watch_proc 设置
         self._monkey_log_fh = None    # 落盘日志文件句柄
         self._monkey_log_path = ''
-        self._paused = False
-        self._monkey_pid = None
         self._event_stats = {}
         self._recorded_events = []
         self._pending_touch = None
@@ -402,7 +399,6 @@ class Monkey压测窗口(QWidget):
 
         self._line_arrived.connect(self._append_log)
         self._version_ready.connect(self._apply_version_text)
-        self._pause_state_ready.connect(self._on_pause_state_ready)
         self._tombstone_done.connect(self._on_tombstone_done)
         self._proc_ended.connect(self._on_finished)
 
@@ -589,10 +585,6 @@ class Monkey压测窗口(QWidget):
         self.btn_stop.setFixedWidth(100)
         self.btn_stop.setEnabled(False)
         self.btn_stop.clicked.connect(self._stop)
-        self.btn_pause = QPushButton('⏸ 暂停')
-        self.btn_pause.setFixedWidth(100)
-        self.btn_pause.setEnabled(False)
-        self.btn_pause.clicked.connect(self._toggle_pause)
         self.btn_replay = QPushButton('↻ 回放')
         # ★ 悬浮提示：说明回放功能用途
         self.btn_replay.setToolTip(
@@ -610,7 +602,6 @@ class Monkey压测窗口(QWidget):
         self.btn_replay.clicked.connect(self._open_replay)
         bar.addWidget(self.btn_run)
         bar.addWidget(self.btn_stop)
-        bar.addWidget(self.btn_pause)
         bar.addWidget(self.btn_replay)
         bar.addStretch(1)
         self.status_label = QLabel('就绪')
@@ -810,88 +801,6 @@ class Monkey压测窗口(QWidget):
         except Exception:
             pass
 
-    # ---- 暂停 / 继续（给 monkey 进程发 SIGSTOP/SIGCONT） ----
-    def _toggle_pause(self):
-        if not self._running:
-            return
-        if self._paused:
-            self._resume_monkey()
-        else:
-            self._pause_monkey()
-
-    def _pause_monkey(self):
-        pid = self._find_monkey_pid()
-        if not pid:
-            self.status_label.setText('未找到 monkey 进程')
-            self.status_label.setStyleSheet('color: #ffab40;')
-            return
-        self._send_signal(pid, '-STOP')
-
-    def _resume_monkey(self):
-        pid = self._find_monkey_pid()
-        if not pid:
-            self.status_label.setText('未找到 monkey 进程')
-            self.status_label.setStyleSheet('color: #ffab40;')
-            return
-        self._send_signal(pid, '-CONT')
-
-    def _find_monkey_pid(self) -> str:
-        """通过 pidof / ps 找设备上 monkey 进程 PID。"""
-        try:
-            r = subprocess.run(
-                [self._adb.adb_path, '-s', self._serial, 'shell',
-                 'pidof', '-s', 'com.android.commands.monkey'],
-                capture_output=True, text=True, encoding='utf-8', errors='replace',
-                creationflags=CREATE_NO_WINDOW, timeout=5)
-            pid = r.stdout.strip().split()[0] if r.stdout.strip() else ''
-            if pid.isdigit():
-                return pid
-        except Exception:
-            pass
-        # fallback：ps -A | grep monkey
-        try:
-            r = subprocess.run(
-                [self._adb.adb_path, '-s', self._serial, 'shell', 'ps -A | grep monkey'],
-                capture_output=True, text=True, encoding='utf-8', errors='replace',
-                creationflags=CREATE_NO_WINDOW, timeout=5)
-            for ln in (r.stdout or '').splitlines():
-                parts = ln.split()
-                if 'monkey' in ln and len(parts) > 1 and parts[1].isdigit():
-                    return parts[1]
-        except Exception:
-            pass
-        return ''
-
-    def _send_signal(self, pid: str, sig: str):
-        def _task():
-            try:
-                r = subprocess.run(
-                    [self._adb.adb_path, '-s', self._serial, 'shell', 'kill', sig, pid],
-                    capture_output=True, text=True, encoding='utf-8', errors='replace',
-                    creationflags=CREATE_NO_WINDOW, timeout=5)
-                is_cont = sig == '-CONT'
-                if r.returncode == 0:
-                    self._pause_state_ready.emit(is_cont, '已继续' if is_cont else '已暂停')
-                else:
-                    self._pause_state_ready.emit(is_cont, f'发送 {sig} 失败: {r.stderr or r.stdout}')
-            except Exception as e:
-                self._pause_state_ready.emit(False, f'信号发送异常: {e}')
-        threading.Thread(target=_task, daemon=True).start()
-
-    def _on_pause_state_ready(self, is_cont: bool, msg: str):
-        if not self._running:
-            return
-        if is_cont:
-            self._paused = False
-            self.btn_pause.setText('⏸ 暂停')
-            self.status_label.setText('运行中…')
-            self.status_label.setStyleSheet('color: #1de9b6;')
-        else:
-            self._paused = True
-            self.btn_pause.setText('▶ 继续')
-            self.status_label.setText(f'已暂停 · {msg}')
-            self.status_label.setStyleSheet('color: #ffab40;')
-
     # ---- 落盘日志 ----
     def _open_monkey_log(self, pkg):
         """打开落盘日志文件 <pkg>_<timestamp>.log（桌面/Super_ADB）。"""
@@ -1031,9 +940,6 @@ class Monkey压测窗口(QWidget):
         if 用自研:
             # 自研模式：用自研adb后台线程执行，不用官方adb
             self._append_log(f'$ 自研adb shell {" ".join(args)}', 'info')
-            # 自研模式下没有独立进程，暂停/继续功能不可用
-            self.btn_pause.setEnabled(False)
-            self._append_log('[提示] 自研模式下不支持暂停/继续功能', 'info')
             # 后台线程执行monkey，读取输出
             def _自研执行():
                 try:
@@ -1508,6 +1414,16 @@ class Monkey压测窗口(QWidget):
         dlg = ReplayDialog(self._serial, self._recorded_events, adb=self._adb, parent=self)
         dlg.setAttribute(Qt.WA_DeleteOnClose)
         self._replay_dlg = dlg  # 保持引用，防止被 GC
+        # 回放时禁用运行和回放按钮，防止冲突
+        self.btn_run.setEnabled(False)
+        self.btn_replay.setEnabled(False)
+        # 回放窗口关闭后恢复按钮状态
+        def _on_replay_closed():
+            self.btn_run.setEnabled(True)
+            # 只有之前有事件才恢复回放按钮
+            if self._recorded_events:
+                self.btn_replay.setEnabled(True)
+        dlg.destroyed.connect(_on_replay_closed)
         dlg.show()
         dlg.raise_()
         dlg.activateWindow()

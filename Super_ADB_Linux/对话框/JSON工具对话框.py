@@ -22,9 +22,10 @@ UI 完全以代码构建，沿用 Super_ADB 的深色主题（界面样式.STYLE
 """
 import html
 import json
+import os
 import re
 
-from PySide6.QtCore import Qt, QSize, QRect
+from PySide6.QtCore import Qt, QSize, QRect, QMimeData, Signal
 from PySide6.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QHBoxLayout, QTabWidget,
     QLabel, QPushButton, QComboBox, QTextEdit, QSplitter, QApplication,
@@ -280,6 +281,76 @@ class 圆角树控件(QTreeWidget):
         rect = self.rect().adjusted(0.5, 0.5, -0.5, -0.5)
         painter.drawRoundedRect(rect, self._radius, self._radius)
         painter.end()
+
+
+# ─────────────────── 支持拖放文件的文本编辑框 ───────────────────
+class DragDropTextEdit(QTextEdit):
+    """支持将 .json 文件直接拖入并自动读取内容的 QTextEdit。"""
+
+    file_dropped = Signal(str)  # 拖入文件成功后发射完整路径
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self._drag_active = False
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            if urls and urls[0].isLocalFile():
+                event.acceptProposedAction()
+                self._drag_active = True
+                self._update_drag_highlight()
+                return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            super().dragMoveEvent(event)
+
+    def dragLeaveEvent(self, event):
+        self._drag_active = False
+        self._update_drag_highlight()
+        super().dragLeaveEvent(event)
+
+    def dropEvent(self, event):
+        self._drag_active = False
+        self._update_drag_highlight()
+        mime = event.mimeData()
+        if not mime.hasUrls():
+            super().dropEvent(event)
+            return
+        urls = mime.urls()
+        if not urls or not urls[0].isLocalFile():
+            super().dropEvent(event)
+            return
+        file_path = urls[0].toLocalFile()
+        try:
+            content = self._read_file_smart(file_path)
+            self.setPlainText(content)
+            event.acceptProposedAction()
+            self.file_dropped.emit(file_path)
+        except Exception as e:
+            self.setPlainText(f'读取文件失败: {e}')
+
+    @staticmethod
+    def _read_file_smart(path):
+        for enc in ('utf-8-sig', 'utf-8', 'gbk', 'latin-1'):
+            try:
+                with open(path, 'r', encoding=enc) as f:
+                    return f.read()
+            except UnicodeDecodeError:
+                continue
+        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+            return f.read()
+
+    def _update_drag_highlight(self):
+        if self._drag_active:
+            self.setStyleSheet('QTextEdit { border: 2px dashed #1de9b6; }')
+        else:
+            self.setStyleSheet('')
 
 
 # ─────────────────── 历史记录下拉（复用 收藏下拉框 模式） ───────────────────
@@ -812,6 +883,9 @@ class Json工具对话框(对话框基类):
         self.resize(960, 680)
         self._theme_id = self._主题id  # 兼容旧代码引用
         self._accent = THEMES[self._主题id]['accent']
+        self.diffA_filepath = ''
+        self.diffB_filepath = ''
+        self._last_diff_result = None
         # setWindowFlags 后需重设样式（Window 标志会重置部分样式）
         self.setStyleSheet(get_stylesheet(self._theme_id))
 
@@ -837,6 +911,7 @@ class Json工具对话框(对话框基类):
         self.btnFix.clicked.connect(self._fix_json)
         self.btnJsonTree.clicked.connect(self._open_json_tree_popup)
         self.btnDiff.clicked.connect(self._do_diff)
+        self.btnExportHtml.clicked.connect(self._export_diff_html)
 
         self.historyCombo.activated.connect(
             lambda _: self.fmtInput.setPlainText(self.historyCombo.current_full()))
@@ -1015,14 +1090,27 @@ class Json工具对话框(对话框基类):
         hl.setSpacing(10)
 
         lv = QVBoxLayout()
-        lv.addWidget(QLabel('原始 JSON'))
-        self.diffA = self._mono_textedit(placeholder='原始 JSON')
+        self.diffALabel = QLabel('原始 JSON（可直接拖入 .json 文件）')
+        lv.addWidget(self.diffALabel)
+        self.diffA = DragDropTextEdit()
+        _font = QFont('Consolas')
+        _font.setStyleHint(QFont.Monospace)
+        _font.setPointSize(11)
+        self.diffA.setFont(_font)
+        self.diffA.setAcceptRichText(False)
+        self.diffA.setPlaceholderText('原始 JSON，或直接拖入 .json 文件')
+        self.diffA.file_dropped.connect(self._on_diff_a_file)
         lv.addWidget(self.diffA, 1)
         hl.addLayout(lv, 1)
 
         rv = QVBoxLayout()
-        rv.addWidget(QLabel('对比 JSON'))
-        self.diffB = self._mono_textedit(placeholder='目标 JSON')
+        self.diffBLabel = QLabel('对比 JSON（可直接拖入 .json 文件）')
+        rv.addWidget(self.diffBLabel)
+        self.diffB = DragDropTextEdit()
+        self.diffB.setFont(_font)
+        self.diffB.setAcceptRichText(False)
+        self.diffB.setPlaceholderText('目标 JSON，或直接拖入 .json 文件')
+        self.diffB.file_dropped.connect(self._on_diff_b_file)
         rv.addWidget(self.diffB, 1)
         hl.addLayout(rv, 1)
 
@@ -1033,8 +1121,13 @@ class Json工具对话框(对话框基类):
         bl.setContentsMargins(0, 0, 0, 0)
         self.btnDiff = QPushButton('开始对比')
         self.btnDiff.setMinimumWidth(120)
+        self.btnExportHtml = QPushButton('导出 HTML 报告')
+        self.btnExportHtml.setMinimumWidth(120)
+        self.btnExportHtml.setToolTip('将详细对比结果导出为独立 HTML 文件')
         bl.addStretch(1)
         bl.addWidget(self.btnDiff)
+        bl.addSpacing(20)
+        bl.addWidget(self.btnExportHtml)
         bl.addStretch(1)
         splitter.addWidget(btn_row)
 
@@ -1135,6 +1228,21 @@ class Json工具对话框(对话框基类):
         self.dictOutput = self._mono_textedit(read_only=True)
         v.addWidget(self.dictOutput, 1)
         return w
+
+    # ─────────────── 差异对比：拖入文件后更新标签显示文件名 ───────────────
+    def _on_diff_a_file(self, path):
+        self.diffA_filepath = path
+        self._update_diff_label(self.diffALabel, '原始 JSON', path)
+
+    def _on_diff_b_file(self, path):
+        self.diffB_filepath = path
+        self._update_diff_label(self.diffBLabel, '对比 JSON', path)
+
+    def _update_diff_label(self, label, base_text, file_path):
+        import os
+        fname = os.path.basename(file_path)
+        label.setText(f'{base_text}　📄 {fname}')
+        label.setStyleSheet('color: #1de9b6; font-weight: bold;')
 
     # ─────────────── 滚动同步 ───────────────
     def _sync_scroll(self, sender, targets, value):
@@ -1331,6 +1439,15 @@ class Json工具对话框(对话框基类):
             + '\n'.join(html_lines) + '</pre>'
         )
 
+        # 保存最近一次对比结果供导出使用
+        self._last_diff_result = {
+            'file_a': self.diffA_filepath,
+            'file_b': self.diffB_filepath,
+            'text_a': sorted_a,
+            'text_b': sorted_b,
+            'diff_parsed': self._parse_diff(diff),
+        }
+
     @staticmethod
     def _parse_diff(diff_result):
         lines = []
@@ -1359,6 +1476,187 @@ class Json工具对话框(对话框基类):
                 .replace('&', '&amp;')
                 .replace('<', '&lt;')
                 .replace('>', '&gt;'))
+
+    @staticmethod
+    def _desktop_dir():
+        """真实桌面路径（兼容 OneDrive 重定向），失败回退 ~/Desktop。"""
+        try:
+            import ctypes
+            from ctypes import wintypes
+            folderid_desktop = '{B4BFCC3A-DB2C-424C-B029-7FE99A87C641}'
+            fn = ctypes.windll.shell32.SHGetKnownFolderPath
+            fn.argtypes = [ctypes.c_wchar_p, wintypes.DWORD, wintypes.HANDLE,
+                           ctypes.POINTER(ctypes.c_wchar_p)]
+            fn.restype = wintypes.HRESULT
+            p = ctypes.c_wchar_p()
+            if fn(folderid_desktop, 0, None, ctypes.byref(p)) == 0 and p.value:
+                return p.value
+        except Exception:
+            pass
+        return os.path.join(os.path.expanduser('~'), 'Desktop')
+
+    # ─────────────── 功能：导出差异对比 HTML 报告 ───────────────
+    def _export_diff_html(self):
+        if not self._last_diff_result:
+            self.diffOutput.setPlainText('请先点击「开始对比」，再导出 HTML 报告。')
+            return
+        import os
+        import datetime
+        import difflib
+
+        r = self._last_diff_result
+        text_a = r['text_a']
+        text_b = r['text_b']
+        lines_a = text_a.splitlines()
+        lines_b = text_b.splitlines()
+
+        name_a = os.path.basename(r['file_a']) if r['file_a'] else '原始 JSON'
+        name_b = os.path.basename(r['file_b']) if r['file_b'] else '对比 JSON'
+
+        stats = {'same': 0, 'add': 0, 'remove': 0, 'change': 0}
+        for tag, _ in r['diff_parsed']:
+            if tag in stats:
+                stats[tag] += 1
+
+        hd = difflib.HtmlDiff(tabsize=2)
+        table_html = hd.make_table(
+            lines_a, lines_b,
+            fromdesc=name_a, todesc=name_b,
+            context=False, numlines=2)
+
+        now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        esc = self._esc
+
+        css = """
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: #1e2127; color: #d7dade;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  .container { max-width: 1400px; margin: 0 auto; }
+  h1 { color: #1de9b6; margin: 0 0 4px 0; font-size: 22px; }
+  .meta { color: #888; font-size: 13px; margin-bottom: 20px; }
+  .files { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .file-card {
+    flex: 1; min-width: 280px;
+    background: #2b2f36; border-radius: 10px; padding: 14px 18px;
+    border-left: 4px solid;
+  }
+  .file-card.a { border-left-color: #e57373; }
+  .file-card.b { border-left-color: #81c784; }
+  .file-card .label { font-size: 12px; color: #888; margin-bottom: 4px; }
+  .file-card .name { font-size: 15px; font-weight: bold; color: #fff; word-break: break-all; }
+  .stats { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  .stat {
+    flex: 1; min-width: 120px;
+    background: #2b2f36; border-radius: 10px; padding: 14px; text-align: center;
+  }
+  .stat .num { font-size: 28px; font-weight: bold; }
+  .stat .lbl { font-size: 12px; color: #999; margin-top: 4px; }
+  .stat.same .num { color: #aaa; }
+  .stat.add .num { color: #81c784; }
+  .stat.remove .num { color: #e57373; }
+  .stat.change .num { color: #ffd54f; }
+  .legend {
+    background: #2b2f36; border-radius: 10px; padding: 12px 18px;
+    margin-bottom: 16px; font-size: 13px; color: #bbb;
+  }
+  .legend span { margin-right: 18px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+         margin-right: 6px; vertical-align: middle; }
+  table.diff {
+    width: 100%; border-collapse: collapse;
+    background: #1b1d22; border-radius: 10px; overflow: hidden;
+    font-family: Consolas, "Courier New", monospace; font-size: 13px;
+  }
+  table.diff th, table.diff td {
+    padding: 4px 10px; vertical-align: top;
+    border-bottom: 1px solid #2a2d33; white-space: pre-wrap;
+    word-break: break-all;
+  }
+  table.diff th { background: #20232a; color: #9aa0a6; text-align: left; }
+  table.diff td.diff_header { color: #666; text-align: right; width: 50px;
+                               user-select: none; }
+  table.diff .diff_add { background: #1a3a1a; color: #81c784; }
+  table.diff .diff_chg { background: #3a3a1a; color: #ffd54f; }
+  table.diff .diff_sub { background: #3a1a1a; color: #e57373; }
+  table.diff .diff { background: transparent; }
+  footer { margin-top: 24px; color: #666; font-size: 12px; text-align: center; }
+"""
+
+        html_doc = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>JSON 对比报告 - {esc(name_a)} vs {esc(name_b)}</title>
+<style>{css}</style>
+</head>
+<body>
+<div class="container">
+  <h1>📊 JSON 差异对比报告</h1>
+  <div class="meta">生成时间：{now}</div>
+  <div class="files">
+    <div class="file-card a">
+      <div class="label">原始文件（左侧）</div>
+      <div class="name">{esc(name_a)}</div>
+    </div>
+    <div class="file-card b">
+      <div class="label">对比文件（右侧）</div>
+      <div class="name">{esc(name_b)}</div>
+    </div>
+  </div>
+  <div class="stats">
+    <div class="stat same"><div class="num">{stats['same']}</div><div class="lbl">相同行</div></div>
+    <div class="stat add"><div class="num">{stats['add']}</div><div class="lbl">新增行</div></div>
+    <div class="stat remove"><div class="num">{stats['remove']}</div><div class="lbl">删除行</div></div>
+    <div class="stat change"><div class="num">{stats['change']}</div><div class="lbl">修改行</div></div>
+  </div>
+  <div class="legend">
+    <span><span class="dot" style="background:#81c784;"></span>新增（右侧多出）</span>
+    <span><span class="dot" style="background:#e57373;"></span>删除（左侧有、右侧无）</span>
+    <span><span class="dot" style="background:#ffd54f;"></span>修改（两侧都有但内容不同）</span>
+    <span><span class="dot" style="background:#aaa;"></span>相同</span>
+  </div>
+  <h3 style="color:#bbb;">详细差异（左右对照）</h3>
+  {table_html}
+  <footer>由 Super_ADB JSON 工具生成 · 已对 JSON Key 排序后逐行对比</footer>
+</div>
+</body>
+</html>"""
+
+        # 默认保存到 桌面/Super_ADB（与日志导出同一目录）
+        save_dir = os.path.join(self._desktop_dir(), 'Super_ADB')
+        try:
+            os.makedirs(save_dir, exist_ok=True)
+        except Exception:
+            save_dir = self._desktop_dir()
+
+        # 文件名：日期 + A文件名 + B文件名_对比结果.html
+        def _safe_stem(p):
+            if not p:
+                return '未命名'
+            stem = os.path.splitext(os.path.basename(p))[0]
+            # 去掉文件名中的非法字符
+            for ch in r'\\/:*?"<>|':
+                stem = stem.replace(ch, '_')
+            return stem
+
+        date_str = datetime.datetime.now().strftime('%Y%m%d')
+        fname = f'{date_str}_{_safe_stem(r["file_a"])}_{_safe_stem(r["file_b"])}_对比结果.html'
+        default_path = os.path.join(save_dir, fname)
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, '导出 HTML 对比报告', default_path,
+            'HTML 文件 (*.html)')
+        if not path:
+            return
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(html_doc)
+            self.diffOutput.append('\n✅ 报告已导出: ' + path)
+        except Exception as e:
+            self.diffOutput.append('\n❌ 导出失败: ' + str(e))
 
     # ─────────────── 功能：JSON 树 ───────────────
     def _open_json_tree_popup(self):

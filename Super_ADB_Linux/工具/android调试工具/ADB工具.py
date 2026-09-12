@@ -309,6 +309,7 @@ class AdbHelper:
     _类级_自研adb缓存: dict = {}       # serial -> 自研adb客户端（TCP）
     _类级_自研adb_usb缓存: dict = {}   # serial -> UsbAdbConnection（USB）
     _类级_重连锁: dict = {}            # serial -> threading.Lock，执行shell失败重连时防多线程雪崩
+    _类级_最近重连时间: dict = {}      # serial -> time.time()，5秒冷却期内不再自动重连，防雪崩
     _类级_自研adb锁 = None             # 在首次使用前按需创建（避免 import 时引入 threading 副作用）
     _最近断开的设备: dict = {}          # serial -> 断开时间戳，10秒冷却期内不显示在设备列表中
     # 缓存回写日志回调：首个缓存成功的实例会保存 log_callback，
@@ -1221,8 +1222,19 @@ class AdbHelper:
                     if serial in self._自研adb缓存:
                         client = self._自研adb缓存[serial]
                     else:
+                        # ★ 防雪崩冷却：5秒内已重连过的设备不再反复重建 TCP+AUTH，
+                        # 直接报错让 UI 显示，避免自动刷新定时器每3秒触发一轮
+                        # "失败→杀缓存→重连→又失败"死循环刷屏。
+                        import time as _t
+                        now = _t.time()
+                        last = AdbHelper._类级_最近重连时间.get(serial, 0)
+                        if now - last < 5.0:
+                            raise AdbError(
+                                f'自研adb执行失败（{int(now - last)}秒前刚重连过仍失败，'
+                                f'请检查设备无线调试状态后重试）')
                         # 只从缓存移除，不关闭（其他线程可能在用）
                         self._自研adb缓存.pop(serial, None)
+                        AdbHelper._类级_最近重连时间[serial] = now
                         client = self._获取自研adb(serial)
                     if client:
                         try:
@@ -3104,20 +3116,17 @@ class AdbFileManager(AdbHelper):
 
     def _单客户ls重试(self, serial, path, ls_path):
         """单客户设备（网络直连 IP:port）ls 空输出/失败时的容错：
-        清理残留官方 adb server 释放唯一槽位，重建自研连接后重试一次。
+        重建自研连接后重试一次。
 
         仅由 列出目录 在「serial 含 ':' + 空输出或异常」时调用，
-        普通设备不受影响。
+        普通设备不受影响。自研模式下官方 adb 本就没在跑，无需杀进程。
         """
-        self._log(f'[文件] 单客户设备 ls 异常/为空，清理官方 server 残留并重试: {ls_path}')
-        # 1) 杀残留官方 adb server（后台执行），释放 adbd 唯一 TCP 槽位
-        self._清理残留adb()
-        # 2) 丢弃自研连接缓存，强制下次重建（旧连接不主动 close，
-        #    与 执行shell 重连策略一致，避免并发线程误用已关连接）
+        self._log(f'[文件] ls 异常/为空，重建自研连接后重试: {ls_path}')
+        # 丢弃自研连接缓存，强制下次重建（旧连接不主动 close，
+        # 与 执行shell 重连策略一致，避免并发线程误用已关连接）
         with self._自研adb锁:
             self._自研adb缓存.pop(serial, None)
-        time.sleep(0.8)  # 等官方 server 退出
-        # 3) 重试一次；失败向上抛（让 UI 显示具体错误而非静默 0 项）
+        # 重试一次；失败向上抛（让 UI 显示具体错误而非静默 0 项）
         out = self.执行shell(serial, f'ls -la "{ls_path}"', timeout=20)
         return self._解析ls输出(out, path)
 

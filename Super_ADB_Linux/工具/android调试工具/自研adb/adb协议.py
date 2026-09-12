@@ -1251,7 +1251,7 @@ class AdbConnection:
         # 按流 ID 过滤报文：旧流（如上次客户端超时放弃的流）的残留 WRTE/CLSE
         # 可能晚到。绝不能裸清接收缓冲区——recv 会撕裂报文，残留半截字节
         # 会把后续解析全部带偏（假 CLSE → 误报「设备关闭连接」）。
-        for _ in range(10):
+        for _ in range(30):
             msg = self._接收消息()
             if msg.command == CMD_OKAY:
                 if msg.arg1 != local_id:
@@ -1261,7 +1261,6 @@ class AdbConnection:
                 return local_id
             if msg.command == CMD_WRTE:
                 if msg.arg1 != local_id:
-                    # 旧流数据：按协议回 OKAY 免得设备端流控卡住，丢弃内容
                     try:
                         self._回OKAY(msg.arg1, msg.arg0, len(msg.payload))
                     except Exception:
@@ -1272,23 +1271,24 @@ class AdbConnection:
                 continue
             if msg.command == CMD_CLSE:
                 if msg.arg1 != local_id:
-                    # 旧流关闭包：按协议回 CLSE，继续等本次 OPEN 的应答
                     try:
                         self._发送(AdbMessage(CMD_CLSE, msg.arg1, msg.arg0))
                     except Exception:
                         pass
                     continue
-                # 设备确实拒绝本次服务：按协议回 CLSE
                 try:
                     self._发送(AdbMessage(CMD_CLSE, local_id, msg.arg0))
                 except Exception:
                     pass
                 if _重试 > 0:
-                    # 部分设备 adbd 在高频开流时会瞬时拒绝 OPEN，短延时重试一次
                     time.sleep(0.3)
                     return self.打开服务(service, _重试 - 1)
                 raise RuntimeError(f"打开服务失败，设备关闭连接: {service}")
-            # 其他类型报文视为残留，丢弃
+        # 30 次仍未收到 OKAY：上一个 shell 流关闭后的残留消息可能占满了循环。
+        # 短延时后重新 OPEN 重试一次（残留已在循环中被处理掉）。
+        if _重试 > 0:
+            time.sleep(0.3)
+            return self.打开服务(service, _重试 - 1)
         raise RuntimeError(f"打开服务失败，未收到 OKAY: {service}")
 
     def _读取主机服务(self, service: str, timeout: float = 5.0) -> bytes:

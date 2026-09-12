@@ -415,8 +415,33 @@ class 弹窗打开Mixin:
 
     def _on_adb_settings_changed(self):
         """环境配置对话框中 ADB 设置（socket_direct / self_built）变更时触发。"""
+        # 模式切换前：自动停掉正在运行的文件管理 / 日志抓取，
+        # 避免旧通道（官方 adb subprocess / 自研 shell 流）残留导致错乱。
+        try:
+            fm = getattr(self, 'file_mgr', None)
+            if fm is not None and getattr(fm, '_device_mgr_on', False):
+                fm.btn_device_mgr.setChecked(False)
+                fm._on_toggle_device_mgr()
+        except Exception:
+            pass
+        try:
+            lv = getattr(self, 'log_viewer', None)
+            if lv is not None and getattr(lv, '_capturing', False):
+                lv._stop_capture()
+        except Exception:
+            pass
+
         if hasattr(self, 'adb') and self.adb is not None:
             self.adb.刷新设置()
+        # 子页面各自持有独立的 AdbHelper / AdbFileManager 实例，必须同步刷新，
+        # 否则切换到自研模式后文件管理/日志仍走官方 adb subprocess，报 waiting for device。
+        for page_attr in ('file_mgr', 'log_viewer'):
+            page = getattr(self, page_attr, None)
+            if page is not None and hasattr(page, '_mgr'):
+                try:
+                    page._mgr.刷新设置()
+                except Exception:
+                    pass
         self._更新命令行按钮文字()
         self.刷新设备()
 

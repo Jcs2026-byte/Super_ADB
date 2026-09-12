@@ -36,7 +36,10 @@ class 设备管理Mixin:
         self.pool.start(worker)
 
     def _设备加载完成时(self, devices):
-        online = [d for d in devices if d.get('state') == 'device']
+        # 防御：上游信号偶发传入 bool/None 等非列表值，统一兜底
+        if not isinstance(devices, (list, tuple)):
+            devices = []
+        online = [d for d in devices if isinstance(d, dict) and d.get('state') == 'device']
         # 选中优先级：刚连上的设备 > 原选中设备
         select = self._pending_select_serial
         self._pending_select_serial = None
@@ -58,7 +61,7 @@ class 设备管理Mixin:
             self.log_viewer.sync_devices(online, select)
         # 同步 ADB 终端弹窗（自研模式专属，弹窗可能已打开）
         if getattr(self, '_adb_终端_dialog', None) is not None and self._adb_终端_dialog.isVisible():
-            self._adb_终端_dialog.sync_devices(devices, select)
+            self._adb_终端_dialog.sync_devices(online, select)
 
     def 连接设备(self):
         from 项目启动入口.Super_ADB_主入口 import 命令工作器
@@ -79,6 +82,27 @@ class 设备管理Mixin:
 
     def _连接完成时(self, result):
         self.日志(str(result))
+        # 连接成功后，添加到历史记录
+        try:
+            from 对话框.历史连接设备对话框 import 添加历史设备
+            ip = self.ipInput.text().strip()
+            if ip:
+                # 解析端口
+                if ':' in ip:
+                    host, port = ip.rsplit(':', 1)
+                    port = int(port)
+                else:
+                    host = ip
+                    port = 5555
+                # 从设备列表里取设备名
+                model = ''
+                for d in self.adb.获取设备列表():
+                    if d.get('serial') == f'{host}:{port}':
+                        model = d.get('model', '')
+                        break
+                添加历史设备(host, port, model)
+        except Exception:
+            pass
         # 连接命令返回后重新扫描，让三处下拉框加载到新设备
         self.刷新设备()
 

@@ -945,47 +945,101 @@ class Monkey压测窗口(QWidget):
             f'$ adb -s {self._serial} shell {" ".join(args)}', 'info')
         self._append_log('---- Monkey 开始 ----', 'info')
 
-        # 先检查 monkey 是否可用 (部分模拟器/设备会缺 monkey)
-        monkey_available = True
-        check_cmd = [self._adb.adb_path, '-s', self._serial, 'shell', 'command', '-v', 'monkey']
+        # 先查设备能力配置，如果已知支持 monkey，就直接用；不知道就直接执行，执行完记录结果
+        monkey_available = None
         try:
-            check = subprocess.run(
-                check_cmd, capture_output=True, text=True,
-                encoding='utf-8', errors='replace',
-                creationflags=CREATE_NO_WINDOW, timeout=10)
-            if check.returncode != 0 or 'monkey' not in (check.stdout or '').lower():
-                monkey_available = False
-        except Exception as e:
-            self._append_log(f'[警告] monkey 可用性检查失败: {e}', 'error')
-            monkey_available = False
+            from 工具.android调试工具.设备能力 import 是否支持monkey, 设置monkey支持
+            from 工具.android调试工具.ADB工具 import 加载json配置
+            # 从历史记录里找当前设备的型号和系统版本
+            model = ''
+            android_ver = ''
+            history = 加载json配置('历史连接设备.json')
+            if isinstance(history, list):
+                ip = self._serial.split(':')[0]
+                for d in history:
+                    if d.get('ip') == ip:
+                        model = d.get('model', '')
+                        android_ver = d.get('system_version', '')
+                        break
+            # 查询设备能力
+            monkey_support = 是否支持monkey(model, android_ver)
+            if monkey_support is not None:
+                monkey_available = monkey_support
+                if monkey_available:
+                    self._append_log('[检查] 已知此设备支持 monkey，直接执行', 'info')
+                else:
+                    self._append_log('[检查] 已知此设备不支持 monkey，直接打开应用', 'info')
+        except Exception:
+            pass
+
+        # 如果不知道，先默认支持，直接执行，执行完记录结果
+        if monkey_available is None:
+            monkey_available = True
 
         # 设备没有 monkey → 回退到 am start 打开应用
         if not monkey_available:
-            self._append_log('[提示] 该设备无 monkey 命令，回退到 am start 方式启动应用', 'info')
+            self._append_log('[提示] 设备不支持 monkey，已打开应用', 'info')
+            # 记录到设备能力配置，标记为不支持
+            try:
+                from 工具.android调试工具.设备能力 import 设置monkey支持
+                from 工具.android调试工具.ADB工具 import 加载json配置
+                history = 加载json配置('历史连接设备.json')
+                if isinstance(history, list):
+                    ip = self._serial.split(':')[0]
+                    for d in history:
+                        if d.get('ip') == ip:
+                            设置monkey支持(d.get('model', ''), d.get('system_version', ''), False)
+                            break
+            except Exception:
+                pass
             self._fallback_am_start(args)
             return
 
-        # 启动 Popen
-        cmd = [self._adb.adb_path, '-s', self._serial, 'shell'] + args
-        try:
-            self._proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, encoding='utf-8', errors='replace',
-                bufsize=1,  # 行缓冲, 尽快拿到输出
-                creationflags=CREATE_NO_WINDOW,  # CREATE_NO_WINDOW
-            )
-        except Exception as e:
-            self._append_log(f'启动失败: {e}', 'error')
-            self._on_finished()
-            return
+        # 启动执行：自研模式用自研adb后台执行，官方模式用官方adb
+        用自研 = getattr(self._adb, '_用自研adb', False)
 
-        # 后台线程读输出
-        self._reader = threading.Thread(target=self._read_loop, daemon=True)
-        self._reader.start()
+        if 用自研:
+            # 自研模式：用自研adb后台线程执行，不用官方adb
+            self._append_log(f'$ 自研adb shell {" ".join(args)}', 'info')
+            # 后台线程执行monkey，读取输出
+            def _自研执行():
+                try:
+                    out = self._adb.执行shell(self._serial, ' '.join(args), timeout=3600)
+                    if out:
+                        for line in out.splitlines():
+                            if line.strip():
+                                self._append_log(line, 'monkey')
+                    self._proc_returncode = 0
+                except Exception as e:
+                    self._append_log(f'[错误] 自研模式执行monkey失败: {e}', 'error')
+                    self._proc_returncode = 1
+                finally:
+                    if not self._closed and self._running:
+                        self._proc_ended.emit()
+            threading.Thread(target=_自研执行, daemon=True).start()
+        else:
+            # 官方模式：用官方adb subprocess执行
+            cmd = [self._adb.adb_path, '-s', self._serial, 'shell'] + args
+            try:
+                self._proc = subprocess.Popen(
+                    cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, encoding='utf-8', errors='replace',
+                    bufsize=1,  # 行缓冲, 尽快拿到输出
+                    creationflags=CREATE_NO_WINDOW,  # CREATE_NO_WINDOW
+                )
+                self._append_log(f'$ {" ".join(cmd)}', 'info')
+            except Exception as e:
+                self._append_log(f'启动失败: {e}', 'error')
+                self._on_finished()
+                return
 
-        # 进程退出监视线程：防止 adb shell pipe 在 monkey 结束后不关闭导致读线程卡住
-        self._watcher = threading.Thread(target=self._watch_proc, daemon=True)
-        self._watcher.start()
+            # 后台线程读输出
+            self._reader = threading.Thread(target=self._read_loop, daemon=True)
+            self._reader.start()
+
+            # 进程退出监视线程：防止 adb shell pipe 在 monkey 结束后不关闭导致读线程卡住
+            self._watcher = threading.Thread(target=self._watch_proc, daemon=True)
+            self._watcher.start()
 
         self._elapsed_timer.start()
 
@@ -1080,7 +1134,7 @@ class Monkey压测窗口(QWidget):
 
         if returncode == 0 and ('Starting' in out2 or 'starting' in out2.lower()):
             self._append_log(f'应用已启动 ✓  {out2}', 'done')
-            self._append_log('提示: 设备无 monkey 命令，无法执行压测；已为你打开应用，可手动操作或换带 Google APIs 的镜像重试。', 'info')
+            self._append_log('提示: 设备不支持 monkey，已为你打开应用', 'info')
         else:
             self._append_log(f'[错误] am start 返回非零: {out2}', 'error')
 
@@ -1115,6 +1169,44 @@ class Monkey压测窗口(QWidget):
         kind 控制颜色: None=自动检测, info=青色, crash=红色,
         anr=橙色, done=绿色, error=红色
         """
+        # 检测 monkey 支持状态，只检测一次
+        if not hasattr(self, '_monkey_能力已记录'):
+            self._monkey_能力已记录 = False
+        if not self._monkey_能力已记录:
+            line_lower = line.lower()
+            # 正常的 monkey 输出，说明支持
+            if ':monkey:' in line_lower or 'events injected' in line_lower or '// monkey:' in line_lower:
+                # 记录为支持
+                try:
+                    from 工具.android调试工具.设备能力 import 设置monkey支持
+                    from 工具.android调试工具.ADB工具 import 加载json配置
+                    history = 加载json配置('历史连接设备.json')
+                    if isinstance(history, list):
+                        ip = self._serial.split(':')[0]
+                        for d in history:
+                            if d.get('ip') == ip:
+                                设置monkey支持(d.get('model', ''), d.get('system_version', ''), True)
+                                break
+                except Exception:
+                    pass
+                self._monkey_能力已记录 = True
+            # 报错，说明不支持
+            elif 'not found' in line_lower or 'no such file' in line_lower or 'unknown option' in line_lower:
+                # 记录为不支持
+                try:
+                    from 工具.android调试工具.设备能力 import 设置monkey支持
+                    from 工具.android调试工具.ADB工具 import 加载json配置
+                    history = 加载json配置('历史连接设备.json')
+                    if isinstance(history, list):
+                        ip = self._serial.split(':')[0]
+                        for d in history:
+                            if d.get('ip') == ip:
+                                设置monkey支持(d.get('model', ''), d.get('system_version', ''), False)
+                                break
+                except Exception:
+                    pass
+                self._monkey_能力已记录 = True
+
         self._pending_lines.append((line, kind))
         # 同步落盘（原始行，无 HTML 着色）
         if self._monkey_log_fh is not None:

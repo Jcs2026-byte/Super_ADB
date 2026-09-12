@@ -94,6 +94,17 @@ class 弹窗打开Mixin:
             self.adb, self.当前序列号)
         self._cert_dialog.show()
 
+    def 打开历史连接设备(self):
+        """打开历史连接设备对话框。"""
+        from 对话框.历史连接设备对话框 import 历史连接设备对话框
+        def _on_reconnect(ip, port):
+            # 把 IP:端口 填到输入框，然后连接
+            self.ipInput.setText(f"{ip}:{port}")
+            self.连接设备()
+        theme_id = getattr(self, '_current_theme', 'default')
+        dlg = 历史连接设备对话框(self.adb, on_reconnect=_on_reconnect, parent=self, theme_id=theme_id)
+        dlg.exec()
+
     def 打开命令行(self):
         """打开命令行。
         - 自研 ADB 模式：打开 ADB 交互式终端弹窗

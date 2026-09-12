@@ -573,6 +573,16 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self.btnSll.clicked.connect(self.打开证书安装对话框)
         self.btnModifiedTime.clicked.connect(self.打开修改时间对话框)
         # 便捷工具
+        # 动态创建历史连接按钮，插到 cmdBtn 前面
+        from PySide6.QtWidgets import QPushButton
+        self.btnHistoryDevices = QPushButton("🕘 历史连接")
+        self.btnHistoryDevices.setObjectName("btnHistoryDevices")
+        self.btnHistoryDevices.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btnHistoryDevices.setToolTip("查看历史连接过的设备，一键重连")
+        # 插到 cmdBtn 前面
+        cmd_index = self.horizontalLayout_2.indexOf(self.cmdBtn)
+        self.horizontalLayout_2.insertWidget(cmd_index, self.btnHistoryDevices)
+        self.btnHistoryDevices.clicked.connect(self.打开历史连接设备)
         self.cmdBtn.clicked.connect(self.打开命令行)
         self.jsonToolBtn.clicked.connect(self.打开json工具)
         self.md5Btn.clicked.connect(self.打开md5校验)
@@ -1951,6 +1961,44 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
+            # 提示是否关闭后台 adb 进程（否则无法删除软件）
+            adb_reply = QMessageBox.question(
+                self,
+                "关闭后台 ADB",
+                "后台还有调用的 adb 进程，是否关闭？\n"
+                "（选择「否」将隐藏到托盘，adb 进程继续运行）",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes
+            )
+            if adb_reply == QMessageBox.StandardButton.Yes:
+                # 先执行 adb kill-server，再 taskkill 确保杀掉所有 adb 进程
+                try:
+                    import subprocess
+                    import sys
+                    if sys.platform == 'win32':
+                        # 先 kill-server
+                        try:
+                            adb_path = getattr(self.adb, 'adb_path', 'adb')
+                            subprocess.run(
+                                [adb_path, 'kill-server'],
+                                capture_output=True, timeout=5,
+                                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                            )
+                        except Exception:
+                            pass
+                        # 再 taskkill 兜底
+                        subprocess.run(
+                            ['taskkill', '/F', '/IM', 'adb.exe', '/T'],
+                            capture_output=True, timeout=5,
+                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                        )
+                except Exception:
+                    pass
+            else:
+                # 选择「否」：隐藏到托盘，不杀进程
+                self._隐藏到托盘()
+                ev.ignore()
+                return
             self._保存几何()
             self._保存分割条3()
             self._保存默认页()
@@ -1968,6 +2016,46 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
+            # 提示是否关闭后台 adb 进程（否则无法删除软件）
+            adb_reply = QMessageBox.question(
+                self,
+                "关闭后台 ADB",
+                "后台还有调用的 adb 进程，是否关闭？\n"
+                "（选择「否」将隐藏到托盘，adb 进程继续运行）",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes
+            )
+            if adb_reply == QMessageBox.StandardButton.Yes:
+                # 后台杀 adb 进程，不阻塞 UI
+                def _杀adb进程():
+                    try:
+                        import subprocess
+                        import sys
+                        if sys.platform == 'win32':
+                            # 先 kill-server
+                            try:
+                                adb_path = getattr(self.adb, 'adb_path', 'adb')
+                                subprocess.run(
+                                    [adb_path, 'kill-server'],
+                                    capture_output=True, timeout=5,
+                                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                                )
+                            except Exception:
+                                pass
+                            # 再 taskkill 兜底
+                            subprocess.run(
+                                ['taskkill', '/F', '/IM', 'adb.exe', '/T'],
+                                capture_output=True, timeout=5,
+                                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                            )
+                    except Exception:
+                        pass
+                import threading
+                threading.Thread(target=_杀adb进程, daemon=True).start()
+            else:
+                # 选择「否」：隐藏到托盘，不杀进程
+                self._隐藏到托盘()
+                return
             self._force_close = True
             self.close()
 
@@ -2058,6 +2146,46 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
 
     def _退出应用(self):
         """托盘退出：先保存窗口几何，再退出程序。"""
+        # 提示是否关闭后台 adb 进程（否则无法删除软件）
+        adb_reply = QMessageBox.question(
+            self,
+            "关闭后台 ADB",
+            "后台还有调用的 adb 进程，是否关闭？\n"
+            "（选择「否」将隐藏到托盘，adb 进程继续运行）",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+        if adb_reply == QMessageBox.StandardButton.Yes:
+            # 后台杀 adb 进程，不阻塞 UI
+            def _杀adb进程():
+                try:
+                    import subprocess
+                    import sys
+                    if sys.platform == 'win32':
+                        # 先 kill-server
+                        try:
+                            adb_path = getattr(self.adb, 'adb_path', 'adb')
+                            subprocess.run(
+                                [adb_path, 'kill-server'],
+                                capture_output=True, timeout=5,
+                                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                            )
+                        except Exception:
+                            pass
+                        # 再 taskkill 兜底
+                        subprocess.run(
+                            ['taskkill', '/F', '/IM', 'adb.exe', '/T'],
+                            capture_output=True, timeout=5,
+                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                        )
+                except Exception:
+                    pass
+            import threading
+            threading.Thread(target=_杀adb进程, daemon=True).start()
+        else:
+            # 选择「否」：隐藏到托盘，不杀进程
+            self._隐藏到托盘()
+            return
         self._保存几何()
         self._保存分割条3()
         self._保存默认页()

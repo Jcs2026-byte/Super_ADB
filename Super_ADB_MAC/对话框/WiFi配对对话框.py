@@ -31,8 +31,8 @@ from 项目UI import png_rc  # noqa: F401
 from 项目UI.界面样式 import ACCENT, get_stylesheet, get_current_theme_id, THEMES
 from 工具.android调试工具.ADB工具 import 加载json配置, 保存json配置
 
-_PAIRED_CFG = 'wifi_paired_devices.json'      # 已配对设备指纹持久化
-_HISTORY_CFG = 'wifi_debug_history.json'      # 配对/连接操作历史
+_PAIRED_CFG = 'WiFi配对设备.json'      # 已配对设备指纹持久化
+_HISTORY_CFG = 'WiFi连接历史.json'      # 配对/连接操作历史
 
 
 class _PairWorker(QObject):
@@ -205,12 +205,8 @@ class WiFi配对对话框(QDialog):
         except Exception:
             pass
         self._refresh_paired_list()
-        # 自动重连最近一台已配对设备（WiFi 重连后某些 ROM 调试端口仍有效）
-        # ★ 仅在与本机同网段时自动重连：换 Wi-Fi 后旧记录（如 192.168.1.x）
-        #   必然超时，无条件重连会白白占用 8 秒超时并污染历史记录。
-        if self._paired:
-            QTimer.singleShot(
-                600, lambda: self._reconnect_saved(self._paired[0], auto=True))
+        # 不再自动重连已配对设备，避免打开弹窗就自动连接抢占设备槽位
+        # 用户需要的时候手动点「重连」即可
 
     # ══════════════════════════════════════════════════════════
     # UI
@@ -619,7 +615,11 @@ class WiFi配对对话框(QDialog):
             port = entry.get('debug_port', 5555)
             model = entry.get('model', '')
             row = QHBoxLayout()
-            label = QLabel(f"{ip}:{port}" + (f"  [{model}]" if model else ""))
+            # 设备名在前，IP 在后
+            if model:
+                label = QLabel(f"{model}  [{ip}:{port}]")
+            else:
+                label = QLabel(f"{ip}:{port}")
             row.addWidget(label)
             row.addStretch()
             btn_re = QPushButton("重连")
@@ -726,6 +726,23 @@ class WiFi配对对话框(QDialog):
         if ok:
             self._log(f"✅ 已重连 {msg[:60]}")
             self.status_lbl.setText(f"✅ 已重连 {msg[:60]}")
+            # 重连成功后，后台异步获取设备名，更新已配对记录
+            if entry is not None and not entry.get('model'):
+                ip = entry.get('ip')
+                debug_port = entry.get('debug_port', 5555)
+                def _异步获取并更新型号():
+                    try:
+                        from 工具.android调试工具.ADB工具 import AdbHelper
+                        import threading as _th
+                        serial = f"{ip}:{debug_port}"
+                        model = AdbHelper().执行shell(serial, "getprop ro.product.model", timeout=5).strip()
+                        if model:
+                            entry['model'] = model
+                            self._更新配对记录(entry)
+                            self._refresh_paired_list()
+                    except Exception:
+                        pass
+                _th.Thread(target=_异步获取并更新型号, daemon=True).start()
             if self._on_pair_success:
                 try:
                     self._on_pair_success()
@@ -771,20 +788,8 @@ class WiFi配对对话框(QDialog):
         self._refresh_paired_list()
 
     def _add_history(self, action, target, ok, detail=''):
-        """记录一条配对/连接操作历史。"""
-        entry = {
-            '时间': time.strftime('%Y-%m-%d %H:%M:%S'),
-            '动作': action,
-            '目标': str(target),
-            '结果': '成功' if ok else '失败',
-            '详情': (detail or '')[:200],
-        }
-        hist = 加载json配置(_HISTORY_CFG)
-        if not isinstance(hist, list):
-            hist = []
-        hist.insert(0, entry)
-        hist = hist[:200]              # 最多保留 200 条
-        保存json配置(_HISTORY_CFG, hist)
+        """记录一条配对/连接操作历史（已停用，不再生成历史文件）。"""
+        pass
 
     # ══════════════════════════════════════════════════════════
     # 工具方法

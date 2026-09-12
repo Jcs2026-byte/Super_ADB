@@ -1,0 +1,8 @@
+{
+  "ELZ-AN20_14": {
+    "model": "ELZ-AN20",
+    "android_version": "14",
+    "is_single_channel": false,
+    "支持monkey": false
+  }
+}

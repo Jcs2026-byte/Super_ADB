@@ -83,61 +83,19 @@ class _ScanWorker(QObject):
         self.finished.emit(results)
 
     def _probe(self, ip):
-        """探测单个 IP 的 ADB 端口。返回延迟(ms) 或 None（不可达）。"""
+        """探测单个 IP 的 ADB 端口。返回延迟(ms) 或 None（不可达）。
+        
+        只做纯 TCP 端口探测，不发送 CNXN 消息，避免抢占单客户设备的连接槽位。
+        """
         try:
             t0 = time.monotonic()
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(self._timeout)
                 s.connect((ip, self._port))
-                # TCP 连上后发送 CNXN 验证是否真的是 ADB 设备
-                # （过滤掉 TCP 能连但不是 ADB 服务的假设备）
-                try:
-                    import struct
-                    # ADB CNXN 消息：24字节头 + banner
-                    banner = b'host::features=shell_v2,cmd'
-                    # 正确的 checksum = sum(payload) & 0xffffffff
-                    checksum = sum(banner) & 0xffffffff
-                    CNXN = 0x4e584e43
-                    AUTH = 0x48545541
-                    header = struct.pack('<IIIIII',
-                        CNXN,         # command
-                        0x01000000,   # version
-                        1048576,      # max_payload
-                        len(banner),  # data_length
-                        checksum,     # data_checksum
-                        CNXN ^ 0xffffffff  # magic
-                    )
-                    s.sendall(header + banner)
-                    s.settimeout(3.0)
-                    # 读取完整的24字节响应头
-                    resp = b''
-                    while len(resp) < 24:
-                        chunk = s.recv(24 - len(resp))
-                        if not chunk:
-                            break
-                        resp += chunk
-                    if len(resp) < 24:
-                        return None
-                    # 解析响应头
-                    cmd, arg0, arg1, data_len, data_crc, magic = struct.unpack('<IIIIII', resp)
-                    # ★ 严格验证：magic必须是command ^ 0xffffffff
-                    expected_magic = cmd ^ 0xffffffff
-                    if magic != expected_magic:
-                        return None
-                    # ★ 验证data_length是否合理（ADB payload最大1MB）
-                    if data_len > 1024 * 1024:
-                        return None
-                    # AUTH或CNXN才是ADB设备
-                    if cmd not in (AUTH, CNXN):
-                        return None
-                    # ★ 额外验证：如果是AUTH，arg0应该是1（TOKEN）
-                    if cmd == AUTH and arg0 != 1:
-                        return None
-                except Exception:
-                    return None  # 无响应或不是 ADB，过滤掉
-                latency_ms = (time.monotonic() - t0) * 1000.0
-                return round(latency_ms, 1)
-        except Exception:
+                # TCP 连上就认为是 ADB 端口（不发 CNXN，避免抢占设备槽位）
+                latency = (time.monotonic() - t0) * 1000
+                return latency
+        except (socket.timeout, ConnectionRefusedError, OSError):
             return None
 
 
@@ -708,7 +666,7 @@ class 局域网扫描对话框(QDialog):
         elif total_scanned > 0:
             # 全部离线时也加一行提示
             self.table.insertRow(0)
-            tip = QTableWidgetItem("  未在当前网段发现 ADB 设备（端口 5555）")
+            tip = QTableWidgetItem(f"  未在当前网段发现 ADB 设备（端口 {self._port}）")
             tip.setForeground(TIP_GRAY)
             tip.setFlags(tip.flags() & ~Qt.ItemIsSelectable)
             self.table.setItem(0, 0, tip)

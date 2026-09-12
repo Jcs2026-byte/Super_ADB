@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1497</width>
+    <width>1304</width>
     <height>755</height>
    </rect>
   </property>
@@ -211,7 +211,7 @@
           <string notr="true"/>
          </property>
          <property name="currentIndex">
-          <number>1</number>
+          <number>2</number>
          </property>
          <widget class="QWidget" name="tab">
           <property name="styleSheet">
@@ -402,7 +402,7 @@
                       <rect>
                        <x>0</x>
                        <y>0</y>
-                       <width>677</width>
+                       <width>1088</width>
                        <height>110</height>
                       </rect>
                      </property>
@@ -587,7 +587,7 @@
                       <rect>
                        <x>0</x>
                        <y>0</y>
-                       <width>689</width>
+                       <width>1100</width>
                        <height>78</height>
                       </rect>
                      </property>
@@ -758,6 +758,496 @@
            </item>
           </layout>
          </widget>
+         <widget class="QWidget" name="tab_3">
+          <attribute name="title">
+           <string>文件管理与日志</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="verticalLayout_9">
+           <item>
+            <widget class="QSplitter" name="splitter_log">
+             <property name="orientation">
+              <enum>Qt::Orientation::Vertical</enum>
+             </property>
+             <widget class="QWidget" name="fileMgrContainer">
+              <layout class="QVBoxLayout" name="verticalLayout">
+               <property name="leftMargin">
+                <number>0</number>
+               </property>
+               <property name="topMargin">
+                <number>0</number>
+               </property>
+               <property name="rightMargin">
+                <number>0</number>
+               </property>
+               <property name="bottomMargin">
+                <number>0</number>
+               </property>
+               <item>
+                <layout class="QHBoxLayout" name="horizontalLayout">
+                 <item>
+                  <widget class="QLabel" name="fileMgrLblDevice">
+                   <property name="text">
+                    <string>设备:</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QComboBox" name="fileMgr_deviceCombo">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+                     <horstretch>5</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>350</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="fileMgr_btnRefresh">
+                   <property name="text">
+                    <string>刷新设备</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="fileMgr_btnDeviceMgr">
+                   <property name="toolTip">
+                    <string>打开后加载并定时刷新文件列表；关闭状态下不执行获取文件</string>
+                   </property>
+                   <property name="text">
+                    <string>打开设备管理器</string>
+                   </property>
+                   <property name="checkable">
+                    <bool>true</bool>
+                   </property>
+                   <property name="checked">
+                    <bool>false</bool>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="horizontalSpacer_5">
+                   <property name="orientation">
+                    <enum>Qt::Orientation::Horizontal</enum>
+                   </property>
+                   <property name="sizeType">
+                    <enum>QSizePolicy::Policy::Fixed</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>40</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="fileMgr_btnRoot">
+                   <property name="text">
+                    <string>根目录: /sdcard</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="fileMgrBarSpacer">
+                   <property name="orientation">
+                    <enum>Qt::Orientation::Horizontal</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>40</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="fileMgr_pathLabel">
+                   <property name="text">
+                    <string>—</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="fileMgr_statusLabel">
+                   <property name="text">
+                    <string>就绪</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <widget class="QTreeView" name="fileMgr_tree">
+                 <property name="contextMenuPolicy">
+                  <enum>Qt::ContextMenuPolicy::CustomContextMenu</enum>
+                 </property>
+                 <property name="horizontalScrollBarPolicy">
+                  <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
+                 </property>
+                 <property name="editTriggers">
+                  <set>QAbstractItemView::EditTrigger::NoEditTriggers</set>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+             <widget class="QWidget" name="logViewerContainer">
+              <layout class="QVBoxLayout" name="logViewerLayout">
+               <property name="spacing">
+                <number>6</number>
+               </property>
+               <property name="leftMargin">
+                <number>8</number>
+               </property>
+               <property name="topMargin">
+                <number>8</number>
+               </property>
+               <property name="rightMargin">
+                <number>8</number>
+               </property>
+               <property name="bottomMargin">
+                <number>8</number>
+               </property>
+               <item>
+                <layout class="QHBoxLayout" name="logViewerBar">
+                 <item>
+                  <widget class="QLabel" name="logViewerLblDevice">
+                   <property name="text">
+                    <string>设备:</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QComboBox" name="logViewer_deviceCombo">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+                     <horstretch>5</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>350</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="logViewer_btnRefresh">
+                   <property name="text">
+                    <string>刷新</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="horizontalSpacer_6">
+                   <property name="orientation">
+                    <enum>Qt::Orientation::Horizontal</enum>
+                   </property>
+                   <property name="sizeType">
+                    <enum>QSizePolicy::Policy::Fixed</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>40</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="logViewer_btnStart">
+                   <property name="text">
+                    <string>开始抓取</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="logViewer_btnPause">
+                   <property name="enabled">
+                    <bool>false</bool>
+                   </property>
+                   <property name="text">
+                    <string>暂停</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="logViewer_btnClear">
+                   <property name="text">
+                    <string>清除</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="btnLf">
+                   <property name="text">
+                    <string>打开本地文件</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="horizontalSpacer">
+                   <property name="orientation">
+                    <enum>Qt::Orientation::Horizontal</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>40</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="logViewer_statusLabel">
+                   <property name="text">
+                    <string>就绪</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="logFilterBar">
+                 <item>
+                  <widget class="QLabel" name="logFilterLblTag">
+                   <property name="text">
+                    <string>标签:</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="收藏下拉框" name="logViewer_tagCombo">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                     <horstretch>1</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>250</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="placeholderText">
+                    <string>日志 TAG</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="logViewer_tagStar">
+                   <property name="maximumSize">
+                    <size>
+                     <width>30</width>
+                     <height>30</height>
+                    </size>
+                   </property>
+                   <property name="toolTip">
+                    <string>把当前输入加入收藏</string>
+                   </property>
+                   <property name="text">
+                    <string>★</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="logFilterLblPid">
+                   <property name="text">
+                    <string>包名:</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="收藏下拉框" name="logViewer_procCombo">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                     <horstretch>1</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>250</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="placeholderText">
+                    <string>包名，如 com.xxx.app，空格分隔多个</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="logViewer_procStar">
+                   <property name="maximumSize">
+                    <size>
+                     <width>30</width>
+                     <height>30</height>
+                    </size>
+                   </property>
+                   <property name="toolTip">
+                    <string>把当前输入加入收藏</string>
+                   </property>
+                   <property name="text">
+                    <string>★</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="logFilterLblMsg">
+                   <property name="text">
+                    <string>消息:</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="收藏下拉框" name="logViewer_msgCombo">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                     <horstretch>1</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>250</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="placeholderText">
+                    <string>搜索关键字</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="logViewer_msgStar">
+                   <property name="maximumSize">
+                    <size>
+                     <width>30</width>
+                     <height>30</height>
+                    </size>
+                   </property>
+                   <property name="toolTip">
+                    <string>把当前输入加入收藏</string>
+                   </property>
+                   <property name="text">
+                    <string>★</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QCheckBox" name="logViewer_regexChk">
+                   <property name="toolTip">
+                    <string>勾选后&quot;消息&quot;过滤框按正则表达式匹配（re.search）</string>
+                   </property>
+                   <property name="text">
+                    <string>正则</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="horizontalSpacer_4">
+                   <property name="orientation">
+                    <enum>Qt::Orientation::Horizontal</enum>
+                   </property>
+                   <property name="sizeType">
+                    <enum>QSizePolicy::Policy::Fixed</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>40</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="logViewer_btnReset">
+                   <property name="text">
+                    <string>重置</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <widget class="QListWidget" name="logViewer_textEdit"/>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="logViewerBot">
+                 <item>
+                  <widget class="QCheckBox" name="logViewer_followChk">
+                   <property name="text">
+                    <string>跟随滚动</string>
+                   </property>
+                   <property name="checked">
+                    <bool>true</bool>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="logViewer_modeLabel">
+                   <property name="text">
+                    <string>未加载日志</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="logViewerBotSpacer">
+                   <property name="orientation">
+                    <enum>Qt::Orientation::Horizontal</enum>
+                   </property>
+                   <property name="sizeType">
+                    <enum>QSizePolicy::Policy::Fixed</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>40</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="logViewer_countLabel">
+                   <property name="text">
+                    <string>累计 0 行 | 匹配 0</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+              </layout>
+             </widget>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="logViewer_hlLbl">
+             <property name="text">
+              <string>高亮:</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLineEdit" name="logViewer_hlEdit">
+             <property name="toolTip">
+              <string>命中任意关键字的日志行整行背景变红</string>
+             </property>
+             <property name="placeholderText">
+              <string>高亮关键字，逗号分隔，如 Exception,ANR</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
          <widget class="QWidget" name="tab_2">
           <attribute name="title">
            <string>便捷工具</string>
@@ -788,7 +1278,7 @@
                   <rect>
                    <x>0</x>
                    <y>0</y>
-                   <width>691</width>
+                   <width>1102</width>
                    <height>169</height>
                   </rect>
                  </property>
@@ -855,7 +1345,7 @@
                   <rect>
                    <x>0</x>
                    <y>0</y>
-                   <width>691</width>
+                   <width>1102</width>
                    <height>169</height>
                   </rect>
                  </property>
@@ -912,7 +1402,7 @@
                   <rect>
                    <x>0</x>
                    <y>0</y>
-                   <width>691</width>
+                   <width>1102</width>
                    <height>169</height>
                   </rect>
                  </property>
@@ -956,493 +1446,9 @@
       </property>
       <widget class="QWidget" name="tab_5">
        <attribute name="title">
-        <string>文件管理与日志</string>
+        <string/>
        </attribute>
-       <layout class="QVBoxLayout" name="verticalLayout_4">
-        <item>
-         <widget class="QSplitter" name="splitter_log">
-          <property name="orientation">
-           <enum>Qt::Orientation::Vertical</enum>
-          </property>
-          <widget class="QWidget" name="fileMgrContainer">
-           <layout class="QVBoxLayout" name="verticalLayout">
-            <property name="leftMargin">
-             <number>0</number>
-            </property>
-            <property name="topMargin">
-             <number>0</number>
-            </property>
-            <property name="rightMargin">
-             <number>0</number>
-            </property>
-            <property name="bottomMargin">
-             <number>0</number>
-            </property>
-            <item>
-             <layout class="QHBoxLayout" name="horizontalLayout">
-              <item>
-               <widget class="QLabel" name="fileMgrLblDevice">
-                <property name="text">
-                 <string>设备:</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QComboBox" name="fileMgr_deviceCombo">
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
-                  <horstretch>5</horstretch>
-                  <verstretch>0</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>350</width>
-                  <height>0</height>
-                 </size>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="fileMgr_btnRefresh">
-                <property name="text">
-                 <string>刷新设备</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="fileMgr_btnDeviceMgr">
-                <property name="toolTip">
-                 <string>打开后加载并定时刷新文件列表；关闭状态下不执行获取文件</string>
-                </property>
-                <property name="text">
-                 <string>打开设备管理器</string>
-                </property>
-                <property name="checkable">
-                 <bool>true</bool>
-                </property>
-                <property name="checked">
-                 <bool>false</bool>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <spacer name="horizontalSpacer_5">
-                <property name="orientation">
-                 <enum>Qt::Orientation::Horizontal</enum>
-                </property>
-                <property name="sizeType">
-                 <enum>QSizePolicy::Policy::Fixed</enum>
-                </property>
-                <property name="sizeHint" stdset="0">
-                 <size>
-                  <width>40</width>
-                  <height>20</height>
-                 </size>
-                </property>
-               </spacer>
-              </item>
-              <item>
-               <widget class="QPushButton" name="fileMgr_btnRoot">
-                <property name="text">
-                 <string>根目录: /sdcard</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <spacer name="fileMgrBarSpacer">
-                <property name="orientation">
-                 <enum>Qt::Orientation::Horizontal</enum>
-                </property>
-                <property name="sizeHint" stdset="0">
-                 <size>
-                  <width>40</width>
-                  <height>20</height>
-                 </size>
-                </property>
-               </spacer>
-              </item>
-              <item>
-               <widget class="QLabel" name="fileMgr_pathLabel">
-                <property name="text">
-                 <string>—</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QLabel" name="fileMgr_statusLabel">
-                <property name="text">
-                 <string>就绪</string>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </item>
-            <item>
-             <widget class="QTreeView" name="fileMgr_tree">
-              <property name="contextMenuPolicy">
-               <enum>Qt::ContextMenuPolicy::CustomContextMenu</enum>
-              </property>
-              <property name="horizontalScrollBarPolicy">
-               <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
-              </property>
-              <property name="editTriggers">
-               <set>QAbstractItemView::EditTrigger::NoEditTriggers</set>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-          <widget class="QWidget" name="logViewerContainer">
-           <layout class="QVBoxLayout" name="logViewerLayout">
-            <property name="spacing">
-             <number>6</number>
-            </property>
-            <property name="leftMargin">
-             <number>8</number>
-            </property>
-            <property name="topMargin">
-             <number>8</number>
-            </property>
-            <property name="rightMargin">
-             <number>8</number>
-            </property>
-            <property name="bottomMargin">
-             <number>8</number>
-            </property>
-            <item>
-             <layout class="QHBoxLayout" name="logViewerBar">
-              <item>
-               <widget class="QLabel" name="logViewerLblDevice">
-                <property name="text">
-                 <string>设备:</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QComboBox" name="logViewer_deviceCombo">
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
-                  <horstretch>5</horstretch>
-                  <verstretch>0</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>350</width>
-                  <height>0</height>
-                 </size>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="logViewer_btnRefresh">
-                <property name="text">
-                 <string>刷新</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <spacer name="horizontalSpacer_6">
-                <property name="orientation">
-                 <enum>Qt::Orientation::Horizontal</enum>
-                </property>
-                <property name="sizeType">
-                 <enum>QSizePolicy::Policy::Fixed</enum>
-                </property>
-                <property name="sizeHint" stdset="0">
-                 <size>
-                  <width>40</width>
-                  <height>20</height>
-                 </size>
-                </property>
-               </spacer>
-              </item>
-              <item>
-               <widget class="QPushButton" name="logViewer_btnStart">
-                <property name="text">
-                 <string>开始抓取</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="logViewer_btnPause">
-                <property name="enabled">
-                 <bool>false</bool>
-                </property>
-                <property name="text">
-                 <string>暂停</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="logViewer_btnClear">
-                <property name="text">
-                 <string>清除</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="btnLf">
-                <property name="text">
-                 <string>打开本地文件</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <spacer name="horizontalSpacer">
-                <property name="orientation">
-                 <enum>Qt::Orientation::Horizontal</enum>
-                </property>
-                <property name="sizeHint" stdset="0">
-                 <size>
-                  <width>40</width>
-                  <height>20</height>
-                 </size>
-                </property>
-               </spacer>
-              </item>
-              <item>
-               <widget class="QLabel" name="logViewer_statusLabel">
-                <property name="text">
-                 <string>就绪</string>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </item>
-            <item>
-             <layout class="QHBoxLayout" name="logFilterBar">
-              <item>
-               <widget class="QLabel" name="logFilterLblTag">
-                <property name="text">
-                 <string>标签:</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="收藏下拉框" name="logViewer_tagCombo">
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-                  <horstretch>1</horstretch>
-                  <verstretch>0</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>250</width>
-                  <height>0</height>
-                 </size>
-                </property>
-                <property name="placeholderText">
-                 <string>日志 TAG</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="logViewer_tagStar">
-                <property name="maximumSize">
-                 <size>
-                  <width>30</width>
-                  <height>30</height>
-                 </size>
-                </property>
-                <property name="toolTip">
-                 <string>把当前输入加入收藏</string>
-                </property>
-                <property name="text">
-                 <string>★</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QLabel" name="logFilterLblPid">
-                <property name="text">
-                 <string>包名:</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="收藏下拉框" name="logViewer_procCombo">
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-                  <horstretch>1</horstretch>
-                  <verstretch>0</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>250</width>
-                  <height>0</height>
-                 </size>
-                </property>
-                <property name="placeholderText">
-                 <string>包名，如 com.xxx.app，空格分隔多个</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="logViewer_procStar">
-                <property name="maximumSize">
-                 <size>
-                  <width>30</width>
-                  <height>30</height>
-                 </size>
-                </property>
-                <property name="toolTip">
-                 <string>把当前输入加入收藏</string>
-                </property>
-                <property name="text">
-                 <string>★</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QLabel" name="logFilterLblMsg">
-                <property name="text">
-                 <string>消息:</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="收藏下拉框" name="logViewer_msgCombo">
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-                  <horstretch>1</horstretch>
-                  <verstretch>0</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>250</width>
-                  <height>0</height>
-                 </size>
-                </property>
-                <property name="placeholderText">
-                 <string>搜索关键字</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="logViewer_msgStar">
-                <property name="maximumSize">
-                 <size>
-                  <width>30</width>
-                  <height>30</height>
-                 </size>
-                </property>
-                <property name="toolTip">
-                 <string>把当前输入加入收藏</string>
-                </property>
-                <property name="text">
-                 <string>★</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QCheckBox" name="logViewer_regexChk">
-                <property name="toolTip">
-                 <string>勾选后&quot;消息&quot;过滤框按正则表达式匹配（re.search）</string>
-                </property>
-                <property name="text">
-                 <string>正则</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <spacer name="horizontalSpacer_4">
-                <property name="orientation">
-                 <enum>Qt::Orientation::Horizontal</enum>
-                </property>
-                <property name="sizeType">
-                 <enum>QSizePolicy::Policy::Fixed</enum>
-                </property>
-                <property name="sizeHint" stdset="0">
-                 <size>
-                  <width>40</width>
-                  <height>20</height>
-                 </size>
-                </property>
-               </spacer>
-              </item>
-              <item>
-               <widget class="QPushButton" name="logViewer_btnReset">
-                <property name="text">
-                 <string>重置</string>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </item>
-            <item>
-             <widget class="QListWidget" name="logViewer_textEdit"/>
-            </item>
-            <item>
-             <layout class="QHBoxLayout" name="logViewerBot">
-              <item>
-               <widget class="QCheckBox" name="logViewer_followChk">
-                <property name="text">
-                 <string>跟随滚动</string>
-                </property>
-                <property name="checked">
-                 <bool>true</bool>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QLabel" name="logViewer_modeLabel">
-                <property name="text">
-                 <string>未加载日志</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <spacer name="logViewerBotSpacer">
-                <property name="orientation">
-                 <enum>Qt::Orientation::Horizontal</enum>
-                </property>
-                <property name="sizeType">
-                 <enum>QSizePolicy::Policy::Fixed</enum>
-                </property>
-                <property name="sizeHint" stdset="0">
-                 <size>
-                  <width>40</width>
-                  <height>20</height>
-                 </size>
-                </property>
-               </spacer>
-              </item>
-              <item>
-               <widget class="QLabel" name="logViewer_countLabel">
-                <property name="text">
-                 <string>累计 0 行 | 匹配 0</string>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </item>
-           </layout>
-          </widget>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="logViewer_hlLbl">
-          <property name="text">
-           <string>高亮:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLineEdit" name="logViewer_hlEdit">
-          <property name="toolTip">
-           <string>命中任意关键字的日志行整行背景变红</string>
-          </property>
-          <property name="placeholderText">
-           <string>高亮关键字，逗号分隔，如 Exception,ANR</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
+       <layout class="QVBoxLayout" name="verticalLayout_4"/>
       </widget>
      </widget>
     </widget>

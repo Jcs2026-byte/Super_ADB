@@ -357,6 +357,8 @@ class AdbHelper:
         self._自研adb缓存 = AdbHelper._类级_自研adb缓存
         self._自研adb_usb缓存 = AdbHelper._类级_自研adb_usb缓存
         self._自研adb锁 = AdbHelper._类级_自研adb锁
+        # 设备名缓存：serial -> model，连接成功后异步获取
+        self._设备名缓存 = {}
         # 读取 ADB 配置（环境配置对话框保存到 配置/Super_ADB配置.json）
         try:
             cfg = 加载json配置('配置/Super_ADB配置.json')
@@ -594,6 +596,35 @@ class AdbHelper:
                             AdbHelper._最近断开的设备.pop(serial, None)
                         except Exception:
                             pass
+                        # 后台异步获取设备名和系统版本，存到缓存里
+                        def _异步获取设备信息(serial=serial, client=client):
+                            try:
+                                # 执行 getprop 获取设备名和系统版本
+                                model = client.执行shell('getprop ro.product.model', timeout=3).strip()
+                                android_version = client.执行shell('getprop ro.build.version.release', timeout=3).strip()
+                                if model:
+                                    self._设备名缓存[serial] = model
+                                # 更新历史连接记录里的设备信息
+                                try:
+                                    ip, port = serial.rsplit(':', 1)
+                                    history = 加载json配置('历史连接设备.json')
+                                    if isinstance(history, list):
+                                        for d in history:
+                                            if d.get('ip') == ip:
+                                                if model:
+                                                    d['model'] = model
+                                                if android_version:
+                                                    d['system_version'] = android_version
+                                                break
+                                        保存json配置('历史连接设备.json', history)
+                                except Exception:
+                                    pass
+                                if self.log_callback:
+                                    self.log_callback(f'[自研adb] 获取到设备 {serial} 型号: {model}, Android {android_version}')
+                            except Exception:
+                                pass
+                        import threading as _th
+                        _th.Thread(target=_异步获取设备信息, daemon=True).start()
                         return client
                     else:
                         _err = getattr(client, '最后错误', '') or '未知原因'
@@ -698,8 +729,7 @@ class AdbHelper:
     def _run(self, cmd_list, timeout=30, shell=False):
         """执行 adb 命令，返回 CompletedProcess；出错时抛出 AdbError。
 
-        采用整条命令字符串 + shell=True 方式执行（与 migu 项目一致），
-        保证 shell 命令中的管道、重定向等能被正确解析。
+        直接执行 adb.exe，不经过 cmd.exe，避免闪烁黑色控制台窗口。
         """
         # 自研 ADB 模式下禁止任何 subprocess 调用，从根源防止启动官方 adb server
         if self._用自研adb:
@@ -712,14 +742,14 @@ class AdbHelper:
                 pass
         try:
             result = subprocess.run(
-                cmd_str,
+                cmd_list,  # 直接传列表，不用 shell=True，避免 cmd.exe 闪黑窗
                 capture_output=True,
                 text=True,
                 encoding='utf-8',
                 errors='replace',
                 timeout=timeout,
                 creationflags=CREATE_NO_WINDOW,
-                shell=True,
+                shell=False,
             )
             return result
         except subprocess.TimeoutExpired:
@@ -811,7 +841,9 @@ class AdbHelper:
                             serial = f'{d["ip"]}:{d["port"]}'
                             if serial not in seen:
                                 seen.add(serial)
-                                devices.append({'serial': serial, 'model': '', 'state': 'device'})
+                                # 从缓存里取设备名，如果有就显示
+                                model = self._设备名缓存.get(serial, '')
+                                devices.append({'serial': serial, 'model': model, 'state': 'device'})
                     except Exception:
                         pass
 
@@ -837,7 +869,9 @@ class AdbHelper:
                                         pass
                                     continue
                             seen.add(serial)
-                            devices.append({'serial': serial, 'model': '', 'state': 'device'})
+                            # 从缓存里取设备名，如果有就显示
+                            model = self._设备名缓存.get(serial, '')
+                            devices.append({'serial': serial, 'model': model, 'state': 'device'})
                             if self.log_callback:
                                 try:
                                     self.log_callback(f'[自研adb] 从连接池恢复设备: {serial}')
@@ -870,12 +904,19 @@ class AdbHelper:
                                         pass
                                 continue
                             seen.add(serial)
-                            devices.append({'serial': serial, 'model': '', 'state': 'device'})
-                            if self.log_callback:
-                                try:
-                                    self.log_callback(f'[自研adb] 从缓存恢复设备: {serial}')
-                                except Exception:
-                                    pass
+                            # 从缓存里取设备名，如果有就显示
+                            model = self._设备名缓存.get(serial, '')
+                            devices.append({'serial': serial, 'model': model, 'state': 'device'})
+                            # 每个设备只打印一次"从缓存恢复设备"，避免重复
+                            if not hasattr(self, '_已打印恢复设备'):
+                                self._已打印恢复设备 = set()
+                            if serial not in self._已打印恢复设备:
+                                if self.log_callback:
+                                    try:
+                                        self.log_callback(f'[自研adb] 从缓存恢复设备: {serial}')
+                                    except Exception:
+                                        pass
+                                self._已打印恢复设备.add(serial)
                 except Exception:
                     pass
                 # 过滤掉最近10秒内主动断开的设备（避免刚断开又被局域网扫描扫回来）
@@ -889,6 +930,42 @@ class AdbHelper:
                         devices = [_d for _d in devices if _d.get('serial') not in AdbHelper._最近断开的设备]
                 except Exception:
                     pass
+                # 对所有已连接的设备，主动获取设备名和系统版本（如果缓存里没有的话）
+                for d in devices:
+                    serial = d.get('serial', '')
+                    if not serial:
+                        continue
+                    # 缓存里有设备名就不用再获取了
+                    if serial in self._设备名缓存:
+                        d['model'] = self._设备名缓存[serial]
+                        continue
+                    # 从自研adb缓存里找client
+                    client = self._自研adb缓存.get(serial)
+                    if client is not None:
+                        try:
+                            model = client.执行shell('getprop ro.product.model', timeout=3).strip()
+                            android_version = client.执行shell('getprop ro.build.version.release', timeout=3).strip()
+                            if model:
+                                self._设备名缓存[serial] = model
+                                d['model'] = model
+                            # 更新历史记录里的设备信息
+                            if model or android_version:
+                                try:
+                                    ip, port = serial.rsplit(':', 1)
+                                    history = 加载json配置('历史连接设备.json')
+                                    if isinstance(history, list):
+                                        for hd in history:
+                                            if hd.get('ip') == ip:
+                                                if model:
+                                                    hd['model'] = model
+                                                if android_version:
+                                                    hd['system_version'] = android_version
+                                                break
+                                        保存json配置('历史连接设备.json', history)
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
                 return devices
             except Exception as e:
                 if self.log_callback:
@@ -2135,14 +2212,34 @@ echo "___END___"'''
         需断开自研 = False
         是自研模式 = self._用自研adb
         if ':' in serial and 是自研模式:
-            # 从配置文件加载单客户设备列表（持久化，重启后仍记住）
+            # 从设备能力配置里读取 型号+版本 对应的通道类型
             try:
-                cfg = 加载json配置('配置/单客户设备.json')
-                self._单客户设备集合 = set(cfg.get('设备列表', []))
+                from 工具.android调试工具.设备能力 import 是否单通道
+                # 先找到当前设备的型号和系统版本
+                current_model = ''
+                current_android_version = ''
+                history = 加载json配置('历史连接设备.json')
+                if isinstance(history, list):
+                    for d in history:
+                        s = f"{d.get('ip')}:{d.get('port')}"
+                        if s == serial:
+                            current_model = d.get('model', '')
+                            current_android_version = d.get('system_version', '')
+                            break
+                # 查询通道类型
+                channel_type = 是否单通道(current_model, current_android_version)
+                if channel_type is True:
+                    # 已知是单通道
+                    需断开自研 = True
+                    跳过通道检测 = True
+                elif channel_type is False:
+                    # 已知是多通道
+                    跳过通道检测 = True
+                else:
+                    # 未知，需要检测
+                    跳过通道检测 = False
             except Exception:
-                self._单客户设备集合 = set()
-            if serial in self._单客户设备集合:
-                需断开自研 = True
+                跳过通道检测 = False
 
         if ':' in serial:
             try:
@@ -2178,8 +2275,29 @@ echo "___END___"'''
                 ).stdout.decode('utf-8', errors='ignore')
                 连接成功 = serial in devices_raw and 'device' in devices_raw.split(serial)[-1].split('\n')[0]
 
-                # 第一次尝试失败，且是自研模式 → 断开自研直连重试
-                if not 连接成功 and 是自研模式 and not 需断开自研:
+                # 第一次就连接成功，说明是多通道设备，记录到设备能力配置里
+                if 连接成功 and 是自研模式 and not 需断开自研 and not 跳过通道检测:
+                    self.log_callback('[投屏] 连接成功，判断为多通道设备，记录到设备能力')
+                    try:
+                        from 工具.android调试工具.设备能力 import 设置单通道
+                        ip, port = serial.rsplit(':', 1)
+                        history = 加载json配置('历史连接设备.json')
+                        if isinstance(history, list):
+                            # 找到当前设备的型号和版本
+                            model = ''
+                            android_ver = ''
+                            for d in history:
+                                if d.get('ip') == ip:
+                                    model = d.get('model', '')
+                                    android_ver = d.get('system_version', '')
+                                    break
+                            # 记录到设备能力配置
+                            设置单通道(model, android_ver, is_single_channel=False)
+                    except Exception:
+                        pass
+
+                # 第一次尝试失败，且是自研模式，且不是已知多通道 → 断开自研直连重试（检测单通道）
+                if not 连接成功 and 是自研模式 and not 需断开自研 and not 跳过通道检测:
                     self.log_callback('[投屏] 官方 adb 未连上，可能是单通道设备（自研占了唯一槽位）')
                     self.log_callback('[投屏] 正在断开自研 ADB，释放通道...')
                     self.断开设备(serial)
@@ -2206,11 +2324,24 @@ echo "___END___"'''
                     连接成功2 = serial in devices_raw2 and 'device' in devices_raw2.split(serial)[-1].split('\n')[0]
 
                     if 连接成功2:
-                        self.log_callback('[投屏] 连接成功！判断为单通道设备，已加入配置下次自动适配')
-                        # 这次成功了，把设备标记为单客户设备，持久化保存，下次直接用
-                        self._单客户设备集合.add(serial)
+                        self.log_callback('[投屏] 连接成功！判断为单通道设备，记录到设备能力下次自动适配')
+                        # 把 型号+系统版本 标记为单通道，持久化保存，下次直接用
                         try:
-                            保存json配置('配置/单客户设备.json', {'设备列表': list(self._单客户设备集合)})
+                            from 工具.android调试工具.设备能力 import 设置单通道
+                            # 解析 serial 成 ip 和 port
+                            ip, port = serial.rsplit(':', 1)
+                            # 读取历史连接记录，找到当前设备的型号和版本
+                            history = 加载json配置('历史连接设备.json')
+                            model = ''
+                            android_ver = ''
+                            if isinstance(history, list):
+                                for d in history:
+                                    if d.get('ip') == ip:
+                                        model = d.get('model', '')
+                                        android_ver = d.get('system_version', '')
+                                        break
+                            # 记录到设备能力配置
+                            设置单通道(model, android_ver, is_single_channel=True)
                         except Exception:
                             pass
                         需断开自研 = True

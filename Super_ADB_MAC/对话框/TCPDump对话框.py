@@ -420,35 +420,81 @@ class Tcpdump对话框(QWidget):
 
         UI 操作一律通过 _run_on_ui 信号回主线程；失败走 _start_fail。
         """
-        self._log('[检查] 设备上是否安装 tcpdump...')
+        # 先查设备能力配置，如果已知支持 tcpdump，就跳过检查直接抓
+        已知支持tcpdump = False
         try:
-            # 方式1: which tcpdump
-            which_out = (self._adb.执行shell(
-                self._serial, 'which tcpdump 2>/dev/null', timeout=5) or '').strip()
-            # 方式2: tcpdump --version（有些设备which不工作）
-            ver_out = (self._adb.执行shell(
-                self._serial, 'tcpdump --version 2>&1 | head -n1', timeout=5) or '').strip()
-            self._log(f'[检查] which: {which_out or "未找到"}')
-            self._log(f'[检查] version: {ver_out or "无输出"}')
-            # 判断设备是否已安装可用的 tcpdump：
-            # - which 找到路径 → 已安装
-            # - version 输出版本号（不含错误关键词）→ 已安装
-            # - which 未找到 + version 返回 not found/inaccessible → 未安装，走自动推送
-            _err_keywords = ['not found', 'No such file', 'inaccessible', 'cannot execute', 'permission denied']
-            _has_err = any(k in ver_out for k in _err_keywords)
-            _installed = bool(which_out) or (bool(ver_out) and not _has_err)
-            if not _installed:
-                self._log('[检查] 设备未安装 tcpdump，尝试自动推送...')
-                if self._自动推送tcpdump():
-                    self._log('[检查] tcpdump 自动推送成功')
+            from 工具.配置.设备能力 import 是否支持tcpdump
+            from 工具.android调试工具.ADB工具 import 加载json配置
+            # 从历史记录里找当前设备的型号和系统版本
+            model = ''
+            android_ver = ''
+            history = 加载json配置('历史连接设备.json')
+            if isinstance(history, list):
+                ip = self._serial.split(':')[0]
+                for d in history:
+                    if d.get('ip') == ip:
+                        model = d.get('model', '')
+                        android_ver = d.get('system_version', '')
+                        break
+            # 查询设备能力
+            if 是否支持tcpdump(model, android_ver) is True:
+                self._log(f'[检查] 已知此设备支持 tcpdump，跳过检查直接抓包')
+                self._tcpdump_bin = 'tcpdump'
+                已知支持tcpdump = True
+        except Exception:
+            pass
+
+        if not 已知支持tcpdump:
+            self._log('[检查] 设备上是否安装 tcpdump...')
+            try:
+                # 方式1: which tcpdump
+                which_out = (self._adb.执行shell(
+                    self._serial, 'which tcpdump 2>/dev/null', timeout=5) or '').strip()
+                # 方式2: tcpdump --version（有些设备which不工作）
+                ver_out = (self._adb.执行shell(
+                    self._serial, 'tcpdump --version 2>&1 | head -n1', timeout=5) or '').strip()
+                self._log(f'[检查] which: {which_out or "未找到"}')
+                self._log(f'[检查] version: {ver_out or "无输出"}')
+                # 判断设备是否已安装可用的 tcpdump：
+                _err_keywords = ['not found', 'No such file', 'inaccessible', 'cannot execute', 'permission denied']
+                _has_err = any(k in ver_out for k in _err_keywords)
+                _installed = bool(which_out) or (bool(ver_out) and not _has_err)
+                if not _installed:
+                    self._log('[检查] 设备未安装 tcpdump，尝试自动推送...')
+                    if self._自动推送tcpdump():
+                        self._log('[检查] tcpdump 自动推送成功')
+                        # 记录到设备能力配置
+                        try:
+                            from 工具.配置.设备能力 import 设置tcpdump支持
+                            history = 加载json配置('历史连接设备.json')
+                            if isinstance(history, list):
+                                ip = self._serial.split(':')[0]
+                                for d in history:
+                                    if d.get('ip') == ip:
+                                        设置tcpdump支持(d.get('model', ''), d.get('system_version', ''), True)
+                                        break
+                        except Exception:
+                            pass
+                    else:
+                        self._log('[错误] 设备上未安装 tcpdump 且自动推送失败，无法抓包')
+                        self._log('[提示] 请手动将 tcpdump 二进制推送到设备，或放到 外部扩展/tcpdump/ 目录')
+                        return self._start_fail('设备无 tcpdump')
                 else:
-                    self._log('[错误] 设备上未安装 tcpdump 且自动推送失败，无法抓包')
-                    self._log('[提示] 请手动将 tcpdump 二进制推送到设备，或放到 外部扩展/tcpdump/ 目录')
-                    return self._start_fail('设备无 tcpdump')
-            else:
-                self._log(f'[检查] tcpdump 可用: {ver_out or which_out}')
-        except Exception as e:
-            self._log(f'[警告] 检查 tcpdump 失败: {e}，继续尝试抓包')
+                    self._log(f'[检查] tcpdump 可用: {ver_out or which_out}')
+                    # 记录到设备能力配置
+                    try:
+                        from 工具.配置.设备能力 import 设置tcpdump支持
+                        history = 加载json配置('历史连接设备.json')
+                        if isinstance(history, list):
+                            ip = self._serial.split(':')[0]
+                            for d in history:
+                                if d.get('ip') == ip:
+                                    设置tcpdump支持(d.get('model', ''), d.get('system_version', ''), True)
+                                    break
+                    except Exception:
+                        pass
+            except Exception as e:
+                self._log(f'[警告] 检查 tcpdump 失败: {e}，继续尝试抓包')
 
         # 打开本地 pcap 文件（用于接收 pull 回来的数据）
         desktop = os.path.join(os.path.expanduser('~'), 'Desktop')
@@ -1657,7 +1703,7 @@ class Tcpdump对话框(QWidget):
 
             # 3. 检查本地 外部扩展/tcpdump/ 文件夹有没有对应架构的二进制
             import glob
-            # 兼容源码模式（项目根/外部扩展/）与冻结模式（_internal/外部扩展/）：
+            # 兼容源码模式（Super_ADB_Win/外部扩展/）与冻结模式（_internal/外部扩展/）：
             # 从模块位置与 cwd 向上回溯目录树（旧实现只探测模块父目录 + cwd，够不到 _internal 顶层）
             here = os.path.dirname(os.path.abspath(__file__))
             ext_dir = None

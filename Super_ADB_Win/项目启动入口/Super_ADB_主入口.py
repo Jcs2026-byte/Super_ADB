@@ -868,8 +868,11 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         # 先清空日志栏，提示设备通道限制
         self.output.clear()
         self.日志('━━ 开始投屏 ━━')
-        self.日志('提示：部分设备只支持单通道连接，投屏将自动切换到官方 adb 通道')
-        self.日志('')
+        # 只有自研模式下才提示，官方模式下本来就是用官方通道
+        if getattr(self.adb, '_用自研adb', False):
+            self.日志('提示：投屏功能集成的是官方 scrcpy 工具，将使用官方通道')
+            self.日志('请确认官网 adb 可以连接到设备（需要 adb 授权的设备，请先切换到官网模式获得授权）')
+            self.日志('')
         self._异步运行(self.adb.投屏, serial)
 
 

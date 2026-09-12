@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 ################################################################################
-## Form generated from reading UI file 'Super_ADB.ui'
+## Form generated from reading UI file 'Super_ADB悦.ui'
 ##
 ## Created by: Qt User Interface Compiler version 6.11.1
 ##
@@ -29,7 +29,7 @@ class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         if not MainWindow.objectName():
             MainWindow.setObjectName(u"MainWindow")
-        MainWindow.resize(1497, 755)
+        MainWindow.resize(1304, 755)
         sizePolicy = QSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(1)
         sizePolicy.setVerticalStretch(0)
@@ -243,7 +243,7 @@ class Ui_MainWindow(object):
         self.sysScrollArea.setWidgetResizable(True)
         self.sysScrollContent = QWidget()
         self.sysScrollContent.setObjectName(u"sysScrollContent")
-        self.sysScrollContent.setGeometry(QRect(0, 0, 677, 110))
+        self.sysScrollContent.setGeometry(QRect(0, 0, 526, 110))
         self.gridLayout = QGridLayout(self.sysScrollContent)
         self.gridLayout.setObjectName(u"gridLayout")
         self.btnDeviceInfo = QPushButton(self.sysScrollContent)
@@ -353,7 +353,7 @@ class Ui_MainWindow(object):
         self.appScrollArea.setWidgetResizable(True)
         self.appScrollContent = QWidget()
         self.appScrollContent.setObjectName(u"appScrollContent")
-        self.appScrollContent.setGeometry(QRect(0, 0, 689, 78))
+        self.appScrollContent.setGeometry(QRect(0, 0, 534, 76))
         self.gridLayout_2 = QGridLayout(self.appScrollContent)
         self.gridLayout_2.setSpacing(6)
         self.gridLayout_2.setObjectName(u"gridLayout_2")
@@ -573,17 +573,11 @@ class Ui_MainWindow(object):
         self.verticalLayout_8.addWidget(self.toolsGroup_3)
 
         self.tabWidget.addTab(self.tab_2, "")
-
-        self.verticalLayout_3.addWidget(self.tabWidget)
-
-        self.splitter_main.addWidget(self.leftPanel)
-        self.tabWidget_2 = QTabWidget(self.splitter_main)
-        self.tabWidget_2.setObjectName(u"tabWidget_2")
-        self.tab_5 = QWidget()
-        self.tab_5.setObjectName(u"tab_5")
-        self.verticalLayout_4 = QVBoxLayout(self.tab_5)
-        self.verticalLayout_4.setObjectName(u"verticalLayout_4")
-        self.splitter_log = QSplitter(self.tab_5)
+        self.tab_3 = QWidget()
+        self.tab_3.setObjectName(u"tab_3")
+        self.verticalLayout_9 = QVBoxLayout(self.tab_3)
+        self.verticalLayout_9.setObjectName(u"verticalLayout_9")
+        self.splitter_log = QSplitter(self.tab_3)
         self.splitter_log.setObjectName(u"splitter_log")
         self.splitter_log.setOrientation(Qt.Orientation.Vertical)
         self.fileMgrContainer = QWidget(self.splitter_log)
@@ -827,18 +821,29 @@ class Ui_MainWindow(object):
 
         self.splitter_log.addWidget(self.logViewerContainer)
 
-        self.verticalLayout_4.addWidget(self.splitter_log)
+        self.verticalLayout_9.addWidget(self.splitter_log)
 
-        self.logViewer_hlLbl = QLabel(self.tab_5)
+        self.logViewer_hlLbl = QLabel(self.tab_3)
         self.logViewer_hlLbl.setObjectName(u"logViewer_hlLbl")
 
-        self.verticalLayout_4.addWidget(self.logViewer_hlLbl)
+        self.verticalLayout_9.addWidget(self.logViewer_hlLbl)
 
-        self.logViewer_hlEdit = QLineEdit(self.tab_5)
+        self.logViewer_hlEdit = QLineEdit(self.tab_3)
         self.logViewer_hlEdit.setObjectName(u"logViewer_hlEdit")
 
-        self.verticalLayout_4.addWidget(self.logViewer_hlEdit)
+        self.verticalLayout_9.addWidget(self.logViewer_hlEdit)
 
+        self.tabWidget.addTab(self.tab_3, "")
+
+        self.verticalLayout_3.addWidget(self.tabWidget)
+
+        self.splitter_main.addWidget(self.leftPanel)
+        self.tabWidget_2 = QTabWidget(self.splitter_main)
+        self.tabWidget_2.setObjectName(u"tabWidget_2")
+        self.tab_5 = QWidget()
+        self.tab_5.setObjectName(u"tab_5")
+        self.verticalLayout_4 = QVBoxLayout(self.tab_5)
+        self.verticalLayout_4.setObjectName(u"verticalLayout_4")
         self.tabWidget_2.addTab(self.tab_5, "")
         self.splitter_main.addWidget(self.tabWidget_2)
 
@@ -855,7 +860,7 @@ class Ui_MainWindow(object):
         self.retranslateUi(MainWindow)
         self.winBtnClose.clicked.connect(MainWindow.hide)
 
-        self.tabWidget.setCurrentIndex(1)
+        self.tabWidget.setCurrentIndex(2)
         self.tabWidget_2.setCurrentIndex(0)
 
 
@@ -1009,6 +1014,7 @@ class Ui_MainWindow(object):
         self.logViewer_hlEdit.setToolTip(QCoreApplication.translate("MainWindow", u"\u547d\u4e2d\u4efb\u610f\u5173\u952e\u5b57\u7684\u65e5\u5fd7\u884c\u6574\u884c\u80cc\u666f\u53d8\u7ea2", None))
 #endif // QT_CONFIG(tooltip)
         self.logViewer_hlEdit.setPlaceholderText(QCoreApplication.translate("MainWindow", u"\u9ad8\u4eae\u5173\u952e\u5b57\uff0c\u9017\u53f7\u5206\u9694\uff0c\u5982 Exception,ANR", None))
-        self.tabWidget_2.setTabText(self.tabWidget_2.indexOf(self.tab_5), QCoreApplication.translate("MainWindow", u"\u6587\u4ef6\u7ba1\u7406\u4e0e\u65e5\u5fd7", None))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_3), QCoreApplication.translate("MainWindow", u"\u6587\u4ef6\u7ba1\u7406\u4e0e\u65e5\u5fd7", None))
+        self.tabWidget_2.setTabText(self.tabWidget_2.indexOf(self.tab_5), "")
     # retranslateUi
 

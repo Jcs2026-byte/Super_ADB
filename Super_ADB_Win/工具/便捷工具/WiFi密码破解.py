@@ -175,10 +175,10 @@ def crack_target(pmkid_hex, ap, client, ssid, pwds, workers=None,
     elapsed = time.time() - start
     if progress:
         if found is not None:
-            print('\r[OK] 密码已找到: %s    (测试 %d 条, 用时 %s)  '
+            print('\r[OK] 密码已找到: %s    (测试悦 %d 条, 用时 %s)  '
                   % (found.decode('utf-8', 'replace'), done, _fmt(elapsed)))
         else:
-            print('\r[!] 未找到匹配密码 (测试 %d 条, 用时 %s)  '
+            print('\r[!] 未找到匹配密码 (测试悦 %d 条, 用时 %s)  '
                   % (done, _fmt(elapsed)))
             print('    建议: 换更大的字典 / 加 --gen-digits 数字组合 / 该网络可能使用了高熵密码')
     return (found, done, elapsed)

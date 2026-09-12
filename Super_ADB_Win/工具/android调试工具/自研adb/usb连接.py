@@ -439,7 +439,7 @@ class UsbAdbConnection(AdbConnection):
 
 
 def 测试usb连接():
-    """测试 USB 连接。"""
+    """测试悦 USB 连接。"""
     print('枚举 ADB USB 设备...')
     devices = 枚举adb设备()
     print(f'找到 {len(devices)} 个设备')

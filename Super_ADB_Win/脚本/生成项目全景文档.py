@@ -105,7 +105,7 @@ def 获取按钮功能清单():
     返回 [(按钮名, 按钮文字, 处理函数)]
     """
     main_file = WIN_ROOT / '项目启动入口' / 'Super_ADB_主入口.py'
-    ui_file = WIN_ROOT / '项目UI' / 'Super_ADB悦20260911.py'
+    ui_file = WIN_ROOT / '项目UI' / 'Super_ADB.py'
     if not main_file.exists():
         return []
     main_text = main_file.read_text(encoding='utf-8-sig')
@@ -3202,13 +3202,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <table>
     <tr><th>职责</th><th>位置</th><th>说明</th></tr>
     <tr><td>控件定义</td><td><code>ui/Super_ADB悦.ui</code></td><td>Qt Designer 可视化编辑</td></tr>
-    <tr><td>编译输出</td><td><code>项目UI/Super_ADB悦20260911.py</code></td><td>pyside6-uic 自动生成</td></tr>
+    <tr><td>编译输出</td><td><code>项目UI/Super_ADB.py</code></td><td>pyside6-uic 自动生成</td></tr>
     <tr><td>样式设置</td><td>主入口代码</td><td>setStyleSheet / 主题色</td></tr>
     <tr><td>信号连接</td><td>主入口代码</td><td>clicked.connect / 功能绑定</td></tr>
     <tr><td>资源文件</td><td><code>ui/png.qrc</code> → <code>png_rc.py</code></td><td>pyside6-rcc 编译</td></tr>
   </table>
   <h4>编译命令</h4>
-<pre><code>pyside6-uic "ui\\Super_ADB悦.ui" -o "Super_ADB_Win\\项目UI\\Super_ADB悦20260911.py"
+<pre><code>pyside6-uic "ui\\Super_ADB悦.ui" -o "Super_ADB_Win\\项目UI\\Super_ADB.py"
 pyside6-rcc "ui\\png.qrc" -o "Super_ADB_Win\\项目UI\\png_rc.py"</code></pre>
 </div>
 
@@ -3655,7 +3655,7 @@ def _run_my_command(self):
 <h3>常用命令</h3>
 <div class="card">
 <pre><code># 编译 UI
-pyside6-uic "ui\\Super_ADB悦.ui" -o "Super_ADB_Win\\项目UI\\Super_ADB悦20260911.py"
+pyside6-uic "ui\\Super_ADB悦.ui" -o "Super_ADB_Win\\项目UI\\Super_ADB.py"
 pyside6-rcc "ui\\png.qrc" -o "Super_ADB_Win\\项目UI\\png_rc.py"
 
 # 运行

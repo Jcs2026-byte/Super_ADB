@@ -42,7 +42,7 @@ logs/
 **/build_tools/build_log.txt
 **/打包/build_log.txt
 
-# ===== 测试 / 覆盖率 =====
+# ===== 测试悦 / 覆盖率 =====
 htmlcov/
 .tox/
 .nox/

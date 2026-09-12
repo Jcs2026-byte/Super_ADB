@@ -423,7 +423,7 @@ class 设备信息对话框(QDialog):
         self.serial = serial
         self._theme_id = theme_id
         # pool 已不再使用 (改用一次性 `获取设备信息_方法B` 同步并发),
-        # 保留入参以避免破坏现有调用方 (Super_ADB悦20260911.py 等)。
+        # 保留入参以避免破坏现有调用方 (Super_ADB.py 等)。
         self.pool = pool
         self._worker_thread = None
         # 关闭弹窗后置位：后台线程在每一步 shell 调用前检查，

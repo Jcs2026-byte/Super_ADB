@@ -2,7 +2,7 @@
 """
 编译 UI 脚本
 ==========
-自动编译 Super_ADB悦.ui 为 Super_ADB悦20260911.py，并给 import png_rc 加 try-except 容错。
+自动编译 Super_ADB悦.ui 为 Super_ADB.py，并给 import png_rc 加 try-except 容错。
 
 用法：
     python compile_ui.py
@@ -15,7 +15,7 @@ from pathlib import Path
 UI_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = UI_DIR.parent
 UI_FILE = UI_DIR / 'Super_ADB悦.ui'
-OUTPUT_FILE = PROJECT_ROOT / 'Super_ADB_Win' / 'ui' / 'Super_ADB悦20260911.py'
+OUTPUT_FILE = PROJECT_ROOT / 'Super_ADB_Win' / 'ui' / 'Super_ADB.py'
 
 
 def 编译UI():

@@ -2247,10 +2247,14 @@ echo "___END___"'''
         args = ['shell', 'pm', 'list', 'packages', '-f']
         if flag:
             args.append(flag)
+        # 加 --user 0 只查主用户，避免某些设备 shell 无权访问 user 100 报错
+        args.append('--user')
+        args.append('0')
         return self.直接执行(serial, args, timeout=30)
 
     def 获取运行中应用(self, serial):
-        return self.执行shell(serial, 'pm list packages -e', timeout=30)
+        # 加 --user 0 只查主用户，避免某些设备 shell 无权访问 user 100 报错
+        return self.执行shell(serial, 'pm list packages -e --user 0', timeout=30)
 
     def 获取当前界面应用(self, serial):
         try:

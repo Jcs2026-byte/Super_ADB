@@ -306,10 +306,14 @@ class ReplayDialog(QDialog):
             if not self._running:
                 break
             try:
-                subprocess.run(
-                    [self._adb.adb_path, '-s', self._serial, 'shell'] + cmd.split(),
-                    capture_output=True, text=True, encoding='utf-8', errors='replace',
-                    creationflags=CREATE_NO_WINDOW, timeout=10)
+                # 判断是不是自研模式，自研模式用自研adb执行，否则用官方adb
+                if getattr(self._adb, '_用自研adb', False):
+                    self._adb.执行shell(self._serial, cmd, timeout=10)
+                else:
+                    subprocess.run(
+                        [self._adb.adb_path, '-s', self._serial, 'shell'] + cmd.split(),
+                        capture_output=True, text=True, encoding='utf-8', errors='replace',
+                        creationflags=CREATE_NO_WINDOW, timeout=10)
             except Exception:
                 pass
             # 高亮当前行

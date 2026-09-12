@@ -218,11 +218,11 @@ class ReplayDialog(QDialog):
 
     _progress = Signal(int, int, str)  # done, total, current_cmd
 
-    def __init__(self, serial, events, parent=None):
+    def __init__(self, serial, events, adb=None, parent=None):
         super().__init__(parent)
         self._serial = serial
         self._events = list(events)
-        self._adb = AdbHelper()
+        self._adb = adb if adb else AdbHelper()
         self._running = False
         self._delay = 0.3
         self.setWindowTitle('Monkey 事件回放')
@@ -1373,6 +1373,25 @@ class Monkey压测窗口(QWidget):
                     proc.kill()
             except Exception:
                 pass
+        # 杀掉设备上的 monkey 进程，防止还在继续跑
+        try:
+            # 方式1: pkill
+            try:
+                self._adb.执行shell(self._serial, 'pkill -f monkey', timeout=5)
+            except Exception:
+                # 方式2: 找进程ID再kill
+                try:
+                    out = self._adb.执行shell(self._serial, 'ps | grep monkey | grep -v grep', timeout=5) or ''
+                    for line in out.splitlines():
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            pid = parts[1]
+                            self._adb.执行shell(self._serial, f'kill {pid}', timeout=5)
+                except Exception:
+                    pass
+            self._append_log('[提示] 已发送停止指令到设备', 'info')
+        except Exception:
+            pass
         self._on_finished()
 
     def _finish_if_still_running(self):
@@ -1482,14 +1501,16 @@ class Monkey压测窗口(QWidget):
 
     # ---- 事件回放 ----
     def _open_replay(self):
+        from PySide6.QtWidgets import QMessageBox
         if not self._recorded_events:
-            self.status_label.setText('本次运行没有可回放的事件')
-            self.status_label.setStyleSheet('color: #ffab40;')
+            QMessageBox.information(self, '提示', '本次运行没有可回放的事件（需要有详细触摸/按键输出才能回放）')
             return
-        dlg = ReplayDialog(self._serial, self._recorded_events, self)
-        dlg.setAttribute(Qt.WindowStaysOnTopHint, False)
-        dlg.show()
+        dlg = ReplayDialog(self._serial, self._recorded_events, adb=self._adb, parent=self)
+        dlg.setAttribute(Qt.WA_DeleteOnClose)
         self._replay_dlg = dlg  # 保持引用，防止被 GC
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
 
     def _elapsed_str(self) -> str:
         if not self._start_ts:

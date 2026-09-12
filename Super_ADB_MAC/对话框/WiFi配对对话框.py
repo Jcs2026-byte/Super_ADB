@@ -18,6 +18,7 @@ import re
 import socket
 import sys
 import time
+import threading as _th
 
 from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer
 from PySide6.QtGui import (QIcon, QIntValidator, QRegularExpressionValidator)

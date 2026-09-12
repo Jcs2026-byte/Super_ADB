@@ -1,10 +1,10 @@
 [
   {
     "ip": "192.168.1.16",
-    "debug_port": 40837,
+    "debug_port": 38573,
     "pair_port": null,
     "model": "ELZ-AN20",
-    "paired_at": "2026-09-12 12:49:41",
-    "last_connected": "2026-09-12 12:49:41"
+    "paired_at": "2026-09-12 16:32:24",
+    "last_connected": "2026-09-12 16:32:24"
   }
 ]

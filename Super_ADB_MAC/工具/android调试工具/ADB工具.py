@@ -2214,7 +2214,7 @@ echo "___END___"'''
         if ':' in serial and 是自研模式:
             # 从设备能力配置里读取 型号+版本 对应的通道类型
             try:
-                from 工具.配置.设备能力 import 是否单通道
+                from 工具.android调试工具.设备能力 import 是否单通道
                 # 先找到当前设备的型号和系统版本
                 current_model = ''
                 current_android_version = ''
@@ -2279,7 +2279,7 @@ echo "___END___"'''
                 if 连接成功 and 是自研模式 and not 需断开自研 and not 跳过通道检测:
                     self.log_callback('[投屏] 连接成功，判断为多通道设备，记录到设备能力')
                     try:
-                        from 工具.配置.设备能力 import 设置单通道
+                        from 工具.android调试工具.设备能力 import 设置单通道
                         ip, port = serial.rsplit(':', 1)
                         history = 加载json配置('历史连接设备.json')
                         if isinstance(history, list):
@@ -2327,7 +2327,7 @@ echo "___END___"'''
                         self.log_callback('[投屏] 连接成功！判断为单通道设备，记录到设备能力下次自动适配')
                         # 把 型号+系统版本 标记为单通道，持久化保存，下次直接用
                         try:
-                            from 工具.配置.设备能力 import 设置单通道
+                            from 工具.android调试工具.设备能力 import 设置单通道
                             # 解析 serial 成 ip 和 port
                             ip, port = serial.rsplit(':', 1)
                             # 读取历史连接记录，找到当前设备的型号和版本

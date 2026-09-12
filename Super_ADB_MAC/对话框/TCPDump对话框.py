@@ -421,9 +421,9 @@ class Tcpdump对话框(QWidget):
         UI 操作一律通过 _run_on_ui 信号回主线程；失败走 _start_fail。
         """
         # 先查设备能力配置，如果已知支持 tcpdump，就跳过检查直接抓
-        已知支持tcpdump = False
+        已知tcpdump状态 = None
         try:
-            from 工具.配置.设备能力 import 是否支持tcpdump
+            from 工具.android调试工具.设备能力 import 是否支持tcpdump
             from 工具.android调试工具.ADB工具 import 加载json配置
             # 从历史记录里找当前设备的型号和系统版本
             model = ''
@@ -437,62 +437,55 @@ class Tcpdump对话框(QWidget):
                         android_ver = d.get('system_version', '')
                         break
             # 查询设备能力
-            if 是否支持tcpdump(model, android_ver) is True:
+            已知tcpdump状态 = 是否支持tcpdump(model, android_ver)
+            if 已知tcpdump状态 is True:
                 self._log(f'[检查] 已知此设备支持 tcpdump，跳过检查直接抓包')
                 self._tcpdump_bin = 'tcpdump'
-                已知支持tcpdump = True
+            elif 已知tcpdump状态 is False:
+                self._log(f'[检查] 已知此设备不支持 tcpdump')
         except Exception:
             pass
 
-        if not 已知支持tcpdump:
+        # 不知道状态，先检查设备上有没有tcpdump
+        if 已知tcpdump状态 is None:
             self._log('[检查] 设备上是否安装 tcpdump...')
             try:
-                # 方式1: which tcpdump
-                which_out = (self._adb.执行shell(
-                    self._serial, 'which tcpdump 2>/dev/null', timeout=5) or '').strip()
-                # 方式2: tcpdump --version（有些设备which不工作）
-                ver_out = (self._adb.执行shell(
-                    self._serial, 'tcpdump --version 2>&1 | head -n1', timeout=5) or '').strip()
-                self._log(f'[检查] which: {which_out or "未找到"}')
-                self._log(f'[检查] version: {ver_out or "无输出"}')
-                # 判断设备是否已安装可用的 tcpdump：
-                _err_keywords = ['not found', 'No such file', 'inaccessible', 'cannot execute', 'permission denied']
-                _has_err = any(k in ver_out for k in _err_keywords)
-                _installed = bool(which_out) or (bool(ver_out) and not _has_err)
-                if not _installed:
-                    self._log('[检查] 设备未安装 tcpdump，尝试自动推送...')
-                    if self._自动推送tcpdump():
-                        self._log('[检查] tcpdump 自动推送成功')
-                        # 记录到设备能力配置
+                # 直接检查有没有tcpdump二进制
+                out = (self._adb.执行shell(
+                    self._serial, 'ls /system/bin/tcpdump /system/xbin/tcpdump /data/local/tmp/tcpdump 2>/dev/null', timeout=5) or '').strip()
+                if not out:
+                    # 没有找到tcpdump，看看是不是root设备，是root就自动推送
+                    self._log('[检查] 设备上没有 tcpdump 二进制，检查是否root...')
+                    # 检查是不是root
+                    whoami = (self._adb.执行shell(
+                        self._serial, 'whoami', timeout=5) or '').strip()
+                    if whoami == 'root':
+                        self._log('[检查] 设备是root，自动推送 tcpdump...')
+                        if self._自动推送tcpdump():
+                            self._log('[检查] tcpdump 自动推送成功，继续尝试...')
+                            self._tcpdump_bin = '/data/local/tmp/tcpdump'
+                        else:
+                            self._log('[错误] 自动推送失败')
+                            return self._start_fail('设备无 tcpdump')
+                    else:
+                        # 不是root，也没有tcpdump，记录为不支持
+                        self._log('[检查] 非root设备且无tcpdump，记录为不支持')
                         try:
-                            from 工具.配置.设备能力 import 设置tcpdump支持
+                            from 工具.android调试工具.设备能力 import 设置tcpdump支持
                             history = 加载json配置('历史连接设备.json')
                             if isinstance(history, list):
                                 ip = self._serial.split(':')[0]
                                 for d in history:
                                     if d.get('ip') == ip:
-                                        设置tcpdump支持(d.get('model', ''), d.get('system_version', ''), True)
+                                        设置tcpdump支持(d.get('model', ''), d.get('system_version', ''), False)
                                         break
                         except Exception:
                             pass
-                    else:
-                        self._log('[错误] 设备上未安装 tcpdump 且自动推送失败，无法抓包')
-                        self._log('[提示] 请手动将 tcpdump 二进制推送到设备，或放到 外部扩展/tcpdump/ 目录')
                         return self._start_fail('设备无 tcpdump')
                 else:
-                    self._log(f'[检查] tcpdump 可用: {ver_out or which_out}')
-                    # 记录到设备能力配置
-                    try:
-                        from 工具.配置.设备能力 import 设置tcpdump支持
-                        history = 加载json配置('历史连接设备.json')
-                        if isinstance(history, list):
-                            ip = self._serial.split(':')[0]
-                            for d in history:
-                                if d.get('ip') == ip:
-                                    设置tcpdump支持(d.get('model', ''), d.get('system_version', ''), True)
-                                    break
-                    except Exception:
-                        pass
+                    self._log(f'[检查] 找到 tcpdump: {out.splitlines()[0]}')
+                    # 找到二进制，设置路径，后面尝试执行，能跑起来再记录为支持
+                    self._tcpdump_bin = out.splitlines()[0].strip()
             except Exception as e:
                 self._log(f'[警告] 检查 tcpdump 失败: {e}，继续尝试抓包')
 
@@ -708,6 +701,19 @@ class Tcpdump对话框(QWidget):
                 low = ln.lower()
                 if 'listening on' in low or 'pcap file' in low:
                     self._log(f'[tcpdump] {ln}')
+                    # tcpdump 真的跑起来了，记录为支持
+                    try:
+                        from 工具.android调试工具.设备能力 import 设置tcpdump支持
+                        from 工具.android调试工具.ADB工具 import 加载json配置
+                        history = 加载json配置('历史连接设备.json')
+                        if isinstance(history, list):
+                            ip = self._serial.split(':')[0]
+                            for d in history:
+                                if d.get('ip') == ip:
+                                    设置tcpdump支持(d.get('model', ''), d.get('system_version', ''), True)
+                                    break
+                    except Exception:
+                        pass
                 elif 'dropped' in low or 'drop' in low:
                     self._log(f'⚠ [tcpdump] {ln}')
                 elif any(k in low for k in ('error', 'denied', 'permission',
@@ -716,6 +722,19 @@ class Tcpdump对话框(QWidget):
                                               'can\'t', 'cannot', 'failed',
                                               'invalid', 'abort')):
                     self._log(f'🔴 [tcpdump] {ln}')
+                    # 报错了，记录为不支持
+                    try:
+                        from 工具.android调试工具.设备能力 import 设置tcpdump支持
+                        from 工具.android调试工具.ADB工具 import 加载json配置
+                        history = 加载json配置('历史连接设备.json')
+                        if isinstance(history, list):
+                            ip = self._serial.split(':')[0]
+                            for d in history:
+                                if d.get('ip') == ip:
+                                    设置tcpdump支持(d.get('model', ''), d.get('system_version', ''), False)
+                                    break
+                    except Exception:
+                        pass
                 elif 'packets captured' in low or 'packets received' in low or 'packets dropped' in low:
                     self._log(f'[tcpdump] {ln}')
         except Exception:
@@ -740,7 +759,7 @@ class Tcpdump对话框(QWidget):
                     pass
 
                 self._check_stderr()
-                
+
                 # 检查子进程是否还活着
                 if proc.poll() is not None:
                     break
@@ -783,7 +802,7 @@ class Tcpdump对话框(QWidget):
     def _tcpdump_device_runner(self, client, shell_cmd):
         """自研 ADB 模式：在设备端执行 tcpdump（写文件），同时轮询进度。"""
         stop_evt = self._stop_event
-        
+
         def _poll_size():
             if stop_evt.is_set():
                 return
@@ -797,14 +816,14 @@ class Tcpdump对话框(QWidget):
             except Exception:
                 pass
             self._check_stderr()
-        
+
         # USB 模式：client 是 UsbAdbConnection，没有 sock，也无法像 TCP 那样
         # 再借一条独占连接（同一设备只有一条 transport / 一对端点）。
         # 改走共享连接的 shell流，它内部已实现单管道复用与报文转发。
         if getattr(client, 'sock', None) is None and hasattr(client, 'shell流'):
             self._tcpdump_usb_runner(client, shell_cmd, stop_evt, _poll_size)
             return
-        
+
         conn = None
         try:
             conn = _adb_borrow(client.host, client.port, 10.0, client.key_path)
@@ -901,13 +920,13 @@ class Tcpdump对话框(QWidget):
             return
         self._stopping = True
         self._log('---- 用户停止 ----')
-        
+
         # 更新按钮状态
         self.btn_stop.setText('⏳ 正在停止...')
         self.btn_stop.setEnabled(False)
         self.status_label.setText('正在停止抓包...')
         self.status_label.setStyleSheet('color: #ffc56b;')
-        
+
         # 在后台线程中执行阻塞的停止操作
         threading.Thread(target=self._do_stop, daemon=True).start()
 
@@ -920,24 +939,24 @@ class Tcpdump对话框(QWidget):
         #   等读取线程退出 → 最后收尾文件）
         self._log('[停止] 正在终止设备端 tcpdump...')
         self._stop_progress.emit('正在终止设备端 tcpdump...')
-        
+
         kill_done = threading.Event()
         def _do_kill():
             try:
                 self._graceful_kill_device_tcpdump()
             finally:
                 kill_done.set()
-        
+
         kill_thread = threading.Thread(target=_do_kill, daemon=True)
         kill_thread.start()
         if not kill_done.wait(timeout=8.0):
             self._log('[停止] SIGINT 发送超时，强制结束...')
             # 超时后继续，不等了
-        
+
         # ② 设置停止事件/关闭 stdout
         self._log('[停止] 正在通知抓包线程退出...')
         self._stop_progress.emit('正在通知抓包线程退出...')
-        
+
         if self._self_mode:
             if self._stop_event is not None:
                 self._stop_event.set()
@@ -1373,9 +1392,9 @@ class Tcpdump对话框(QWidget):
                             f'拉取中 {pct}% · {self._fmt_size(current)}/{self._fmt_size(remote_size)}', pct)
                         self._bytes_updated.emit(current, elapsed)
                 time.sleep(0.5)
-            
+
             proc.wait(timeout=600)
-            
+
             if proc.returncode == 0 and os.path.isfile(self._path):
                 local_size = os.path.getsize(self._path)
                 self._bytes = local_size
@@ -1812,7 +1831,7 @@ class Tcpdump对话框(QWidget):
 
     def _collect_device_tcpdump_stats(self):
         """拉取完成但未清理设备端文件前，用 tcpdump -r 重读 pcap 获取官方统计行。
-        
+
         tcpdump -r 会重新解析 pcap 并在退出时打印：
           X packets captured
           X packets received by filter
@@ -1875,34 +1894,34 @@ class Tcpdump对话框(QWidget):
 
     def _verify_pcap(self, path, log_func=None):
         """校验 pcap 文件完整性：使用轻量PCAP解析器验证可读性。
-        
+
         Returns:
             (是否有效, 统计信息dict)
         """
         _log = log_func or self._log
         stats = {'valid': 0, 'errors': 0, 'total': 0}
-        
+
         if not path or not os.path.isfile(path):
             _log('[校验] 文件不存在')
             return False, stats
-        
+
         try:
             size = os.path.getsize(path)
             if size < 24:
                 _log(f'[校验] 文件过小 ({size} 字节)，不足 pcap 全局头大小')
                 return False, stats
-            
+
             # 先检查魔数
             with open(path, 'rb') as f:
                 header = f.read(24)
-            
+
             if len(header) < 24:
                 _log('[校验] 文件过小，无法读取 pcap 全局头')
                 return False, stats
-            
+
             magic = header[:4]
             import struct
-            
+
             if magic == b'\xd4\xc3\xb2\xa1':
                 endian = '<'
                 is_pcapng = False
@@ -1915,36 +1934,36 @@ class Tcpdump对话框(QWidget):
             else:
                 _log(f'[校验] 无效的 pcap 魔数: {magic.hex()}')
                 return False, stats
-            
+
             if not is_pcapng:
                 ver_major, ver_minor, thiszone, sigfigs, snaplen, network = struct.unpack(
                     f'{endian}HHiIII', header[4:24])
                 _log(f'[校验] pcap 版本: {ver_major}.{ver_minor}, 链路类型: {network}, snaplen: {snaplen}')
-            
+
             # 使用轻量PCAP解析器验证
             try:
                 from 工具.便捷工具.轻量PCAP解析 import PcapReader
                 reader = PcapReader(path)
                 count = 0
                 has_error = False
-                
+
                 for pkt in reader:
                     count += 1
                     if count % 50000 == 0:
                         _log(f'[校验] 已扫描 {count} 个数据包...')
-                
+
                 stats['valid'] = count
                 stats['total'] = count
-                
+
                 if count == 0:
                     _log('[校验] 未找到有效数据包')
                     return False, stats
-                
+
                 _log(f'[校验] 共 {count} 个数据包')
                 if is_pcapng:
                     _log(f'[校验] pcapng 文件校验通过')
                 return True, stats
-                
+
             except ImportError:
                 _log('[校验] 轻量PCAP解析模块不可用，使用基础校验')
                 # 回退：基础顺序扫描
@@ -1955,33 +1974,33 @@ class Tcpdump对话框(QWidget):
                 ok, basic_stats = self._verify_pcap_basic(path, header, endian, is_pcapng, log_func=_log)
                 basic_stats['errors'] += 1
                 return ok, basic_stats
-                
+
         except Exception as e:
             _log(f'[校验] 异常: {e}')
             return False, stats
-    
+
     def _verify_pcap_basic(self, path, header, endian, is_pcapng, log_func=None):
         """基础 pcap 校验（回退方案）。"""
         _log = log_func or self._log
         stats = {'valid': 0, 'errors': 0, 'total': 0}
-        
+
         if is_pcapng:
             _log('[校验] pcapng 基础校验: 文件结构有效')
             stats['valid'] = 0
             return True, stats
-        
+
         import struct
         snaplen = struct.unpack(f'{endian}I', header[20:24])[0]
         max_packet_size = snaplen if snaplen > 0 else 65535
-        
+
         with open(path, 'rb') as f:
             data = f.read()
-        
+
         offset = 24
         packet_count = 0
         error_count = 0
         last_error_offset = 0
-        
+
         while offset < len(data):
             remaining = len(data) - offset
             if remaining < 16:
@@ -1989,10 +2008,10 @@ class Tcpdump对话框(QWidget):
                     # 可能是尾部填充，不报错
                     pass
                 break
-            
+
             ts_sec, ts_usec, incl_len, orig_len = struct.unpack(
                 f'{endian}IIII', data[offset:offset+16])
-            
+
             # 合理的时间戳范围 (2020-2035)
             if ts_sec < 1577836800 or ts_sec > 20512224000:
                 # 时间戳异常，可能文件损坏
@@ -2002,11 +2021,11 @@ class Tcpdump对话框(QWidget):
                 error_count += 1
                 offset += 1
                 continue
-            
+
             if incl_len == 0 and orig_len == 0:
                 offset += 16
                 continue
-            
+
             # 长度检查：incl_len 不应超过合理范围
             if incl_len > 262144:
                 if error_count == 0:
@@ -2015,31 +2034,31 @@ class Tcpdump对话框(QWidget):
                 error_count += 1
                 offset += 1
                 continue
-            
+
             if incl_len > remaining - 16:
                 error_count += 1
                 break
-            
+
             offset += 16 + incl_len
             packet_count += 1
-        
+
         stats['valid'] = packet_count
         stats['total'] = packet_count
         stats['errors'] = error_count
-        
+
         _log(f'[校验] 基础扫描: 共 {packet_count} 个数据包')
-        
+
         if error_count > 0 and packet_count == 0:
             _log(f'[警告] 未找到有效数据包，文件可能已严重损坏')
             return False, stats
-        
+
         if error_count > 0:
             _log(f'[警告] 发现 {error_count} 个异常位置，文件可能不完整')
             if last_error_offset > 0:
                 _log(f'  首个异常位置: {last_error_offset}')
             # 只要有有效数据包就认为可用
             return packet_count > 0, stats
-        
+
         return True, stats
 
     def _cleanup_proc(self):

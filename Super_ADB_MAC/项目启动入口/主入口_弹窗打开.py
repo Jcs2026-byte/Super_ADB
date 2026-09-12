@@ -42,8 +42,10 @@ class 弹窗打开Mixin:
             self._monkey_window.raise_()
             self._monkey_window.activateWindow()
             return
-        # 默认带入主窗口已填的包名
+        # 默认带入主窗口已填的包名，只取包名部分，去掉入口Activity
         default_pkg = self.pkgInput.text().strip()
+        if '/' in default_pkg:
+            default_pkg = default_pkg.split('/')[0]
         from 对话框.Monkey压测窗口 import Monkey压测窗口
         self._monkey_window = Monkey压测窗口(
             serial, default_pkg=default_pkg)

@@ -821,6 +821,16 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         def _结果返回时(r):
             text = str(r)
             self.日志(text)
+            # 如果是获取当前界面应用的结果，自动填到包名输入框
+            if getattr(self, '_正在获取当前应用', False):
+                self._正在获取当前应用 = False
+                if text and not text.startswith('未') and not text.startswith('获取失败'):
+                    # 拆分出纯包名
+                    if '/' in text:
+                        pkg = text.split('/')[0]
+                    else:
+                        pkg = text
+                    self.pkgInput.setText(pkg)
             # 执行报错提示设备离线/掉线：自动刷新三处设备下拉框
             if self._设备是否离线(text):
                 self.刷新设备()
@@ -1635,6 +1645,8 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         serial = self._确保序列号()
         if not serial:
             return
+        # 标记正在获取当前应用，结果返回时自动填到输入框
+        self._正在获取当前应用 = True
         self._异步运行(self.adb.获取当前界面应用, serial)
 
     def 显示运行中应用(self):

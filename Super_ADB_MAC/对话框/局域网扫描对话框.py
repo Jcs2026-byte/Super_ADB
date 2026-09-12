@@ -777,6 +777,12 @@ class 局域网扫描对话框(QDialog):
         self._cleanup_worker_list(self._connect_threads, ip)
         if ok:
             self._enrich_after_connect(ip)
+            # 连接成功，添加到历史连接记录
+            try:
+                from 对话框.历史连接设备对话框 import 添加历史设备
+                添加历史设备(ip, self._port, '')
+            except Exception:
+                pass
             # 通知主窗口：刚连上一台新设备，刷新设备下拉框并自动选中它
             if callable(self._on_device_connected):
                 try:

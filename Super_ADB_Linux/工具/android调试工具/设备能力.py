@@ -27,11 +27,12 @@ def 设置单通道(model, android_version, is_single_channel):
         return
     data = _load_capacity()
     key = f"{model}_{android_version}"
-    data[key] = {
-        'model': model,
-        'android_version': android_version,
-        'is_single_channel': is_single_channel
-    }
+    if key not in data:
+        data[key] = {
+            'model': model,
+            'android_version': android_version
+        }
+    data[key]['is_single_channel'] = is_single_channel
     _save_capacity(data)
 
 

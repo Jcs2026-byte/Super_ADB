@@ -385,7 +385,7 @@ class Monkey压测窗口(QWidget):
         self.setWindowTitle(f'Monkey 压力测试 — {serial}')
         self.setWindowIcon(QIcon(':/Super_ADB.png'))
         self.setMinimumSize(720, 620)
-        self.resize(820, 700)
+        self.resize(1000, 750)
         self._theme_id = get_current_theme_id(self)
         self.setStyleSheet(get_stylesheet(self._theme_id))
         self.setWindowFlag(Qt.Window, True)
@@ -766,21 +766,36 @@ class Monkey压测窗口(QWidget):
 
     # ---- monkey 版本探测 ----
     def _probe_monkey_version(self):
-        """后台探测设备 monkey 版本，便于排查版本兼容。
-
-        注意：通过 Signal 回主线程更新 QLabel，避免跨线程操作 UI。
-        """
+        """后台探测设备 monkey 版本，多试几个命令，兼容不同设备。"""
         try:
-            out = subprocess.run(
-                [self._adb.adb_path, '-s', self._serial, 'shell',
-                 'monkey', '--version'],
-                capture_output=True, text=True, encoding='utf-8',
-                errors='replace', creationflags=CREATE_NO_WINDOW, timeout=10)
-            ver = (out.stdout or '').strip() or (out.stderr or '').strip()
-            if ver:
-                self._version_ready.emit(f'monkey: {ver}', 'color: #1de9b6;')
+            # 先用当前adb接口，兼容自研模式
+            out = ''
+            # 方式1: monkey --version
+            try:
+                out = self._adb.执行shell(self._serial, 'monkey --version 2>&1 | head -n1', timeout=5) or ''
+            except Exception:
+                pass
+            # 方式2: 不行就看二进制路径
+            if not out.strip() or 'unknown option' in out.lower():
+                try:
+                    out = self._adb.执行shell(self._serial, 'ls /system/bin/monkey /system/xbin/monkey 2>/dev/null', timeout=5) or ''
+                    if out.strip():
+                        out = '已安装: ' + out.strip().splitlines()[0]
+                except Exception:
+                    pass
+            # 方式3: 还不行就试 command -v
+            if not out.strip():
+                try:
+                    out = self._adb.执行shell(self._serial, 'command -v monkey 2>/dev/null', timeout=5) or ''
+                    if out.strip():
+                        out = '已安装: ' + out.strip()
+                except Exception:
+                    pass
+            # 显示结果
+            if out.strip():
+                self._version_ready.emit(f'monkey: {out.strip()}', 'color: #1de9b6;')
             else:
-                self._version_ready.emit('monkey: 未返回版本', 'color: #ffab40;')
+                self._version_ready.emit('monkey: 未安装', 'color: #ff6b6b;')
         except Exception as e:
             self._version_ready.emit('monkey: 检测失败', 'color: #ff6b6b;')
             _ = e
@@ -972,9 +987,24 @@ class Monkey压测窗口(QWidget):
         except Exception:
             pass
 
-        # 如果不知道，先默认支持，直接执行，执行完记录结果
+        # 如果不知道，先检查二进制在不在，检查失败就默认支持
         if monkey_available is None:
-            monkey_available = True
+            try:
+                # 和 tcpdump 一样，直接看二进制文件在不在常见路径
+                out = self._adb.执行shell(
+                    self._serial, 'ls /system/bin/monkey /system/xbin/monkey 2>/dev/null', timeout=5) or ''
+                if not out.strip():
+                    # 检查返回空，但是不确定是真的没有，还是命令执行失败了
+                    # 默认直接执行，能跑起来就算支持，跑不起来再记录为不支持
+                    monkey_available = True
+                    self._append_log('[检查] 未检测到 monkey 二进制，直接尝试执行', 'info')
+                else:
+                    # 找到二进制了，直接执行，能跑起来再记录为支持
+                    monkey_available = True
+                    self._append_log(f'[检查] 找到 monkey: {out.strip().splitlines()[0]}', 'info')
+            except Exception:
+                # 检查失败，默认支持，直接执行
+                monkey_available = True
 
         # 设备没有 monkey → 回退到 am start 打开应用
         if not monkey_available:
@@ -1001,6 +1031,9 @@ class Monkey压测窗口(QWidget):
         if 用自研:
             # 自研模式：用自研adb后台线程执行，不用官方adb
             self._append_log(f'$ 自研adb shell {" ".join(args)}', 'info')
+            # 自研模式下没有独立进程，暂停/继续功能不可用
+            self.btn_pause.setEnabled(False)
+            self._append_log('[提示] 自研模式下不支持暂停/继续功能', 'info')
             # 后台线程执行monkey，读取输出
             def _自研执行():
                 try:
@@ -1169,43 +1202,36 @@ class Monkey压测窗口(QWidget):
         kind 控制颜色: None=自动检测, info=青色, crash=红色,
         anr=橙色, done=绿色, error=红色
         """
-        # 检测 monkey 支持状态，只检测一次
-        if not hasattr(self, '_monkey_能力已记录'):
-            self._monkey_能力已记录 = False
-        if not self._monkey_能力已记录:
-            line_lower = line.lower()
-            # 正常的 monkey 输出，说明支持
-            if ':monkey:' in line_lower or 'events injected' in line_lower or '// monkey:' in line_lower:
-                # 记录为支持
-                try:
-                    from 工具.android调试工具.设备能力 import 设置monkey支持
-                    from 工具.android调试工具.ADB工具 import 加载json配置
-                    history = 加载json配置('历史连接设备.json')
-                    if isinstance(history, list):
-                        ip = self._serial.split(':')[0]
-                        for d in history:
-                            if d.get('ip') == ip:
-                                设置monkey支持(d.get('model', ''), d.get('system_version', ''), True)
-                                break
-                except Exception:
-                    pass
-                self._monkey_能力已记录 = True
-            # 报错，说明不支持
-            elif 'not found' in line_lower or 'no such file' in line_lower or 'unknown option' in line_lower:
-                # 记录为不支持
-                try:
-                    from 工具.android调试工具.设备能力 import 设置monkey支持
-                    from 工具.android调试工具.ADB工具 import 加载json配置
-                    history = 加载json配置('历史连接设备.json')
-                    if isinstance(history, list):
-                        ip = self._serial.split(':')[0]
-                        for d in history:
-                            if d.get('ip') == ip:
-                                设置monkey支持(d.get('model', ''), d.get('system_version', ''), False)
-                                break
-                except Exception:
-                    pass
-                self._monkey_能力已记录 = True
+        # 检测 monkey 支持状态
+        line_lower = line.lower()
+        # 正常的 monkey 输出，说明支持，不管之前记录过没记录过，都更新为支持
+        if ':monkey:' in line_lower or 'events injected' in line_lower or '// monkey:' in line_lower:
+            try:
+                from 工具.android调试工具.设备能力 import 设置monkey支持
+                from 工具.android调试工具.ADB工具 import 加载json配置
+                history = 加载json配置('历史连接设备.json')
+                if isinstance(history, list):
+                    ip = self._serial.split(':')[0]
+                    for d in history:
+                        if d.get('ip') == ip:
+                            设置monkey支持(d.get('model', ''), d.get('system_version', ''), True)
+                            break
+            except Exception:
+                pass
+        # 报错，说明不支持，才记录为不支持
+        elif 'not found' in line_lower or 'no such file' in line_lower or 'unknown option' in line_lower:
+            try:
+                from 工具.android调试工具.设备能力 import 设置monkey支持
+                from 工具.android调试工具.ADB工具 import 加载json配置
+                history = 加载json配置('历史连接设备.json')
+                if isinstance(history, list):
+                    ip = self._serial.split(':')[0]
+                    for d in history:
+                        if d.get('ip') == ip:
+                            设置monkey支持(d.get('model', ''), d.get('system_version', ''), False)
+                            break
+            except Exception:
+                pass
 
         self._pending_lines.append((line, kind))
         # 同步落盘（原始行，无 HTML 着色）

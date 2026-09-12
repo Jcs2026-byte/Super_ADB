@@ -421,7 +421,7 @@ class Tcpdump对话框(QWidget):
         UI 操作一律通过 _run_on_ui 信号回主线程；失败走 _start_fail。
         """
         # 先查设备能力配置，如果已知支持 tcpdump，就跳过检查直接抓
-        已知支持tcpdump = False
+        已知tcpdump状态 = None
         try:
             from 工具.android调试工具.设备能力 import 是否支持tcpdump
             from 工具.android调试工具.ADB工具 import 加载json配置
@@ -437,33 +437,39 @@ class Tcpdump对话框(QWidget):
                         android_ver = d.get('system_version', '')
                         break
             # 查询设备能力
-            if 是否支持tcpdump(model, android_ver) is True:
+            已知tcpdump状态 = 是否支持tcpdump(model, android_ver)
+            if 已知tcpdump状态 is True:
                 self._log(f'[检查] 已知此设备支持 tcpdump，跳过检查直接抓包')
                 self._tcpdump_bin = 'tcpdump'
-                已知支持tcpdump = True
+            elif 已知tcpdump状态 is False:
+                self._log(f'[检查] 已知此设备不支持 tcpdump')
         except Exception:
             pass
 
-        if not 已知支持tcpdump:
+        # 不知道状态，先检查设备上有没有tcpdump
+        if 已知tcpdump状态 is None:
             self._log('[检查] 设备上是否安装 tcpdump...')
             try:
-                # 方式1: which tcpdump
-                which_out = (self._adb.执行shell(
-                    self._serial, 'which tcpdump 2>/dev/null', timeout=5) or '').strip()
-                # 方式2: tcpdump --version（有些设备which不工作）
-                ver_out = (self._adb.执行shell(
-                    self._serial, 'tcpdump --version 2>&1 | head -n1', timeout=5) or '').strip()
-                self._log(f'[检查] which: {which_out or "未找到"}')
-                self._log(f'[检查] version: {ver_out or "无输出"}')
-                # 判断设备是否已安装可用的 tcpdump：
-                _err_keywords = ['not found', 'No such file', 'inaccessible', 'cannot execute', 'permission denied']
-                _has_err = any(k in ver_out for k in _err_keywords)
-                _installed = bool(which_out) or (bool(ver_out) and not _has_err)
-                if not _installed:
-                    self._log('[检查] 设备未安装 tcpdump，尝试自动推送...')
-                    if self._自动推送tcpdump():
-                        self._log('[检查] tcpdump 自动推送成功')
-                        # 记录到设备能力配置
+                # 直接检查有没有tcpdump二进制
+                out = (self._adb.执行shell(
+                    self._serial, 'ls /system/bin/tcpdump /system/xbin/tcpdump /data/local/tmp/tcpdump 2>/dev/null', timeout=5) or '').strip()
+                if not out:
+                    # 没有找到tcpdump，看看是不是root设备，是root就自动推送
+                    self._log('[检查] 设备上没有 tcpdump 二进制，检查是否root...')
+                    # 检查是不是root
+                    whoami = (self._adb.执行shell(
+                        self._serial, 'whoami', timeout=5) or '').strip()
+                    if whoami == 'root':
+                        self._log('[检查] 设备是root，自动推送 tcpdump...')
+                        if self._自动推送tcpdump():
+                            self._log('[检查] tcpdump 自动推送成功，继续尝试...')
+                            self._tcpdump_bin = '/data/local/tmp/tcpdump'
+                        else:
+                            self._log('[错误] 自动推送失败')
+                            return self._start_fail('设备无 tcpdump')
+                    else:
+                        # 不是root，也没有tcpdump，记录为不支持
+                        self._log('[检查] 非root设备且无tcpdump，记录为不支持')
                         try:
                             from 工具.android调试工具.设备能力 import 设置tcpdump支持
                             history = 加载json配置('历史连接设备.json')
@@ -471,28 +477,15 @@ class Tcpdump对话框(QWidget):
                                 ip = self._serial.split(':')[0]
                                 for d in history:
                                     if d.get('ip') == ip:
-                                        设置tcpdump支持(d.get('model', ''), d.get('system_version', ''), True)
+                                        设置tcpdump支持(d.get('model', ''), d.get('system_version', ''), False)
                                         break
                         except Exception:
                             pass
-                    else:
-                        self._log('[错误] 设备上未安装 tcpdump 且自动推送失败，无法抓包')
-                        self._log('[提示] 请手动将 tcpdump 二进制推送到设备，或放到 外部扩展/tcpdump/ 目录')
                         return self._start_fail('设备无 tcpdump')
                 else:
-                    self._log(f'[检查] tcpdump 可用: {ver_out or which_out}')
-                    # 记录到设备能力配置
-                    try:
-                        from 工具.android调试工具.设备能力 import 设置tcpdump支持
-                        history = 加载json配置('历史连接设备.json')
-                        if isinstance(history, list):
-                            ip = self._serial.split(':')[0]
-                            for d in history:
-                                if d.get('ip') == ip:
-                                    设置tcpdump支持(d.get('model', ''), d.get('system_version', ''), True)
-                                    break
-                    except Exception:
-                        pass
+                    self._log(f'[检查] 找到 tcpdump: {out.splitlines()[0]}')
+                    # 找到二进制，设置路径，后面尝试执行，能跑起来再记录为支持
+                    self._tcpdump_bin = out.splitlines()[0].strip()
             except Exception as e:
                 self._log(f'[警告] 检查 tcpdump 失败: {e}，继续尝试抓包')
 
@@ -708,6 +701,19 @@ class Tcpdump对话框(QWidget):
                 low = ln.lower()
                 if 'listening on' in low or 'pcap file' in low:
                     self._log(f'[tcpdump] {ln}')
+                    # tcpdump 真的跑起来了，记录为支持
+                    try:
+                        from 工具.android调试工具.设备能力 import 设置tcpdump支持
+                        from 工具.android调试工具.ADB工具 import 加载json配置
+                        history = 加载json配置('历史连接设备.json')
+                        if isinstance(history, list):
+                            ip = self._serial.split(':')[0]
+                            for d in history:
+                                if d.get('ip') == ip:
+                                    设置tcpdump支持(d.get('model', ''), d.get('system_version', ''), True)
+                                    break
+                    except Exception:
+                        pass
                 elif 'dropped' in low or 'drop' in low:
                     self._log(f'⚠ [tcpdump] {ln}')
                 elif any(k in low for k in ('error', 'denied', 'permission',
@@ -716,6 +722,19 @@ class Tcpdump对话框(QWidget):
                                               'can\'t', 'cannot', 'failed',
                                               'invalid', 'abort')):
                     self._log(f'🔴 [tcpdump] {ln}')
+                    # 报错了，记录为不支持
+                    try:
+                        from 工具.android调试工具.设备能力 import 设置tcpdump支持
+                        from 工具.android调试工具.ADB工具 import 加载json配置
+                        history = 加载json配置('历史连接设备.json')
+                        if isinstance(history, list):
+                            ip = self._serial.split(':')[0]
+                            for d in history:
+                                if d.get('ip') == ip:
+                                    设置tcpdump支持(d.get('model', ''), d.get('system_version', ''), False)
+                                    break
+                    except Exception:
+                        pass
                 elif 'packets captured' in low or 'packets received' in low or 'packets dropped' in low:
                     self._log(f'[tcpdump] {ln}')
         except Exception:

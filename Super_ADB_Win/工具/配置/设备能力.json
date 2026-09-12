@@ -1,8 +1,20 @@
 {
+  "25102RKBEC_14": {
+    "model": "25102RKBEC",
+    "android_version": "14",
+    "is_single_channel": false,
+    "支持tcpdump": true,
+    "支持monkey": false
+  },
   "ELZ-AN20_14": {
     "model": "ELZ-AN20",
     "android_version": "14",
-    "is_single_channel": false,
-    "支持monkey": false
+    "支持monkey": true,
+    "支持tcpdump": true
+  },
+  "ELZ_AN20_14": {
+    "model": "ELZ_AN20",
+    "android_version": "14",
+    "支持monkey": true
   }
 }

@@ -5,5 +5,11 @@
     "model": "ELZ-AN20",
     "system_version": "14",
     "is_single_channel": false
+  },
+  {
+    "ip": "192.168.1.50",
+    "port": 5555,
+    "model": "25102RKBEC",
+    "system_version": "14"
   }
 ]

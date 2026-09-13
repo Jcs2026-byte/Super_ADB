@@ -886,6 +886,8 @@ class Json工具对话框(对话框基类):
         self.diffA_filepath = ''
         self.diffB_filepath = ''
         self._last_diff_result = None
+        self.fmt_filepath = ''        # 格式化页拖入的源文件路径
+        self._last_mode = 'format'    # 最近一次输出模式：format / minify（决定保存文件名后缀）
         # setWindowFlags 后需重设样式（Window 标志会重置部分样式）
         self.setStyleSheet(get_stylesheet(self._theme_id))
 
@@ -907,6 +909,7 @@ class Json工具对话框(对话框基类):
         self.btnFormat.clicked.connect(self._format_json)
         self.btnCompress.clicked.connect(self._compress_json)
         self.btnCopy.clicked.connect(self._copy_result)
+        self.btnSave.clicked.connect(self._save_output)
         self.btnValidate.clicked.connect(self._validate_json)
         self.btnFix.clicked.connect(self._fix_json)
         self.btnJsonTree.clicked.connect(self._open_json_tree_popup)
@@ -1024,9 +1027,22 @@ class Json工具对话框(对话框基类):
         h.setSpacing(10)
 
         left = QVBoxLayout()
-        left.addWidget(QLabel('JSON 输入'))
-        self.fmtInput = self._mono_textedit(
-            placeholder='粘贴 JSON 文本到此\n例如 {"name":"test","value":123}')
+        fmt_head = QHBoxLayout()
+        fmt_head.addWidget(QLabel('JSON 输入'))
+        self.fmtFileLabel = QLabel('')
+        self.fmtFileLabel.setStyleSheet('color: #1de9b6; font-weight: bold;')
+        fmt_head.addWidget(self.fmtFileLabel, 1)
+        left.addLayout(fmt_head)
+        # 直接复用差异对比页的拖放组件：拖入 .json 自动读取内容
+        self.fmtInput = DragDropTextEdit()
+        _fmt_font = QFont('Consolas')
+        _fmt_font.setStyleHint(QFont.Monospace)
+        _fmt_font.setPointSize(11)
+        self.fmtInput.setFont(_fmt_font)
+        self.fmtInput.setAcceptRichText(False)
+        self.fmtInput.setPlaceholderText(
+            '粘贴 JSON 文本到此，或直接把 .json 文件拖进来\n例如 {"name":"test","value":123}')
+        self.fmtInput.file_dropped.connect(self._on_fmt_file_dropped)
         left.addWidget(self.fmtInput, 1)
         h.addLayout(left, 1)
 
@@ -1071,9 +1087,15 @@ class Json工具对话框(对话框基类):
 
         v.addLayout(h, 1)
 
+        bottom_bar = QHBoxLayout()
         self.fmtStatus = QLabel('')
         self.fmtStatus.setStyleSheet('padding: 4px;')
-        v.addWidget(self.fmtStatus)
+        bottom_bar.addWidget(self.fmtStatus, 1)
+        self.btnSave = QPushButton('保存为 .json')
+        self.btnSave.setMinimumWidth(120)
+        self.btnSave.setToolTip('把右侧输出结果保存到 桌面/Super_ADB 文件夹')
+        bottom_bar.addWidget(self.btnSave)
+        v.addLayout(bottom_bar)
         return w
 
     def _build_diff_tab(self):
@@ -1319,6 +1341,7 @@ class Json工具对话框(对话框基类):
             self._show_error(str(e), e.lineno, e.colno)
             return
         self.fmtInput.setExtraSelections([])
+        self._last_mode = 'format'
         self.fmtOutput.setPlainText(
             json.dumps(obj, ensure_ascii=False, indent=self._get_indent()))
         self.fmtStatus.setText('✅ 格式化完成')
@@ -1337,6 +1360,7 @@ class Json工具对话框(对话框基类):
             self._show_error(str(e), e.lineno, e.colno)
             return
         self.fmtInput.setExtraSelections([])
+        self._last_mode = 'minify'
         self.fmtOutput.setPlainText(
             json.dumps(obj, ensure_ascii=False, separators=(',', ':')))
         self.fmtStatus.setText('✅ 压缩完成')
@@ -1385,6 +1409,50 @@ class Json工具对话框(对话框基类):
         text = self.fmtOutput.toPlainText()
         if text:
             QApplication.clipboard().setText(text)
+
+    # ─────────────── 格式化页：拖入文件后显示文件名并自动格式化 ───────────────
+    def _on_fmt_file_dropped(self, path):
+        self.fmt_filepath = path
+        fname = os.path.basename(path)
+        self.fmtFileLabel.setText(f'📄 {fname}')
+        self.fmtFileLabel.setToolTip(path)
+        # 拖入即自动格式化，所见即所得
+        self._format_json()
+
+    # ─────────────── 功能：保存输出结果到 桌面/Super_ADB ───────────────
+    def _save_output(self):
+        text = self.fmtOutput.toPlainText()
+        if not text.strip():
+            self.fmtStatus.setText('⚠️ 输出为空，请先执行格式化或压缩')
+            self.fmtStatus.setStyleSheet('color:#ffb74d; font-weight:bold;')
+            return
+        save_dir = os.path.join(self._desktop_dir(), 'Super_ADB')
+        try:
+            os.makedirs(save_dir, exist_ok=True)
+        except Exception:
+            save_dir = self._desktop_dir()
+
+        if self.fmt_filepath:
+            stem = os.path.splitext(os.path.basename(self.fmt_filepath))[0]
+            for ch in r'\\/:*?"<>|':
+                stem = stem.replace(ch, '_')
+        else:
+            stem = 'output'
+        suffix = '.min.json' if self._last_mode == 'minify' else '.formatted.json'
+        default_path = os.path.join(save_dir, stem + suffix)
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, '保存 JSON 结果', default_path, 'JSON 文件 (*.json)')
+        if not path:
+            return
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(text)
+            self.fmtStatus.setText('✅ 已保存: ' + path)
+            self.fmtStatus.setStyleSheet('color:#81c784; font-weight:bold;')
+        except Exception as e:
+            self.fmtStatus.setText('❌ 保存失败: ' + str(e))
+            self.fmtStatus.setStyleSheet('color:#e57373; font-weight:bold;')
 
     # ─────────────── 功能：差异对比 ───────────────
     def _sort_json_keys(self, obj):

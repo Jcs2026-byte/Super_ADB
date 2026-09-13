@@ -35,6 +35,8 @@ class 对话框基类(QDialog):
 
     def __init__(self, parent=None, 标题='', 最小尺寸=(520, 400), 发光=True):
         super().__init__(parent)
+        from PySide6.QtCore import Qt
+        self.setWindowFlag(Qt.WindowType.Tool, True)
         self._主题id = get_current_theme_id(self)
         if 标题:
             self.setWindowTitle(标题)

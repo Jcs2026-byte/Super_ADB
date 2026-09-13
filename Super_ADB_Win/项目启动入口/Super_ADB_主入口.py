@@ -482,6 +482,12 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self._初始化电脑ip输入()
         self._初始化托盘()
         self._初始化桌面小猫()
+        # 启动时自动注册全局热键
+        try:
+            from 对话框.快捷键配置对话框 import _register_hotkeys
+            _register_hotkeys()
+        except Exception as e:
+            print(f'[快捷键] 启动注册失败: {e}')
 
         if not self.adb.检查adb():
             self.status_bar.showMessage('adb 不可用（点击右上角「环境配置」一键添加 PATH）', 0)
@@ -2096,6 +2102,11 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         show_action.triggered.connect(self.show)
         tray_menu.addAction(show_action)
 
+        # 快捷键配置
+        hotkey_action = QAction('系统截图与录屏…', self)
+        hotkey_action.triggered.connect(self._打开快捷键配置)
+        tray_menu.addAction(hotkey_action)
+
         # 开机自动启动（仅打包后的 exe 生效；勾选写入当前用户 Run 键）
         autostart_action = QAction('开机自动启动', self)
         autostart_action.setCheckable(True)
@@ -2113,6 +2124,17 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.activated.connect(self._托盘激活时)
         self.tray_icon.show()
+
+    def _打开快捷键配置(self):
+        """打开快捷键配置弹窗。"""
+        from 对话框.快捷键配置对话框 import 快捷键配置对话框
+        dlg = 快捷键配置对话框(self)
+        try:
+            from 项目UI.界面样式 import get_stylesheet, get_current_theme_id
+            dlg.setStyleSheet(get_stylesheet(get_current_theme_id(self)))
+        except Exception:
+            pass
+        dlg.exec()
 
     def _初始化桌面小猫(self):
         """初始化桌面宠物小猫，使用打包进资源的橘白小猫图片（:/desk_cat.png）。"""

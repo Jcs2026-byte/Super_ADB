@@ -24,7 +24,7 @@ from PySide6.QtCore import (
     Qt, QTimer, QPoint, QRect, QSize
 )
 from PySide6.QtGui import (
-    QPixmap, QPainter, QColor, QCursor, QTransform, QFont
+    QPixmap, QPainter, QColor, QCursor, QTransform, QFont, QBitmap, QRegion
 )
 from PySide6.QtWidgets import (
     QWidget, QLabel
@@ -101,6 +101,11 @@ class DeskCatWidget(QWidget):
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation
         )
+
+        # 关键：根据小猫图片的 alpha 通道生成精确裁剪 mask
+        # 这样只有小猫形状的区域参与渲染，其他区域完全透明，
+        # 从根本上消除 Windows DWM 下透明子控件移动时的「残影拖尾」问题。
+        self._update_mask()
 
         # 装饰标签（展示气泡文字）
         self._bubble = QLabel(self)
@@ -191,6 +196,56 @@ class DeskCatWidget(QWidget):
         p.drawEllipse(40, 80, 40, 50)
         p.end()
         return pm
+
+    def _update_mask(self):
+        """根据小猫 pixmap 的 alpha 通道生成精确裁剪 mask。
+
+        为什么需要 mask？
+        ----------------
+        小猫是主窗口的透明子控件（WA_TranslucentBackground）。
+        在 Windows DWM 合成模式下，矩形透明子控件频繁移动时，
+        即使父窗口整窗重绘，旧位置的像素仍可能被错误地「粘」到新位置，
+        表现为小猫拖着一块主界面 UI 到处跑。
+
+        setMask 的作用：
+        只有 mask 覆盖的区域才参与渲染，其余区域完全不参与合成。
+        这样一来，小猫矩形之外的区域根本不存在，
+        移动时自然不会有任何残影拖尾。
+
+        动画余量：
+        呼吸缩放 / 走路摇摆 / 逃跑倾斜等动画幅度较小，
+        mask 四周留少量余量，避免动画边缘被意外裁剪。
+        """
+        pm = self._scaled_pixmap
+        if pm.isNull():
+            return
+
+        # 从 pixmap 的 alpha 通道生成 mask bitmap
+        mask_bitmap = pm.mask()
+        if mask_bitmap.isNull():
+            return
+
+        region = QRegion(mask_bitmap)
+
+        # 把阴影区域也加入 mask（阴影在底部居中）
+        shadow_w = self.width() * 0.55
+        shadow_h = self.height() * 0.12
+        shadow_x = int((self.width() - shadow_w) / 2)
+        shadow_y = int(self.height() - shadow_h - 4)
+        shadow_rect = QRect(shadow_x, shadow_y, int(shadow_w), int(shadow_h))
+        region = region.united(QRegion(shadow_rect, QRegion.RegionType.Ellipse))
+
+        # 给 mask 四周各偏移 3px 做「胖化」，覆盖呼吸缩放 ±3%、
+        # 走路摇摆 ±3°、逃跑倾斜 ±12° 等动画变换，避免边缘被裁剪。
+        pad = 3
+        for dx in (-pad, 0, pad):
+            for dy in (-pad, 0, pad):
+                if dx == 0 and dy == 0:
+                    continue
+                shifted = region.translated(dx, dy)
+                region = region.united(shifted)
+
+        self.setMask(region)
 
     # ------------------------------------------------------------------
     # 公开 API

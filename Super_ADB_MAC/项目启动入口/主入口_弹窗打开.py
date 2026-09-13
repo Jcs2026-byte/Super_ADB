@@ -107,6 +107,12 @@ class 弹窗打开Mixin:
         dlg = 历史连接设备对话框(self.adb, on_reconnect=_on_reconnect, parent=self, theme_id=theme_id)
         dlg.exec()
 
+    def 打开快捷键配置(self):
+        """打开快捷键配置对话框。"""
+        from 对话框.快捷键配置对话框 import 快捷键配置对话框
+        dlg = 快捷键配置对话框(parent=self)
+        dlg.exec()
+
     def 打开命令行(self):
         """打开命令行。
         - 自研 ADB 模式：打开 ADB 交互式终端弹窗

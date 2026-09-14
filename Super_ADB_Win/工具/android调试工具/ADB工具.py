@@ -645,7 +645,8 @@ class AdbHelper:
                 try:
                     if sys.platform == 'win32':
                         ping_ret = _sp.run(['ping', '-n', '1', '-w', '1000', host],
-                                         capture_output=True, timeout=3)
+                                         capture_output=True, timeout=3,
+                                         creationflags=CREATE_NO_WINDOW)
                     else:
                         ping_ret = _sp.run(['ping', '-c', '1', '-W', '1', host],
                                          capture_output=True, timeout=3)

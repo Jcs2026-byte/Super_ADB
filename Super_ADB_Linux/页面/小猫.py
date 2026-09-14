@@ -55,7 +55,7 @@ class DeskCatWidget(QWidget):
     def __init__(self, parent=None, image_path=None, size=85):
         super().__init__(parent)
         self._parent = parent
-        self._cat_size = QSize(size, int(size * 1.1))  # 稍微拉高，显得可爱
+        self._cat_size = QSize(int(size * 1.2), int(size * 1.5))  # 宽高都留余量，给完整身体/尾巴/翻转留空间
         self._placed = False  # 是否已完成首次随机落位
         self._state = self.STATE_IDLE
         self._facing_right = True

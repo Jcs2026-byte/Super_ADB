@@ -55,7 +55,7 @@ class DeskCatWidget(QWidget):
     def __init__(self, parent=None, image_path=None, size=85):
         super().__init__(parent)
         self._parent = parent
-        self._cat_size = QSize(size, int(size * 1.1))  # 稍微拉高，显得可爱
+        self._cat_size = QSize(int(size * 1.2), int(size * 1.5))  # 宽高都留余量，给完整身体/尾巴/翻转留空间
         self._placed = False  # 是否已完成首次随机落位
         self._state = self.STATE_IDLE
         self._facing_right = True
@@ -226,6 +226,12 @@ class DeskCatWidget(QWidget):
             return
 
         region = QRegion(mask_bitmap)
+
+        # pm 在 widget 里居中底部绘制，mask 必须平移到 pm 的实际绘制位置，
+        # 否则 pm 居中时 mask 还停在 (0,0)，身体部分落在 mask 外被裁掉。
+        pm_x = (self.width() - pm.width()) // 2
+        pm_y = self.height() - pm.height() - 6
+        region = region.translated(pm_x, pm_y)
 
         # 把阴影区域也加入 mask（阴影在底部居中）
         shadow_w = self.width() * 0.55

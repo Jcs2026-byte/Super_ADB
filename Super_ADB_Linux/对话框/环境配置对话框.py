@@ -110,6 +110,23 @@ def 读取启动自动连接设置() -> bool:
     return bool(adb_cfg.get('auto_connect', False))
 
 
+def 读取小猫开关设置() -> bool:
+    """读取是否显示桌面宠物小猫（默认开启）。"""
+    cfg = 加载json配置(CONFIG_NAME)
+    if not isinstance(cfg, dict):
+        return True
+    return bool(cfg.get('desk_cat_enabled', True))
+
+
+def 保存小猫开关设置(enabled: bool):
+    """保存桌面宠物小猫开关到配置文件。"""
+    cfg = 加载json配置(CONFIG_NAME)
+    if not isinstance(cfg, dict):
+        cfg = {}
+    cfg['desk_cat_enabled'] = bool(enabled)
+    保存json配置(CONFIG_NAME, cfg)
+
+
 def 保存adb设置(socket_direct: bool, self_built: bool, system_adb: bool,
                auto_connect: bool = None):
     """保存 ADB 配置到 JSON 文件。三个模式选项互斥，auto_connect 独立。
@@ -147,6 +164,8 @@ class 环境配置对话框(QDialog):
 
     # ADB 设置（socket_direct / self_built）变更时发射，主窗口收到后热更新 adb 实例
     设置变更 = Signal()
+    # 小猫开关变更时发射（True=显示 / False=隐藏）
+    小猫开关变更 = Signal(bool)
     # 后台探测完成 → 主线程更新 UI（后台线程无事件循环，
     # 不能靠 QTimer.singleShot 回主线程，必须用信号）
     _probe_done = Signal(object)
@@ -157,14 +176,14 @@ class 环境配置对话框(QDialog):
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(760, 604)
+        self.setFixedSize(760, 634)
         self.setWindowTitle('环境配置')
         self.setWindowIcon(QIcon(':/Super_ADB.png'))
 
         # ── 容器（圆角卡片）───────────────────────────────────────
         self.card = QWidget(self)
         self.card.setObjectName('envCard')
-        self.card.setGeometry(10, 10, 740, 584)
+        self.card.setGeometry(10, 10, 740, 614)
 
         layout = QVBoxLayout(self.card)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -255,6 +274,17 @@ class 环境配置对话框(QDialog):
         )
         self.auto_connect_chk.stateChanged.connect(self._on_auto_connect_toggle)
         content.addWidget(self.auto_connect_chk)
+
+        # 桌面宠物小猫开关（默认开启）
+        self.cat_chk = QCheckBox('显示桌面宠物小猫')
+        self.cat_chk.setObjectName('socketChk')
+        self.cat_chk.setChecked(读取小猫开关设置())
+        self.cat_chk.setToolTip(
+            '勾选后在主界面显示会走动、躲避鼠标的小猫；\n'
+            '不勾选则不加载小猫，关闭后立即生效。'
+        )
+        self.cat_chk.stateChanged.connect(self._on_cat_toggle)
+        content.addWidget(self.cat_chk)
 
         # 版本 + 路径（改 QPlainTextEdit，长内容可滚动完整展示）
         self.version_lbl = self._make_mono_edit('版本：—')
@@ -826,6 +856,12 @@ class 环境配置对话框(QDialog):
             system_adb=self.system_chk.isChecked(),
             auto_connect=state == Qt.CheckState.Checked.value,
         )
+
+    def _on_cat_toggle(self, state):
+        """「显示桌面宠物小猫」开关：保存配置并即时显示/隐藏小猫。"""
+        enabled = state == Qt.CheckState.Checked.value
+        保存小猫开关设置(enabled)
+        self.小猫开关变更.emit(enabled)
 
     # ------------------------------------------------------------------
     # 鼠标拖拽

@@ -365,6 +365,8 @@ class 弹窗打开Mixin:
         dlg.apply_theme(self._current_theme)
         # 设置变更时热更新 adb 实例配置并刷新设备列表（无需重启程序）
         dlg.设置变更.connect(self._on_adb_settings_changed)
+        # 小猫开关变更时即时显示/隐藏小猫
+        dlg.小猫开关变更.connect(self._切换小猫显示)
         dlg.destroyed.connect(lambda _obj=None, _self=self: setattr(_self, '_env_config_dialog', None))
         dlg.finished.connect(lambda *_: QTimer.singleShot(0, self._激活主窗口到前台))
         self._env_config_dialog = dlg

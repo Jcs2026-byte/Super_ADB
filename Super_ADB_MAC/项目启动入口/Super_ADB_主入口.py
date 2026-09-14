@@ -2140,6 +2140,9 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
 
     def _初始化桌面小猫(self):
         """初始化桌面宠物小猫，使用打包进资源的橘白小猫图片（:/desk_cat.png）。"""
+        from 对话框.环境配置对话框 import 读取小猫开关设置
+        if not 读取小猫开关设置():
+            return  # 用户在环境配置中关闭了小猫，不加载
         # 图片已编译进 png_rc.py（ui/png.qrc），打包后无需外部文件
         image_path = ':/desk_cat.png'
         try:
@@ -2149,6 +2152,22 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             # 小猫加载失败不阻塞主程序启动
             print(f'[desk_cat] 初始化失败: {e}')
             self._desk_cat = None
+
+    def _切换小猫显示(self, enabled: bool):
+        """环境配置对话框中小猫开关变更时调用：即时显示或隐藏小猫。"""
+        if enabled:
+            if self._desk_cat is None:
+                # 之前没加载过，现在动态创建
+                self._初始化桌面小猫()
+            else:
+                self._desk_cat._hidden_by_user = False
+                self._desk_cat.show()
+                self._desk_cat.raise_()
+                self._更新桌面小猫边界()
+        else:
+            if self._desk_cat is not None:
+                self._desk_cat.hide()
+                self._desk_cat._hidden_by_user = True
 
     def _更新桌面小猫边界(self):
         """把主窗口客户区映射为小猫的活动边界。

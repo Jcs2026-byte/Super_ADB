@@ -1921,10 +1921,12 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         # ── 子控件正常绘制（覆盖在圆角背景之上）──
         super().paintEvent(ev)
         # ── 4px 主题色实色边框画最上层（不透明，与 PCAP/无线调试弹窗同亮度）──
+        # 边框路径内缩 2px（笔宽 4 的一半），圆角半径同步减 2px 保持同心弧，
+        # 否则四角弧线中心偏移会导致边框与背景圆角不重合、露出透明漏白。
         r, g, b = self._解析强调色rgb()
         pen = QPen(QColor(r, g, b), 4)
         painter.setPen(pen)
-        painter.drawRoundedRect(self.rect().adjusted(2, 2, -2, -2), 圆角半径, 圆角半径)
+        painter.drawRoundedRect(self.rect().adjusted(2, 2, -2, -2), 圆角半径 - 2, 圆角半径 - 2)
 
     def nativeEvent(self, eventType, message):
         """无边框窗口兜底：把 ``WM_NCHITTEST`` 强制返回 ``HTCLIENT``。

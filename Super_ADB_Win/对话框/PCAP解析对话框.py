@@ -2062,7 +2062,6 @@ class Pcap解析对话框(QWidget):
 
         def _group(name, items, group_color=None):
             g = QTreeWidgetItem([name, ''])
-            g.setExpanded(True)
             # 分组标题用强调色
             g.setForeground(0, QColor(group_color or accent))
             g.setForeground(1, QColor(group_color or accent))
@@ -2072,7 +2071,9 @@ class Pcap解析对话框(QWidget):
                 子.setForeground(0, QColor(text_primary))
                 子.setForeground(1, QColor(text_primary))
                 g.addChild(子)
+            # 必须先挂到 tree 上再 setExpanded，否则在部分 Qt 版本下不生效
             self.overview_tree.addTopLevelItem(g)
+            g.setExpanded(True)
 
         # 1. 基本信息
         _group('📋 基本信息', [

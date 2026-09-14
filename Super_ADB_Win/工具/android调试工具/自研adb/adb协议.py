@@ -2061,6 +2061,39 @@ def 扫描局域网设备(port: int = 5555, timeout: float = 0.5, 网段: str = 
     devices.sort(key=lambda d: [int(x) for x in d['ip'].split('.')])
     return devices
 
+
+def 验证ADB设备(host: str, port: int = 5555, timeout: float = 1.5) -> bool:
+    """轻量验证目标是否真的在跑 adbd：发一个 CNXN，看对方是否按 ADB 协议回应。
+
+    只发一个 CNXN 包、读一个包头，不做完整 AUTH/TLS 握手，验完立即关闭 socket。
+    对方回包命令字是 CNXN / AUTH / STLS 任一即视为真 ADB 设备；
+    非 ADB 服务（占用 5555 的其他端口/HTTP 等）回包命令字不对或直接断开，判为假设备。
+    """
+    banner = b'host::features=shell_v2,cmd'
+    pkt = 打包消息(CMD_CNXN, ADB_VERSION, ADB_MAX_PAYLOAD, banner)
+    try:
+        s = socket.create_connection((host, port), timeout=timeout)
+    except Exception:
+        return False
+    try:
+        s.sendall(pkt)
+        s.settimeout(timeout)
+        header = s.recv(24)
+        if len(header) < 24:
+            return False
+        command, _a0, _a1, _length, _crc, magic = struct.unpack('<IIIIII', header)
+        if magic != _计算魔数(command):
+            return False
+        return command in (CMD_CNXN, CMD_AUTH, CMD_STLS)
+    except Exception:
+        return False
+    finally:
+        try:
+            s.close()
+        except Exception:
+            pass
+
+
 def 测试连接(host: str, port: int = 5555):
     print(f'连接 {host}:{port}...')
     conn = AdbConnection(host, port)

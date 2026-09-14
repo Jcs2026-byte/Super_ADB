@@ -816,34 +816,25 @@ class AdbHelper:
                 if auto_connect:
                     try:
                         found = 自研adb客户端.扫描设备(timeout=0.5)
-                        # 扫描到的设备先直接加到列表里，不在这里同步验证
-                        # 避免多线程同时连接导致全部失败
-                        # 后台再异步验证，假设备验证失败了再剔除
-                        import threading as _th
-                        def _异步验证并剔除假设备():
+                        # 端口开放不代表真在跑 adbd（可能是别的服务占了 5555），
+                        # 并发做一次轻量 ADB 协议验证：发 CNXN 看回包命令字。
+                        # 不做完整 AUTH/TLS 握手，验完立刻关 socket，避免抢单客户端槽位。
+                        from 工具.android调试工具.自研adb.adb协议 import 验证ADB设备
+                        import concurrent.futures as _cf
+                        def _验证(d):
                             try:
-                                import time as _t
-                                _t.sleep(0.5)  # 稍等一下，避免和初始化竞争
-                                # 对每个新扫到的设备，尝试连接验证
-                                for d in found:
-                                    serial = f'{d["ip"]}:{d["port"]}'
-                                    try:
-                                        client = self._获取自研adb(serial, timeout=2)
-                                        if not client:
-                                            # 验证失败，标记为假设备，后续刷新时会被剔除
-                                            pass
-                                    except Exception:
-                                        pass
+                                return d, 验证ADB设备(d['ip'], d['port'], timeout=1.5)
                             except Exception:
-                                pass
-                        _th.Thread(target=_异步验证并剔除假设备, daemon=True).start()
-
-                        # 先把所有扫到的设备加到列表里，保证启动快
-                        for d in found:
+                                return d, False
+                        verified = []
+                        with _cf.ThreadPoolExecutor(max_workers=16) as _ex:
+                            for d, ok in _ex.map(_验证, found):
+                                if ok:
+                                    verified.append(d)
+                        for d in verified:
                             serial = f'{d["ip"]}:{d["port"]}'
                             if serial not in seen:
                                 seen.add(serial)
-                                # 从缓存里取设备名，如果有就显示
                                 model = self._设备名缓存.get(serial, '')
                                 devices.append({'serial': serial, 'model': model, 'state': 'device'})
                     except Exception:

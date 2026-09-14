@@ -152,7 +152,7 @@ python 项目启动入口/Super_ADB_主入口.py
 - 本地打的包不会被打上网络来源标签不会触发警告
 
 解压后找个盘放一下，右击执行文件创建快捷方式放桌面就行
-
+![Super_ADB](docs/MAC拦截.png)
 MAC:
 这是 macOS Gatekeeper 拦截 ——CI 打的包没做 Apple 签名和公证，系统默认不让跑。三种放行方式，任选一种：
 
@@ -171,6 +171,9 @@ xattr -dr com.apple.quarantine /Applications/Super_ADB_MAC.app
 ```
 
 如果是从 dmg 里直接双击运行的，先把 app 拖到 "应用程序" 文件夹再执行上面这条。
+
+
+
 
 | 平台 | 产物 |
 |------|------|

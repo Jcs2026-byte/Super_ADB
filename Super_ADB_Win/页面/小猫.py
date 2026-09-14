@@ -55,7 +55,7 @@ class DeskCatWidget(QWidget):
     def __init__(self, parent=None, image_path=None, size=85):
         super().__init__(parent)
         self._parent = parent
-        self._cat_size = QSize(int(size * 1.2), int(size * 1.5))  # 宽高都留余量，给完整身体/尾巴/翻转留空间
+        self._cat_size = QSize(int(size * 1.8), int(size * 1.5))  # 宽>高，给翘起的尾巴/身体左右留足横向余量，避免尾巴尖被 widget 边界裁掉
         self._placed = False  # 是否已完成首次随机落位
         self._state = self.STATE_IDLE
         self._facing_right = True
@@ -224,6 +224,13 @@ class DeskCatWidget(QWidget):
         mask_bitmap = pm.mask()
         if mask_bitmap.isNull():
             return
+
+        # 朝向与 paintEvent 中的 scale(sx, ...) 保持一致：
+        # 向左走时 pixmap 被水平镜像翻转，mask 也必须同步翻转，
+        # 否则尾巴/耳朵等左右不对称的部位会被 mask 裁掉。
+        if not self._facing_right:
+            mirrored_img = mask_bitmap.toImage().mirrored(True, False)
+            mask_bitmap = QBitmap.fromImage(mirrored_img)
 
         region = QRegion(mask_bitmap)
 
@@ -551,9 +558,13 @@ class DeskCatWidget(QWidget):
             self._velocity = QPoint(step_x, step_y)
             self._pos += self._velocity
 
-        # 根据速度方向决定朝向
+        # 根据速度方向决定朝向；翻转朝向时同步刷新 mask，
+        # 否则水平镜像后的尾巴等部位会被旧 mask 裁掉。
         if abs(self._velocity.x()) > 0:
-            self._facing_right = self._velocity.x() > 0
+            new_facing_right = self._velocity.x() > 0
+            if new_facing_right != self._facing_right:
+                self._facing_right = new_facing_right
+                self._update_mask()
 
         self._clamp_position()
         # 撞墙检测：位置被 clamp 锁死且仍未到达目标点，说明目标在边界外，

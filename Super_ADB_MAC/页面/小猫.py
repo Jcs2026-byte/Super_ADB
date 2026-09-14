@@ -26,7 +26,7 @@ from PySide6.QtCore import (
     Qt, QTimer, QPoint, QRect, QSize
 )
 from PySide6.QtGui import (
-    QPixmap, QPainter, QColor, QCursor, QTransform, QFont
+    QPixmap, QPainter, QColor, QCursor, QTransform, QFont, QBitmap, QRegion
 )
 from PySide6.QtWidgets import (
     QWidget, QLabel
@@ -57,7 +57,7 @@ class DeskCatWidget(QWidget):
     def __init__(self, parent=None, image_path=None, size=85):
         super().__init__(parent)
         self._parent = parent
-        self._cat_size = QSize(int(size * 1.2), int(size * 1.5))  # 宽高都留余量，给完整身体/尾巴/翻转留空间
+        self._cat_size = QSize(int(size * 1.8), int(size * 1.5))  # 宽>高，给翘起的尾巴/身体左右留足横向余量，避免尾巴尖被 widget 边界裁掉
         self._placed = False  # 是否已完成首次随机落位
         self._state = self.STATE_IDLE
         self._facing_right = True
@@ -103,6 +103,11 @@ class DeskCatWidget(QWidget):
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation
         )
+
+        # 关键：根据小猫图片的 alpha 通道生成精确裁剪 mask
+        # 这样只有小猫形状的区域参与渲染，其他区域完全透明，
+        # 从根本上消除透明子控件移动时的「残影拖尾」问题。
+        self._update_mask()
 
         # 装饰标签（展示气泡文字）
         self._bubble = QLabel(self)
@@ -193,6 +198,69 @@ class DeskCatWidget(QWidget):
         p.drawEllipse(40, 80, 40, 50)
         p.end()
         return pm
+
+    def _update_mask(self):
+        """根据小猫 pixmap 的 alpha 通道生成精确裁剪 mask。
+
+        为什么需要 mask？
+        ----------------
+        小猫是主窗口的透明子控件（WA_TranslucentBackground）。
+        在部分合成器下，矩形透明子控件频繁移动时，
+        即使父窗口整窗重绘，旧位置的像素仍可能被错误地「粘」到新位置，
+        表现为小猫拖着一块主界面 UI 到处跑。
+
+        setMask 的作用：
+        只有 mask 覆盖的区域才参与渲染，其余区域完全不参与合成。
+        这样一来，小猫矩形之外的区域根本不存在，
+        移动时自然不会有任何残影拖尾。
+
+        动画余量：
+        呼吸缩放 / 走路摇摆 / 逃跑倾斜等动画幅度较小，
+        mask 四周留少量余量，避免动画边缘被意外裁剪。
+        """
+        pm = self._scaled_pixmap
+        if pm.isNull():
+            return
+
+        # 从 pixmap 的 alpha 通道生成 mask bitmap
+        mask_bitmap = pm.mask()
+        if mask_bitmap.isNull():
+            return
+
+        # 朝向与 paintEvent 中的 scale(sx, ...) 保持一致：
+        # 向左走时 pixmap 被水平镜像翻转，mask 也必须同步翻转，
+        # 否则尾巴/耳朵等左右不对称的部位会被 mask 裁掉。
+        if not self._facing_right:
+            mirrored_img = mask_bitmap.toImage().mirrored(True, False)
+            mask_bitmap = QBitmap.fromImage(mirrored_img)
+
+        region = QRegion(mask_bitmap)
+
+        # pm 在 widget 里居中底部绘制，mask 必须平移到 pm 的实际绘制位置，
+        # 否则 pm 居中时 mask 还停在 (0,0)，身体部分落在 mask 外被裁掉。
+        pm_x = (self.width() - pm.width()) // 2
+        pm_y = self.height() - pm.height() - 6
+        region = region.translated(pm_x, pm_y)
+
+        # 把阴影区域也加入 mask（阴影在底部居中）
+        shadow_w = self.width() * 0.55
+        shadow_h = self.height() * 0.12
+        shadow_x = int((self.width() - shadow_w) / 2)
+        shadow_y = int(self.height() - shadow_h - 4)
+        shadow_rect = QRect(shadow_x, shadow_y, int(shadow_w), int(shadow_h))
+        region = region.united(QRegion(shadow_rect, QRegion.RegionType.Ellipse))
+
+        # 给 mask 四周各偏移 3px 做「胖化」，覆盖呼吸缩放 ±3%、
+        # 走路摇摆 ±3°、逃跑倾斜 ±12° 等动画变换，避免边缘被裁剪。
+        pad = 3
+        for dx in (-pad, 0, pad):
+            for dy in (-pad, 0, pad):
+                if dx == 0 and dy == 0:
+                    continue
+                shifted = region.translated(dx, dy)
+                region = region.united(shifted)
+
+        self.setMask(region)
 
     # ------------------------------------------------------------------
     # 公开 API
@@ -492,9 +560,13 @@ class DeskCatWidget(QWidget):
             self._velocity = QPoint(step_x, step_y)
             self._pos += self._velocity
 
-        # 根据速度方向决定朝向
+        # 根据速度方向决定朝向；翻转朝向时同步刷新 mask，
+        # 否则水平镜像后的尾巴等部位会被旧 mask 裁掉。
         if abs(self._velocity.x()) > 0:
-            self._facing_right = self._velocity.x() > 0
+            new_facing_right = self._velocity.x() > 0
+            if new_facing_right != self._facing_right:
+                self._facing_right = new_facing_right
+                self._update_mask()
 
         self._clamp_position()
         # 撞墙检测：位置被 clamp 锁死且仍未到达目标点，说明目标在边界外，

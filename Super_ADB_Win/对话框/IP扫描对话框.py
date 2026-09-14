@@ -42,7 +42,7 @@ _NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 class _扫描工作器(QObject):
     """后台线程执行 ping 扫描，通过信号汇报进度和结果。"""
     进度 = Signal(int, int)          # 当前完成数, 总数
-    发现设备 = Signal(str, str)      # IP, MAC地址(可能为空)
+    发现设备 = Signal(str, str, str)  # IP, MAC地址(可能为空), 发现方式(ping/arp)
     完成 = Signal(int)                # 发现的设备总数
     出错 = Signal(str)
 
@@ -56,6 +56,7 @@ class _扫描工作器(QObject):
         self._已完成 = 0
         self._总数 = 0
         self._arp_cache = {}  # IP -> MAC
+        self._已上报 = set()   # 已通过 ping 上报的 IP，避免 ARP 阶段重复上报
 
     def 取消(self):
         self._取消 = True
@@ -130,7 +131,8 @@ class _扫描工作器(QObject):
             self.进度.emit(当前, self._总数)
             if 在线:
                 mac = self._arp_cache.get(ip, '')
-                self.发现设备.emit(ip, mac)
+                self._已上报.add(ip)
+                self.发现设备.emit(ip, mac, 'ping')
 
     def run(self):
         try:
@@ -154,8 +156,24 @@ class _扫描工作器(QObject):
             for t in 线程列表:
                 t.join(timeout=10)
 
-            # 扫描完成后再刷新一次ARP缓存（新发现的设备可能已加入）
+            # 扫描完成后再刷新一次ARP缓存（ping 会触发 ARP 请求，即使设备不回 ICMP）
             self._加载arp缓存()
+
+            # ARP 补漏：很多设备（手机/Windows防火墙/IoT）不响应 ICMP ping，
+            # 但二层 ARP 一定有记录（同子网设备必须回 ARP 才能通信）。
+            # 把 ARP 表里有 MAC、但 ping 没通的 IP 也补报进来。
+            网络 = ipaddress.IPv4Network(self.网段, strict=False)
+            子网 = str(网络.network_address).rsplit('.', 1)[0]
+            for ip, mac in self._arp_cache.items():
+                if self._取消:
+                    break
+                # 只补当前子网内的 IP，避免拿到其他网卡的记录
+                if not ip.startswith(子网 + '.'):
+                    continue
+                if ip in self._已上报:
+                    continue
+                self.发现设备.emit(ip, mac, 'arp')
+
             self.完成.emit(self._总数)
         except Exception as e:
             self.出错.emit(str(e))
@@ -345,7 +363,7 @@ class IP扫描对话框(QDialog):
             self.进度条.setValue(百分比)
             self.进度条.setFormat(f"扫描中... {百分比}% ({当前}/{总数})")
 
-    def _on发现设备(self, ip, mac):
+    def _on发现设备(self, ip, mac, 方式='ping'):
         row = self.表格.rowCount()
         self.表格.insertRow(row)
 
@@ -355,8 +373,12 @@ class IP扫描对话框(QDialog):
         self.表格.setItem(row, 0, item_ip)
 
         # 状态
-        item_state = QTableWidgetItem("🟢 在线")
-        item_state.setForeground(QColor(46, 204, 113))
+        if 方式 == 'arp':
+            item_state = QTableWidgetItem("🟡 ARP发现")
+            item_state.setForeground(QColor(241, 196, 15))
+        else:
+            item_state = QTableWidgetItem("🟢 在线")
+            item_state.setForeground(QColor(46, 204, 113))
         self.表格.setItem(row, 1, item_state)
 
         # MAC

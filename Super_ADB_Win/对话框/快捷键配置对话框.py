@@ -668,6 +668,9 @@ class _C图形基类(QWidget):
         self._F选中 = False
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setCursor(Qt.CursorShape.SizeAllCursor)
+        # 关键：构造时立刻按起点定位（1x1），否则在首次 mouseMoveEvent 之前
+        # widget 停在默认 (0,0) 默认大小，表现为「点一下就有个红框卡在左上角」。
+        self._F更新几何()
 
     def setEnd(self, end):
         self._F终点 = end

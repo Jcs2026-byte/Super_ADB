@@ -249,6 +249,17 @@ class 哈希结果行(QWidget):
         self._start()
 
     @staticmethod
+    def _显示值(raw: str, upper: bool = True, width: int = 48) -> str:
+        """长哈希（如 SHA512 128 位）按 width 字符折行显示，短哈希原样返回。
+
+        注意：这里只改显示文本，raw_value 仍存原始无换行值，复制按钮复制的是 raw_value。
+        """
+        s = raw.upper() if upper else raw
+        if len(s) <= width:
+            return s
+        return '\n'.join(s[i:i + width] for i in range(0, len(s), width))
+
+    @staticmethod
     def _fmt_size(b):
         for unit in ("B", "KB", "MB", "GB"):
             if abs(b) < 1024:
@@ -283,8 +294,7 @@ class 哈希结果行(QWidget):
                 continue
             lbl = self._val_labels.get(key)
             if lbl:
-                display_val = val.upper() if upper else val
-                lbl.setText(display_val)
+                lbl.setText(self._显示值(val, upper))
                 lbl.setProperty('raw_value', val)  # 保存原始小写值
                 lbl.setStyleSheet(f"color: {self._clr_ok}; background: transparent;")
                 self._roles[lbl] = 'hash_ok'
@@ -705,7 +715,7 @@ class 哈希校验对话框(对话框基类):
             for lbl in row._val_labels.values():
                 raw = lbl.property('raw_value')
                 if raw and isinstance(raw, str):
-                    lbl.setText(raw.upper() if checked else raw)
+                    lbl.setText(哈希结果行._显示值(raw, checked))
 
     def _enabled(self):
         if not self._enabled_algos:

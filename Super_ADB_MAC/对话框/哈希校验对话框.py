@@ -249,6 +249,16 @@ class 哈希结果行(QWidget):
         self._start()
 
     @staticmethod
+    def _显示值(raw: str, width: int = 48) -> str:
+        """长哈希（如 SHA512 128 位）按 width 字符折行显示，短哈希原样返回。
+
+        显示文本可带换行，但 raw_value 仍存原始无换行值，复制按钮复制 raw_value。
+        """
+        if len(raw) <= width:
+            return raw
+        return '\n'.join(raw[i:i + width] for i in range(0, len(raw), width))
+
+    @staticmethod
     def _fmt_size(b):
         for unit in ("B", "KB", "MB", "GB"):
             if abs(b) < 1024:
@@ -280,7 +290,8 @@ class 哈希结果行(QWidget):
                 continue
             lbl = self._val_labels.get(key)
             if lbl:
-                lbl.setText(val)
+                lbl.setText(self._显示值(val))
+                lbl.setProperty('raw_value', val)
                 lbl.setStyleSheet(f"color: {self._clr_ok}; background: transparent;")
                 self._roles[lbl] = 'hash_ok'
             btn = self._copy_btns.get(key)
@@ -305,7 +316,8 @@ class 哈希结果行(QWidget):
             lbl_name.setToolTip(f"{self.filepath}\n错误: {err}")
 
     def _copy_hash(self, val_label):
-        text = val_label.text()
+        raw = val_label.property('raw_value')
+        text = raw if (raw and isinstance(raw, str)) else val_label.text()
         if text and text not in ("计算中...", "失败"):
             QApplication.clipboard().setText(text)
             btn = self.sender()

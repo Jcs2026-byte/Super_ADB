@@ -2166,6 +2166,20 @@ echo "___END___"'''
         参数从「投屏设置」对话框读取（官方 scrcpy 参数映射，默认=官方默认即不传参）。
         extra_args: 可选的额外命令行参数列表，追加在设置参数之后（可覆盖同名参数）。
         """
+        # 检查设备 Android 版本是否满足 scrcpy 最低要求（Android 5.0 / API 21）
+        try:
+            ver_out = self.直接执行(serial, ['shell', 'getprop', 'ro.build.version.release'], timeout=5)
+            ver_str = (ver_out or '').strip()
+            if ver_str and ver_str[0].isdigit():
+                major = int(ver_str.split('.')[0])
+                if major < 5:
+                    raise RuntimeError(
+                        f'设备 Android 版本为 {ver_str}，低于 Android 5.0，scrcpy 不支持该版本。')
+        except RuntimeError:
+            raise
+        except Exception:
+            pass  # 查询版本失败不阻止投屏，让 scrcpy 自行报错
+
         # 从投屏设置读取官方 scrcpy 参数（默认全部=官方默认，即不传该参数）
         try:
             from 对话框.scrcpy_设置对话框 import load_scrcpy_settings, build_scrcpy_args
@@ -2350,6 +2364,9 @@ echo "___END___"'''
                         需断开自研 = True
                     else:
                         self.log_callback('[投屏] 仍连接失败，请检查设备状态')
+                        raise RuntimeError(
+                            '官方 ADB 连接设备失败，请确认设备已开启无线调试且与电脑在同一网段，'
+                            '然后在设备列表中重新连接后再试投屏。')
 
             except Exception:
                 pass

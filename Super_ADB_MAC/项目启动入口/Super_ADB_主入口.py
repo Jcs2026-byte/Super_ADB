@@ -991,15 +991,32 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
 
     # ---- 各标识符独立获取函数（后台线程调用） ----
     def _获取MAC(self, serial):
-        """获取 MAC 地址，多路径回退。"""
+        """获取 MAC 地址，标注有线/无线来源。"""
+        cmd = (
+            'for iface in wlan0 eth0 wlan1; do '
+            'mac=$(cat /sys/class/net/$iface/address 2>/dev/null); '
+            '[ -n "$mac" ] && echo "$mac $iface" && break; '
+            'done'
+        )
+        try:
+            v = self.adb.执行shell(serial, cmd, timeout=3).strip()
+            if v and v != 'null':
+                parts = v.split()
+                mac = parts[0]
+                if mac and mac != '02:00:00:00:00:00':
+                    iface = parts[1] if len(parts) > 1 else ''
+                    label = '有线' if iface.startswith('eth') else 'WiFi'
+                    return f'{mac} ({label})'
+        except Exception:
+            pass
         for cmd in [
-            'cat /sys/class/net/wlan0/address 2>/dev/null',
+            "ip link show eth0 2>/dev/null | grep -oE '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' | head -n1",
             "ip link show wlan0 2>/dev/null | grep -oE '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' | head -n1",
             'settings get secure wifi_mac_address 2>/dev/null',
         ]:
             try:
                 v = self.adb.执行shell(serial, cmd, timeout=3).strip()
-                if v and v != '02:00:00:00:00:00':
+                if v and v != '02:00:00:00:00:00' and v != 'null':
                     return v
             except Exception:
                 continue

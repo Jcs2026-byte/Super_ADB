@@ -118,14 +118,33 @@ def 获取内存信息(adb, serial):
 
 
 def 获取MAC(adb, serial):
+    # 一次性遍历常见网卡，输出 "MAC 接口名"，据此区分有线/无线
+    cmd = (
+        'for iface in wlan0 eth0 wlan1; do '
+        'mac=$(cat /sys/class/net/$iface/address 2>/dev/null); '
+        '[ -n "$mac" ] && echo "$mac $iface" && break; '
+        'done'
+    )
+    try:
+        v = adb.执行shell(serial, cmd, timeout=3).strip()
+        if v and v != 'null':
+            parts = v.split()
+            mac = parts[0]
+            if mac and mac != '02:00:00:00:00:00':
+                iface = parts[1] if len(parts) > 1 else ''
+                label = '有线' if iface.startswith('eth') else 'WiFi'
+                return f'{mac} ({label})'
+    except Exception:
+        pass
+    # 兜底：旧命令逐个尝试
     for cmd in [
-        'cat /sys/class/net/wlan0/address 2>/dev/null',
+        "ip link show eth0 2>/dev/null | grep -oE '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' | head -n1",
         "ip link show wlan0 2>/dev/null | grep -oE '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' | head -n1",
         'settings get secure wifi_mac_address 2>/dev/null',
     ]:
         try:
             v = adb.执行shell(serial, cmd, timeout=3).strip()
-            if v and v != '02:00:00:00:00:00':
+            if v and v != '02:00:00:00:00:00' and v != 'null':
                 return v
         except Exception:
             continue

@@ -591,26 +591,28 @@ class DeskCatWidget(QWidget):
     def _move_to_position(self):
         """把自身控件移动到 _pos（父窗口局部坐标），并通知父窗口重绘消除残影。
 
-        在部分电脑（不同显卡驱动 / DWM 合成行为）上，仅局部 update 旧矩形
-        不足以擦除半透明子控件的残影，会出现「小猫拖着主窗口内容走」的现象。
+        在 DWM / 合成器模式下，update() 只是异步投递重绘消息，
+        合成器可能在父窗口实际重绘之前就已经合成了新帧——旧位置的像素
+        还没被擦掉就被「定格」进合成画面，长时间运行后累积成残影。
+
         解决方案：
-        1. 移动前先让父窗口重绘旧位置（确保旧位置的像素被正确覆盖）
-        2. 移动后让父窗口重绘新位置 + 整个窗口兜底
+        1. move() 之后对旧位置调用 repaint()（同步重绘），阻塞直到父窗口
+           真正把旧位置的像素覆盖掉，合成器下一帧才不会残留旧猫的影子。
+        2. 新位置用 update() 异步即可（新位置本来就需要小猫自己绘制）。
         """
         old_rect = self.geometry()
         self.move(self._pos)
         new_rect = self.geometry()
         if self._parent is not None:
             # 扩大重绘矩形：加上边距，确保覆盖小猫阴影/半透明边缘
-            pad = 8
+            pad = 16
             old_padded = old_rect.adjusted(-pad, -pad, pad, pad)
             new_padded = new_rect.adjusted(-pad, -pad, pad, pad)
-            # 移动前先重绘旧位置（此时小猫还在新位置，旧位置需要父窗口覆盖）
-            self._parent.update(old_padded)
-            # 移动后重绘新位置
+            # 关键：同步重绘旧位置，确保合成器下一帧前旧像素已被父窗口覆盖
+            self._parent.repaint(old_padded)
+            # 新位置异步重绘即可
             self._parent.update(new_padded)
-            # 兜底：部分显卡/远程桌面下局部 update 不生效，强制整窗重绘
-            # （40ms 定时器调用频率下，整窗重绘开销可接受）
+            # 兜底整窗重绘
             self._parent.update()
 
     # ------------------------------------------------------------------

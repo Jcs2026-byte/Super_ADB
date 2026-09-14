@@ -302,7 +302,7 @@ THEMES = {
     },
 }
 
-DEFAULT_THEME = 'dark_cyan'
+DEFAULT_THEME = 'minimal_gray'
 
 
 def get_theme_ids():

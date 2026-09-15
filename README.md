@@ -1,13 +1,13 @@
 # Super_ADB
 
-> 一款跨平台的 ADB 集成调试工具，集设备连接、应用管理、文件传输、日志抓取、性能监控、网络抓包等功能于一体。
+> 一款跨平台的 ADB 集成调试工具，集设备连接、应用管理、文件传输、日志抓取、性能监控、网络抓包、ADB 命令速查等功能于一体。
 
 ![Super_ADB](docs/主界面.png)
 ![Super_ADB](docs/界面折叠.png)
 ![Super_ADB](docs/灰色主题.png)
 - 这三个分页条都可以折叠界面，折叠后调整窗口大小隐藏不需要的功能，下次需要的时候再展开
 - 主题样式丰富
-- **最新版本：`2026.09.14`**（GitHub / Gitee 均已同步）
+- **最新版本：`2026.09.15`**（GitHub / Gitee 均已同步）
 
 ## ✨ 功能特性
 
@@ -42,6 +42,9 @@
 - APK 元信息解析（包名/版本/权限/四大组件）
 - 解包查看资源，安装失败自动诊断原因
 - **包信息获取**：一键查看指定包的安装路径、PID、版本号、版本名、SDK 版本、UID、数据目录、应用大小等详细信息，异步加载不卡界面
+- **冻结 / 解冻应用**：输入包名一键冻结（`pm disable`）或解冻（`pm enable`），自动查询
+  `pm list packages -d` 校验结果，输出区显示「冻结/解冻了哪个包、是否成功」，
+  自研 / 系统 ADB 模式均兼容
 
 ### 📋 日志抓取
 ![img_1.png](docs/日志管理器.png)
@@ -51,7 +54,7 @@
 - 多设备同时监控，日志导出保存
 
 ### 💻 ADB 交互式终端
-![img.png](docs/adbshell命令行.png)
+c
 注意  这个进入adb shell 了，不是cmd 命令行，部分cmd命令 不适用，需要替换成 shell ,
 例如：adb shell pm dump com.migu.aijia | findstr version    findstr要改成grep
 adb shell pm dump com.migu.aijia | grep version发送，会自动改成shell 命令 pm dump com.migu.aijia | grep version
@@ -60,6 +63,16 @@ adb shell pm dump com.migu.aijia | grep version发送，会自动改成shell 命
 - **常用命令快捷按钮**：自定义常用命令，点击自动填充到输入框，支持增删改查、持久化保存
 - ANSI 转义序列过滤，深色终端风格
 - 支持设置常用命令、命令历史记录、命令别名
+
+### 📖 ADB 命令集合
+![img.png](docs/adb命令集合.png)
+- 输出区按钮行「ADB命令集合」按钮，一键弹出命令速查窗口
+- 内置 **150+ 条 ADB 命令**（8 大分类：设备连接、应用管理、文件传输、日志调试、系统设置、
+  网络、性能压测、高级维护），覆盖 adb 客户端命令与 shell 端 am / pm / dumpsys /
+  settings / wm / input / svc / cmd 等常用工具
+- 每条命令含「命令 / 说明 / 实例」，列表直接展示命令与一句话简述，新人也能一眼看懂用途
+- 类别下拉筛选 + 关键字搜索（匹配类别/命令/说明/实例），一键复制命令（双击条目亦可复制）
+- 弹窗样式与主界面主题联动，三平台同步
 
 ### 📊 性能监控
 - 设备级：CPU 多核分核/内存/温度/FPS/网络速率
@@ -198,7 +211,7 @@ Super_ADB/
 │   ├── android调试工具/     # ADB工具、自研adb/（协议栈）、收藏下拉框、性能监控、APK/AXML/DEX 解析
 │   ├── 便捷工具/           # JSON读写、WiFi工具、WiFi密码破解、PCAP解析
 │   └── 配置/               # Super_ADB配置.json（ADB 模式等运行时配置）
-├── 对话框/                 # 各功能对话框（ADB终端、URL编解码、TCPDump、时间戳、设备信息…）
+├── 对话框/                 # 各功能对话框（ADB终端、ADB命令集合、URL编解码、TCPDump、时间戳、设备信息…）
 ├── 页面/                   # 主界面页面组件
 ├── 项目UI/                 # 主界面生成代码
 ├── 项目启动入口/            # 程序入口（Super_ADB_主入口.py）

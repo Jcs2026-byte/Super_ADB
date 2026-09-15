@@ -367,6 +367,16 @@ class Ui_MainWindow(object):
 
         self.gridLayout_2.addWidget(self.btnStopApp, 0, 4, 1, 1)
 
+        self.btnFreezeApp = QPushButton(self.appScrollContent)
+        self.btnFreezeApp.setObjectName(u"btnFreezeApp")
+
+        self.gridLayout_2.addWidget(self.btnFreezeApp, 0, 3, 1, 1)
+
+        self.btnThawApp = QPushButton(self.appScrollContent)
+        self.btnThawApp.setObjectName(u"btnThawApp")
+
+        self.gridLayout_2.addWidget(self.btnThawApp, 1, 3, 1, 1)
+
         self.btnpm = QPushButton(self.appScrollContent)
         self.btnpm.setObjectName(u"btnpm")
 
@@ -451,6 +461,11 @@ class Ui_MainWindow(object):
         self.outBtnSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.outBtnRow.addItem(self.outBtnSpacer)
+
+        self.btnAdbCmdDocs = QPushButton(self.outGroup)
+        self.btnAdbCmdDocs.setObjectName(u"btnAdbCmdDocs")
+
+        self.outBtnRow.addWidget(self.btnAdbCmdDocs)
 
 
         self.outLayout.addLayout(self.outBtnRow)
@@ -921,6 +936,8 @@ class Ui_MainWindow(object):
         self.appGroup.setTitle(QCoreApplication.translate("MainWindow", u"\u5e94\u7528\u64cd\u4f5c", None))
         self.btnMeminfo.setText(QCoreApplication.translate("MainWindow", u"\u5185\u5b58", None))
         self.btnStopApp.setText(QCoreApplication.translate("MainWindow", u"\u5173\u95ed", None))
+        self.btnFreezeApp.setText(QCoreApplication.translate("MainWindow", u"\u51bb\u7ed3\u5e94\u7528", None))
+        self.btnThawApp.setText(QCoreApplication.translate("MainWindow", u"\u89e3\u51bb\u5e94\u7528", None))
         self.btnpm.setText(QCoreApplication.translate("MainWindow", u"\u76d1\u63a7", None))
         self.lblPkg.setText(QCoreApplication.translate("MainWindow", u"\u5305\u540d:", None))
         self.btnAppInfo.setText(QCoreApplication.translate("MainWindow", u"\u5305\u4fe1\u606f\u83b7\u53d6", None))
@@ -934,6 +951,10 @@ class Ui_MainWindow(object):
         self.output.setPlaceholderText(QCoreApplication.translate("MainWindow", u"\u547d\u4ee4\u8f93\u51fa\u5c06\u663e\u793a\u5728\u8fd9\u91cc...", None))
         self.btnClear.setText(QCoreApplication.translate("MainWindow", u"\u6e05\u9664", None))
         self.btnCopy.setText(QCoreApplication.translate("MainWindow", u"\u590d\u5236", None))
+#if QT_CONFIG(tooltip)
+        self.btnAdbCmdDocs.setToolTip(QCoreApplication.translate("MainWindow", u"ADB \u5e38\u7528\u547d\u4ee4\u901f\u67e5\uff1a\u89e3\u91ca + \u5b9e\u4f8b + \u641c\u7d22 + \u590d\u5236", None))
+#endif // QT_CONFIG(tooltip)
+        self.btnAdbCmdDocs.setText(QCoreApplication.translate("MainWindow", u"ADB\u547d\u4ee4\u96c6\u5408", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), QCoreApplication.translate("MainWindow", u"Android\u8c03\u8bd5\u6a21\u5757", None))
         self.fileMgrLblDevice.setText(QCoreApplication.translate("MainWindow", u"\u8bbe\u5907:", None))
         self.fileMgr_btnRefresh.setText(QCoreApplication.translate("MainWindow", u"\u5237\u65b0\u8bbe\u5907", None))

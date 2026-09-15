@@ -2461,6 +2461,36 @@ echo "___END___"'''
     def 清除应用(self, serial, package_name):
         return self.执行shell(serial, f'pm clear {package_name}', timeout=15).strip()
 
+    def _已禁用包集合(self, serial):
+        """查询主用户已禁用包名集合（pm list packages -d）。"""
+        raw = self.执行shell(serial, 'pm list packages -d --user 0', timeout=15) or ''
+        return {ln.strip().split(':', 1)[-1] for ln in raw.splitlines()
+                if ln.strip().startswith('package:')}
+
+    def 冻结应用(self, serial, package_name):
+        """冻结（禁用）应用：pm disable 后查询 pm list packages -d 校验是否成功。"""
+        out = self.执行shell(serial, f'pm disable {package_name}', timeout=15).strip()
+        disabled = self._已禁用包集合(serial)
+        if package_name in disabled:
+            return (f'冻结成功: {package_name}\n'
+                    f'命令输出: {out or "(无输出)"}\n'
+                    f'校验: pm list packages -d 中已找到 {package_name}')
+        return (f'冻结失败: {package_name}\n'
+                f'命令输出: {out or "(无输出)"}\n'
+                f'校验: pm list packages -d 中未找到 {package_name}')
+
+    def 解冻应用(self, serial, package_name):
+        """解冻（启用）应用：pm enable 后查询 pm list packages -d 校验是否已移除。"""
+        out = self.执行shell(serial, f'pm enable {package_name}', timeout=15).strip()
+        disabled = self._已禁用包集合(serial)
+        if package_name not in disabled:
+            return (f'解冻成功: {package_name}\n'
+                    f'命令输出: {out or "(无输出)"}\n'
+                    f'校验: pm list packages -d 中已移除 {package_name}')
+        return (f'解冻失败: {package_name}\n'
+                f'命令输出: {out or "(无输出)"}\n'
+                f'校验: pm list packages -d 中仍存在 {package_name}')
+
     def 卸载应用(self, serial, package_name):
         # 自研 ADB 模式：用自研 adb 卸载
         if self._用自研adb and serial:

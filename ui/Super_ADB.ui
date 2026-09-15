@@ -643,6 +643,20 @@
                         </property>
                        </widget>
                       </item>
+                      <item row="0" column="3">
+                       <widget class="QPushButton" name="btnFreezeApp">
+                        <property name="text">
+                         <string>冻结应用</string>
+                        </property>
+                       </widget>
+                      </item>
+                      <item row="1" column="3">
+                       <widget class="QPushButton" name="btnThawApp">
+                        <property name="text">
+                         <string>解冻应用</string>
+                        </property>
+                       </widget>
+                      </item>
                       <item row="0" column="5">
                        <widget class="QPushButton" name="btnStartApp">
                         <property name="text">
@@ -733,6 +747,16 @@
                        </size>
                       </property>
                      </spacer>
+                    </item>
+                    <item>
+                     <widget class="QPushButton" name="btnAdbCmdDocs">
+                      <property name="toolTip">
+                       <string>ADB 常用命令速查：解释 + 实例 + 搜索 + 复制</string>
+                      </property>
+                      <property name="text">
+                       <string>ADB命令集合</string>
+                      </property>
+                     </widget>
                     </item>
                    </layout>
                   </item>

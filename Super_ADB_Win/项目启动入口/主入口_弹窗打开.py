@@ -416,6 +416,29 @@ class 弹窗打开Mixin:
         if self._ip_scan_dialog is obj:
             self._ip_scan_dialog = None
 
+    def 打开ADB命令集合(self):
+        """打开 ADB 命令集合弹窗（复用窗口，重复点击 raise）。"""
+        if self._adbcmd_dialog is not None:
+            try:
+                if self._adbcmd_dialog.isVisible():
+                    self._adbcmd_dialog.raise_()
+                    self._adbcmd_dialog.activateWindow()
+                    return
+            except RuntimeError:
+                self._adbcmd_dialog = None
+        from 对话框.ADB命令集合对话框 import ADB命令集合对话框
+        dlg = ADB命令集合对话框()
+        dlg.destroyed.connect(
+            lambda _obj=None, _self=self: _self._清空_adbcmd引用(_obj))
+        dlg.finished.connect(lambda *_: QTimer.singleShot(0, self._激活主窗口到前台))
+        self._adbcmd_dialog = dlg
+        dlg.show()
+
+    def _清空_adbcmd引用(self, obj):
+        """ADB 命令集合弹窗引用清空（带对象身份判断，同上）。"""
+        if self._adbcmd_dialog is obj:
+            self._adbcmd_dialog = None
+
     def _清空_pcap_parser_dialog(self, obj):
         """同上：PCAP 解析弹窗引用清空（带对象身份判断）。"""
         if self._pcap_parser_dialog is obj:

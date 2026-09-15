@@ -420,6 +420,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self._wifi_dialog = None
         self._pcap_parser_dialog = None
         self._ip_scan_dialog = None
+        self._adbcmd_dialog = None  # ADB 命令集合弹窗（复用同一窗口实例）
         self._about_dialog = None
         self._env_config_dialog = None  # 环境配置弹窗（复用同一窗口实例）
         self._desk_cat = None  # 桌面宠物小猫
@@ -558,6 +559,8 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self.btnClearApp.clicked.connect(self.清除应用)
         self.btnUninstall.clicked.connect(self.卸载应用)
         self.btnAppInfo.clicked.connect(self.显示应用信息)
+        self.btnFreezeApp.clicked.connect(self.冻结应用)
+        self.btnThawApp.clicked.connect(self.解冻应用)
         # ── 获取包列表按钮（双按钮组合：左侧默认动作 + 右侧下拉菜单）──
         # 控件结构写在 .ui（btnPkgListContainer 内含 btnPkgMain/btnPkgMenu），此处只接信号+挂菜单
         self.btnPkgMenu.setFixedWidth(24)
@@ -601,6 +604,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         # PCAP解析 / IP扫描 两按钮已定义在 ui/Super_ADB悦.ui（便捷工具区 col5/col6），
         # 由 setupUi 创建，此处仅连接信号
         self.ipScanBtn.clicked.connect(self.打开ip扫描)
+        self.btnAdbCmdDocs.clicked.connect(self.打开ADB命令集合)
         # 输出
         self.btnClear.clicked.connect(self.output.clear)
         self.btnCopy.clicked.connect(self.复制输出)
@@ -1627,6 +1631,22 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         if not serial or not pkg:
             return
         self._异步运行(self.adb.卸载应用, serial, pkg)
+
+    def 冻结应用(self):
+        """冻结输入框中的包：pm disable + pm list packages -d 校验。"""
+        serial = self._确保序列号()
+        pkg = self._包名()
+        if not serial or not pkg:
+            return
+        self._异步运行(self.adb.冻结应用, serial, pkg)
+
+    def 解冻应用(self):
+        """解冻输入框中的包：pm enable + pm list packages -d 校验。"""
+        serial = self._确保序列号()
+        pkg = self._包名()
+        if not serial or not pkg:
+            return
+        self._异步运行(self.adb.解冻应用, serial, pkg)
 
     def 显示应用信息(self):
         serial = self._确保序列号()

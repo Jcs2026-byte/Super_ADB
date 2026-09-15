@@ -485,7 +485,7 @@
                       <item row="3" column="1">
                        <widget class="QPushButton" name="btnSystemRoot">
                         <property name="text">
-                         <string>system</string>
+                         <string>挂载system分区</string>
                         </property>
                        </widget>
                       </item>

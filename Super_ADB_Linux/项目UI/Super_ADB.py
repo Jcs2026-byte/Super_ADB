@@ -927,7 +927,7 @@ class Ui_MainWindow(object):
         self.btnSetProxy.setText(QCoreApplication.translate("MainWindow", u"\u8bbe\u7f6e\u4ee3\u7406", None))
         self.btnDpm.setText(QCoreApplication.translate("MainWindow", u"\u6027\u80fd\u76d1\u63a7", None))
         self.btnSll.setText(QCoreApplication.translate("MainWindow", u"\u8bc1\u4e66\u5b89\u88c5", None))
-        self.btnSystemRoot.setText(QCoreApplication.translate("MainWindow", u"system", None))
+        self.btnSystemRoot.setText(QCoreApplication.translate("MainWindow", u"挂载system分区", None))
         self.btnModifiedTime.setText(QCoreApplication.translate("MainWindow", u"\u4fee\u6539\u65f6\u95f4", None))
         self.btnScrcpyMain.setText(QCoreApplication.translate("MainWindow", u"\u542f\u52a8\u6295\u5c4f", None))
         self.btnScrcpyMenu.setText(QCoreApplication.translate("MainWindow", u"\u25be", None))

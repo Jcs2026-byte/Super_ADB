@@ -7,6 +7,14 @@
 
 ## [未发布]
 
+### 修复
+- **冻结 / 解冻应用权限拒绝友好提示**：对系统预装 / 受保护应用执行冻结 / 解冻时，
+  `pm disable` / `pm enable` 会返回 `SecurityException: Shell cannot change component state`，
+  此前直接展示原始 Java 堆栈。现在自动识别该类报错，输出区改为显示中文原因与
+  三种可操作方案（`pm disable-user --user 0` / `pm uninstall -k --user 0` /
+  root 后 `adb root` 重试），并截断保留关键堆栈；识别命中后跳过无意义的
+  二次校验查询。三平台同步。
+
 ## [2026.09.15] - 2026-09-15
 
 ### 新增

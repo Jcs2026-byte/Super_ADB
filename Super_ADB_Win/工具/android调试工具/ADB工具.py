@@ -2467,9 +2467,31 @@ echo "___END___"'''
         return {ln.strip().split(':', 1)[-1] for ln in raw.splitlines()
                 if ln.strip().startswith('package:')}
 
+    @staticmethod
+    def _是系统应用权限拒绝(out):
+        """识别 pm disable/enable 被系统安全策略拒绝（系统预装/受保护应用无权限）。"""
+        low = (out or '').lower()
+        return ('securityexception' in low
+                or 'shell cannot change component state' in low
+                or 'not allowed to change component state' in low)
+
+    def _权限拒绝提示(self, 动作, package_name, out):
+        """系统应用无权限时的友好提示：说明原因并给出可操作的替代方案。"""
+        lines = [ln for ln in (out or '').splitlines() if ln.strip()]
+        head = '\n'.join(lines[:4]) if lines else '(无输出)'
+        return (f'{动作}失败: {package_name}\n'
+                f'原因: 系统预装/受保护应用无权限（SecurityException: Shell cannot change component state）\n'
+                f'普通 ADB shell 无权修改系统应用的启用状态，建议换用:\n'
+                f'  ① adb shell pm disable-user --user 0 {package_name}   对当前用户禁用（多数设备可用）\n'
+                f'  ② adb shell pm uninstall -k --user 0 {package_name}   从当前用户移除（pm install-existing 可恢复）\n'
+                f'  ③ 设备已 root: adb root 后再执行{动作}\n'
+                f'命令输出(截断):\n{head}')
+
     def 冻结应用(self, serial, package_name):
         """冻结（禁用）应用：pm disable 后查询 pm list packages -d 校验是否成功。"""
         out = self.执行shell(serial, f'pm disable {package_name}', timeout=15).strip()
+        if self._是系统应用权限拒绝(out):
+            return self._权限拒绝提示('冻结', package_name, out)
         disabled = self._已禁用包集合(serial)
         if package_name in disabled:
             return (f'冻结成功: {package_name}\n'
@@ -2482,6 +2504,8 @@ echo "___END___"'''
     def 解冻应用(self, serial, package_name):
         """解冻（启用）应用：pm enable 后查询 pm list packages -d 校验是否已移除。"""
         out = self.执行shell(serial, f'pm enable {package_name}', timeout=15).strip()
+        if self._是系统应用权限拒绝(out):
+            return self._权限拒绝提示('解冻', package_name, out)
         disabled = self._已禁用包集合(serial)
         if package_name not in disabled:
             return (f'解冻成功: {package_name}\n'

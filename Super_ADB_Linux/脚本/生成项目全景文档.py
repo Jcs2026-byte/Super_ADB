@@ -1575,7 +1575,7 @@ edit.setStyleSheet('QTextEdit{{background:#0d1117;color:#e6edf3}}')</code></pre>
   <table>
     <tr><th>前缀</th><th>类型</th><th>示例</th></tr>
     <tr><td><code>btn</code></td><td>QPushButton</td><td>btnSll, btnAbout, btnConnect</td></tr>
-    <tr><td><code>xxxInput</code></td><td>QLineEdit</td><td>ipInput, pkgInput</td></tr>
+    <tr><td><code>xxxInput</code></td><td>QLineEdit</td><td>ipInput, pkgCombo</td></tr>
     <tr><td><code>xxxCombo</code></td><td>QComboBox</td><td>deviceCombo</td></tr>
     <tr><td><code>brandXxx</code></td><td>QLabel（品牌标识）</td><td>brandIcon, brandText</td></tr>
   </table>

@@ -1492,9 +1492,9 @@ def 生成主界面截图(跳过=False):
                     ip_input.setText('192.168.1.100:5555')
 
                 # 3. 包名输入框填充示例包名
-                pkg_input = getattr(win, 'pkgInput', None)
+                pkg_input = getattr(win, 'pkgCombo', None)
                 if pkg_input is not None:
-                    pkg_input.setText('com.tencent.mm')
+                    pkg_input.setCurrentText('com.tencent.mm')
 
                 # 4. 命令输出框填充模拟输出
                 output_box = getattr(win, 'output', None)
@@ -3537,7 +3537,7 @@ edit.setStyleSheet('QTextEdit{{background:#0d1117;color:#e6edf3}}')</code></pre>
   <table>
     <tr><th>前缀</th><th>类型</th><th>示例</th></tr>
     <tr><td><code>btn</code></td><td>QPushButton</td><td>btnSll, btnAbout, btnConnect</td></tr>
-    <tr><td><code>xxxInput</code></td><td>QLineEdit</td><td>ipInput, pkgInput</td></tr>
+    <tr><td><code>xxxInput</code></td><td>QLineEdit</td><td>ipInput, pkgCombo</td></tr>
     <tr><td><code>xxxCombo</code></td><td>QComboBox</td><td>deviceCombo</td></tr>
     <tr><td><code>brandXxx</code></td><td>QLabel（品牌标识）</td><td>brandIcon, brandText</td></tr>
   </table>

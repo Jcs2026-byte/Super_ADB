@@ -403,10 +403,19 @@ class Ui_MainWindow(object):
 
         self.gridLayout_2.addWidget(self.btnStartApp, 0, 5, 1, 1)
 
-        self.pkgInput = QLineEdit(self.appScrollContent)
-        self.pkgInput.setObjectName(u"pkgInput")
+        self.pkgCombo = QComboBox(self.appScrollContent)
+        self.pkgCombo.setObjectName(u"pkgCombo")
+        self.pkgCombo.setEditable(True)
+        self.pkgCombo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.pkgCombo.setPlaceholderText(u"com.example.app")
+        self.pkgCombo.setMinimumHeight(28)
 
-        self.gridLayout_2.addWidget(self.pkgInput, 0, 1, 1, 2)
+        self.gridLayout_2.addWidget(self.pkgCombo, 0, 1, 1, 1)
+
+        self.btnDelPkg = QPushButton(self.appScrollContent)
+        self.btnDelPkg.setObjectName(u"btnDelPkg")
+
+        self.gridLayout_2.addWidget(self.btnDelPkg, 0, 2, 1, 1)
 
         self.btnRunningApps_2 = QPushButton(self.appScrollContent)
         self.btnRunningApps_2.setObjectName(u"btnRunningApps_2")
@@ -943,7 +952,7 @@ class Ui_MainWindow(object):
         self.btnAppInfo.setText(QCoreApplication.translate("MainWindow", u"\u5305\u4fe1\u606f\u83b7\u53d6", None))
         self.btnClearApp.setText(QCoreApplication.translate("MainWindow", u"\u6e05\u7406\u6570\u636e", None))
         self.btnStartApp.setText(QCoreApplication.translate("MainWindow", u"\u542f\u52a8", None))
-        self.pkgInput.setPlaceholderText(QCoreApplication.translate("MainWindow", u"com.example.app", None))
+        self.btnDelPkg.setText(QCoreApplication.translate("MainWindow", u"删除", None))
         self.btnRunningApps_2.setText(QCoreApplication.translate("MainWindow", u"Monkey", None))
         self.btnUninstall.setText(QCoreApplication.translate("MainWindow", u"\u5378\u8f7d", None))
         self.btninstallzip.setText(QCoreApplication.translate("MainWindow", u"\u5b89\u88c5", None))

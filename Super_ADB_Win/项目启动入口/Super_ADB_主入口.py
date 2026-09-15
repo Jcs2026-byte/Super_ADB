@@ -561,7 +561,8 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self.btnAppInfo.clicked.connect(self.显示应用信息)
         self.btnFreezeApp.clicked.connect(self.冻结应用)
         self.btnThawApp.clicked.connect(self.解冻应用)
-        self.btnDelPkg.clicked.connect(self.删除包名历史)
+        self.pkgCombo.set_key('pkg')
+        self.pkgCombo.favoritesChanged.connect(self._保存包名历史)
         self._加载包名历史()
         # ── 获取包列表按钮（双按钮组合：左侧默认动作 + 右侧下拉菜单）──
         # 控件结构写在 .ui（btnPkgListContainer 内含 btnPkgMain/btnPkgMenu），此处只接信号+挂菜单
@@ -1562,42 +1563,25 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             from 工具.android调试工具.ADB工具 import 加载json配置
             history = 加载json配置(self._PKG_HISTORY_CFG)
             if isinstance(history, list):
-                for pkg in history:
-                    if pkg and self.pkgCombo.findText(pkg) < 0:
-                        self.pkgCombo.addItem(pkg)
+                self.pkgCombo.set_favorites(history[-self._PKG_HISTORY_MAX:])
         except Exception:
             pass
 
     def _记录包名历史(self, pkg):
-        """把操作过的包名加入历史下拉（去重置顶，最多 50 条）并持久化。"""
+        """把操作过的包名加入历史下拉（自动去重，下拉内 ✕ 可直接删除）。"""
         pkg = (pkg or '').strip()
         if not pkg:
             return
-        idx = self.pkgCombo.findText(pkg)
-        if idx >= 0:
-            self.pkgCombo.removeItem(idx)
-        self.pkgCombo.insertItem(0, pkg)
-        while self.pkgCombo.count() > self._PKG_HISTORY_MAX:
-            self.pkgCombo.removeItem(self.pkgCombo.count() - 1)
-        self._保存包名历史()
+        self.pkgCombo.add_favorite(pkg)
 
-    def 删除包名历史(self):
-        """删除当前选中的历史包名（手输的新包名不在历史里则提示）。"""
-        pkg = self.pkgCombo.currentText().strip()
-        if not pkg:
-            return
-        idx = self.pkgCombo.findText(pkg)
-        if idx < 0:
-            self.日志(f'{pkg} 不在历史列表中，无需删除')
-            return
-        self.pkgCombo.removeItem(idx)
-        self._保存包名历史()
-        self.日志(f'已从历史删除包名: {pkg}')
-
-    def _保存包名历史(self):
+    def _保存包名历史(self, _key=None, items=None):
+        """favoritesChanged 回调：裁剪上限后持久化（超出部分同步从下拉移除）。"""
         try:
             from 工具.android调试工具.ADB工具 import 保存json配置
-            items = [self.pkgCombo.itemText(i) for i in range(self.pkgCombo.count())]
+            items = self.pkgCombo.favorites() if items is None else items
+            items = items[-self._PKG_HISTORY_MAX:]
+            if self.pkgCombo.count() > len(items):
+                self.pkgCombo.set_favorites(items)  # blockSignals，不会递归
             保存json配置(self._PKG_HISTORY_CFG, items)
         except Exception:
             pass

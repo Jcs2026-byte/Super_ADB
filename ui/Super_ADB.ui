@@ -211,7 +211,7 @@
           <string notr="true"/>
          </property>
          <property name="currentIndex">
-          <number>2</number>
+          <number>0</number>
          </property>
          <widget class="QWidget" name="tab">
           <property name="styleSheet">
@@ -664,26 +664,6 @@
                         </property>
                        </widget>
                       </item>
-                      <item row="0" column="1">
-                       <widget class="QComboBox" name="pkgCombo">
-                        <property name="editable">
-                         <bool>true</bool>
-                        </property>
-                        <property name="insertPolicy">
-                         <enum>QComboBox::NoInsert</enum>
-                        </property>
-                        <property name="placeholderText">
-                         <string>com.example.app</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item row="0" column="2">
-                       <widget class="QPushButton" name="btnDelPkg">
-                        <property name="text">
-                         <string>删除</string>
-                        </property>
-                       </widget>
-                      </item>
                       <item row="1" column="6">
                        <widget class="QPushButton" name="btnRunningApps_2">
                         <property name="text">
@@ -702,6 +682,13 @@
                        <widget class="QPushButton" name="btninstallzip">
                         <property name="text">
                          <string>安装</string>
+                        </property>
+                       </widget>
+                      </item>
+                      <item row="0" column="1" colspan="2">
+                       <widget class="收藏下拉框" name="pkgCombo">
+                        <property name="placeholderText">
+                         <string>com.example.app</string>
                         </property>
                        </widget>
                       </item>

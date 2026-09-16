@@ -76,7 +76,7 @@ def _获取下载地址():
                 return info['下载地址']
     except Exception:
         pass
-    return ''
+    return 'https://gitcode.com/Jcs2026/Super_ADB/releases'
 
 
 # ----------------------------------------------------------------------

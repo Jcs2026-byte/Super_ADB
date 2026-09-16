@@ -234,17 +234,7 @@ jobs:
           EXIST=$(curl -s --max-time 60 "${API}/releases?per_page=100&access_token=${GITCODE_TOKEN}")
           echo "    API 返回前 200 字符: ${EXIST:0:200}"
           # 用 if 判断避免 set -e 触发退出
-          if echo "${EXIST}" | TAG="${TAG}" python -c "
-import json, sys, os
-try:
-    data = json.load(sys.stdin)
-    tag = os.environ.get('TAG', '')
-    found = any(r.get('tag_name') == tag for r in data)
-    sys.exit(0 if found else 1)
-except Exception as e:
-    print(f'    解析失败: {e}', file=sys.stderr)
-    sys.exit(2)
-"; then
+          if echo "${EXIST}" | TAG="${TAG}" python -c "import json,sys,os; data=json.load(sys.stdin); tag=os.environ.get('TAG',''); sys.exit(0 if any(r.get('tag_name')==tag for r in data) else 1)"; then
             echo "==> 已存在 Release ${TAG}，跳过创建"
           else
             echo "==> 创建 GitCode Release ${TAG}"

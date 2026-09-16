@@ -230,9 +230,23 @@ jobs:
           fi
           API="https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}"
           # 幂等：查找同名 tag 的 GitCode Release，不存在则创建
-          EXIST=$(curl -s --max-time 60 "${API}/releases?per_page=100&access_token=${GITCODE_TOKEN}" || echo "[]")
-          HAS_RELEASE=$(echo "${EXIST}" | python -c "import json,sys,os; data=json.load(sys.stdin); tag=os.environ.get('TAG',''); sys.exit(0 if any(r.get('tag_name')==tag for r in data) else 1)")
-          if [ $? -ne 0 ]; then
+          echo "==> 查询现有 release 列表..."
+          EXIST=$(curl -s --max-time 60 "${API}/releases?per_page=100&access_token=${GITCODE_TOKEN}")
+          echo "    API 返回前 200 字符: ${EXIST:0:200}"
+          # 用 if 判断避免 set -e 触发退出
+          if echo "${EXIST}" | TAG="${TAG}" python -c "
+import json, sys, os
+try:
+    data = json.load(sys.stdin)
+    tag = os.environ.get('TAG', '')
+    found = any(r.get('tag_name') == tag for r in data)
+    sys.exit(0 if found else 1)
+except Exception as e:
+    print(f'    解析失败: {e}', file=sys.stderr)
+    sys.exit(2)
+"; then
+            echo "==> 已存在 Release ${TAG}，跳过创建"
+          else
             echo "==> 创建 GitCode Release ${TAG}"
             RESP=$(curl -s --max-time 60 -X POST "${API}/releases?access_token=${GITCODE_TOKEN}" \
               -H "Content-Type: application/json;charset=UTF-8" \

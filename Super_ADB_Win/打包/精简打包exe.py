@@ -39,6 +39,7 @@ def _写入打包完成时间(base_dir, name='Super_ADB'):
             '打包时间': _build_ver,
             '打包时间戳': _time.strftime('%Y-%m-%d %H:%M:%S'),
             '下载地址': 'https://gitcode.com/Jcs2026/Super_ADB/releases',
+            '仓库地址': 'https://gitcode.com/Jcs2026/Super_ADB.git',
         }
         with open(_dist_info_path, 'w', encoding='utf-8') as _f:
             _json.dump(_info, _f, ensure_ascii=False, indent=2)

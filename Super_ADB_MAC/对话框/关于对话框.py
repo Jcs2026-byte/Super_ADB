@@ -28,7 +28,6 @@ from 项目UI.界面样式 import FONT_FAMILY, THEMES, DEFAULT_THEME, _parse_rgb
 from 项目UI.弹窗样式 import 无边框缩放Mixin
 
 VERSION = 'v2026.08.07'
-GITHUB_REPO_URL = 'https://gitcode.com/Jcs2026/Super_ADB.git'
 
 
 def _获取版本号():
@@ -77,6 +76,25 @@ def _获取下载地址():
     except Exception:
         pass
     return 'https://gitcode.com/Jcs2026/Super_ADB/releases'
+
+def _获取仓库地址():
+    """从 exe 旁边的 打包信息.json 读取仓库地址，缺失时返回默认 GitCode 地址。"""
+    import json as _json
+    try:
+        if getattr(sys, 'frozen', False):
+            _base = os.path.dirname(sys.executable)
+        else:
+            _base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        _info_path = os.path.join(_base, '配置', '打包信息.json')
+        if os.path.exists(_info_path):
+            with open(_info_path, 'r', encoding='utf-8') as _f:
+                info = _json.load(_f)
+            if isinstance(info, dict) and info.get('仓库地址'):
+                return info['仓库地址']
+    except Exception:
+        pass
+    return 'https://gitcode.com/Jcs2026/Super_ADB.git'
+
 
 
 # ----------------------------------------------------------------------
@@ -216,7 +234,8 @@ class 关于对话框(QDialog, 无边框缩放Mixin):
         content.addStretch()
 
         # GitCode 仓库地址（可点击跳转，样式同开源链接）
-        self.github_lbl = QLabel(f'<a href="{GITHUB_REPO_URL}">GitCode 仓库：{GITHUB_REPO_URL}</a>')
+        _repo_url = _获取仓库地址()
+        self.github_lbl = QLabel(f'<a href="{_repo_url}">GitCode 仓库：{_repo_url}</a>')
         self.github_lbl.setObjectName('aboutRepo')
         self.github_lbl.setAlignment(Qt.AlignCenter)
         self.github_lbl.setOpenExternalLinks(True)

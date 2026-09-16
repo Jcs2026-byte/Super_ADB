@@ -28,7 +28,7 @@ from 项目UI.界面样式 import FONT_FAMILY, THEMES, DEFAULT_THEME, _parse_rgb
 from 项目UI.弹窗样式 import 无边框缩放Mixin
 
 VERSION = 'v2026.08.07'
-GITHUB_REPO_URL = 'https://github.com/Jcs2026-byte/Super_ADB.git'
+GITHUB_REPO_URL = 'https://gitcode.com/Jcs2026/Super_ADB.git'
 
 
 def _获取版本号():
@@ -215,8 +215,8 @@ class 关于对话框(QDialog, 无边框缩放Mixin):
 
         content.addStretch()
 
-        # GitHub 仓库地址（可点击跳转，样式同开源链接）
-        self.github_lbl = QLabel(f'<a href="{GITHUB_REPO_URL}">GitHub 仓库：{GITHUB_REPO_URL}</a>')
+        # GitCode 仓库地址（可点击跳转，样式同开源链接）
+        self.github_lbl = QLabel(f'<a href="{GITHUB_REPO_URL}">GitCode 仓库：{GITHUB_REPO_URL}</a>')
         self.github_lbl.setObjectName('aboutRepo')
         self.github_lbl.setAlignment(Qt.AlignCenter)
         self.github_lbl.setOpenExternalLinks(True)

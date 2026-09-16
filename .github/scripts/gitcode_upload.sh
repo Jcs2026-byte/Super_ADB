@@ -47,6 +47,7 @@ note "- 文件: \`${FILE}\`"
 note "- 大小: $((SIZE/1024/1024)) MB（${SIZE} 字节）"
 
 # ── 3. 幂等检查：先查该 tag 下的附件列表 ────────────────────────────────────
+export TAG BASE
 LIST_RESP=$(curl -s --max-time 60 "${API}/releases?access_token=${GITCODE_TOKEN}&per_page=100")
 # 找到对应 tag 的 release，再看附件列表里有没有同名文件
 HAS_EXIST=$(echo "${LIST_RESP}" | python -c "

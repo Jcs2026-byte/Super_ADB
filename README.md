@@ -7,7 +7,7 @@
 ![Super_ADB](docs/灰色主题.png)
 - 这三个分页条都可以折叠界面，折叠后调整窗口大小隐藏不需要的功能，下次需要的时候再展开
 - 主题样式丰富
-- **最新版本：`2026.09.15`**（GitHub / Gitee 均已同步）
+- **最新版本：`2026.09.16`**（GitHub / Gitee / GitCode 均已同步）
 
 ## ✨ 功能特性
 
@@ -157,10 +157,11 @@ python 项目启动入口/Super_ADB_主入口.py
 
 ### 下载安装包
 
-三平台安装包由 CI（打标签后）自动构建发布，提供两个下载渠道：
+三平台安装包由 CI（打标签后）自动构建发布，提供三个下载渠道：
 
 - **GitHub Releases**（主选，CI 自动打包）：https://github.com/Jcs2026-byte/Super_ADB/releases
-- **Gitee 发行版**（GitHub 跨网不一定能同步过来）：https://gitee.com/Jcs2026/super_adb/releases
+- **Gitee 发行版**（国内镜像，大包超 100MB 请去其他渠道）：https://gitee.com/Jcs2026/super_adb/releases
+- **GitCode 发行版**（国内镜像，支持大文件）：https://gitcode.com/Jcs2026/Super_ADB/releases
 - 夸克网盘：https://pan.quark.cn/s/2b7b11ebe1e5?pwd=fAXN#/list/share
 ![Super_ADB](docs/ci打包警告.png)
 - 安装包是通过 CI 打包的，会被打上网络标签，因为没钱买签名所有第一次运行会提示未知警告，点击允许允许即可，
@@ -236,6 +237,7 @@ Super_ADB/
 
 - **GitHub**：https://github.com/Jcs2026-byte/Super_ADB.git
 - **Gitee**：https://gitee.com/Jcs2026/Super_ADB.git
+- **GitCode**：https://gitcode.com/Jcs2026/Super_ADB.git
 
 ## 🤝 贡献
 

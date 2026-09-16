@@ -192,3 +192,114 @@ jobs:
         run: |
           bash .github/scripts/gitee_upload.sh \
             artifact/Super_ADB-linux-x86_64.tar.gz "${API}" "${RID}" Super_ADB-linux-x86_64.tar.gz
+
+  # ── GitCode「Release」同步（幂等，可安全重跑）────────────────────────────
+  # 前置：GitHub 仓库 Settings -> Secrets -> Actions 添加 GITCODE_TOKEN
+  # （GitCode 私人令牌，勾选 repo 权限）；GitCode 仓库需已推送同名 tag。
+  gitcode-prepare:
+    name: Prepare GitCode release
+    needs: [release]
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.gitcode.outputs.ready }}
+      api: ${{ steps.gitcode.outputs.api }}
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Resolve tag name
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare GitCode release
+        id: gitcode
+        env:
+          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+          GITCODE_OWNER: Jcs2026
+          GITCODE_REPO: Super_ADB
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -e
+          if [ -z "${GITCODE_TOKEN}" ]; then
+            echo "::warning::未配置 GITCODE_TOKEN（GitCode 私人令牌），跳过同步到 GitCode Release"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          API="https://api.gitcode.com/api/v5/repos/${GITCODE_OWNER}/${GITCODE_REPO}"
+          # 幂等：查找同名 tag 的 GitCode Release，不存在则创建
+          EXIST=$(curl -s --max-time 60 "${API}/releases?per_page=100&access_token=${GITCODE_TOKEN}" || echo "[]")
+          HAS_RELEASE=$(echo "${EXIST}" | python -c "import json,sys,os; data=json.load(sys.stdin); tag=os.environ.get('TAG',''); sys.exit(0 if any(r.get('tag_name')==tag for r in data) else 1)")
+          if [ $? -ne 0 ]; then
+            echo "==> 创建 GitCode Release ${TAG}"
+            RESP=$(curl -s --max-time 60 -X POST "${API}/releases?access_token=${GITCODE_TOKEN}" \
+              -H "Content-Type: application/json;charset=UTF-8" \
+              -d "{\"tag_name\":\"${TAG}\",\"name\":\"${TAG}\",\"body\":\"Super_ADB ${TAG} 发布包（GitHub Actions 自动发布）\",\"target_commitish\":\"master\",\"prerelease\":false}")
+            echo "    创建响应: ${RESP:0:200}"
+          fi
+          echo "==> GitCode release 已就绪: ${TAG}"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "api=${API}" >> "$GITHUB_OUTPUT"
+
+  # GitCode 三平台并行上传
+  gitcode-upload-windows:
+    name: Upload Windows artifact to GitCode
+    needs: [gitcode-prepare]
+    if: needs.gitcode-prepare.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+      API: ${{ needs.gitcode-prepare.outputs.api }}
+      TAG: ${{ needs.gitcode-prepare.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: Super_ADB-windows-x64
+          path: artifact
+      - name: Upload to GitCode
+        run: |
+          bash .github/scripts/gitcode_upload.sh \
+            artifact/Super_ADB-windows-x64.zip "${API}" "${TAG}" Super_ADB-windows-x64.zip
+
+  gitcode-upload-macos:
+    name: Upload macOS artifact to GitCode
+    needs: [gitcode-prepare]
+    if: needs.gitcode-prepare.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+      API: ${{ needs.gitcode-prepare.outputs.api }}
+      TAG: ${{ needs.gitcode-prepare.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: Super_ADB-macos-arm64
+          path: artifact
+      - name: Upload to GitCode
+        run: |
+          bash .github/scripts/gitcode_upload.sh \
+            artifact/Super_ADB-macos-arm64.zip "${API}" "${TAG}" Super_ADB-macos-arm64.zip
+
+  gitcode-upload-linux:
+    name: Upload Linux artifact to GitCode
+    needs: [gitcode-prepare]
+    if: needs.gitcode-prepare.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+      API: ${{ needs.gitcode-prepare.outputs.api }}
+      TAG: ${{ needs.gitcode-prepare.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: Super_ADB-linux-x86_64
+          path: artifact
+      - name: Upload to GitCode
+        run: |
+          bash .github/scripts/gitcode_upload.sh \
+            artifact/Super_ADB-linux-x86_64.tar.gz "${API}" "${TAG}" Super_ADB-linux-x86_64.tar.gz

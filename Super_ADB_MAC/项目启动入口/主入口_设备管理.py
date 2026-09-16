@@ -54,6 +54,21 @@ class 设备管理Mixin:
             self.deviceCombo.setCurrentIndex(idx)
         self.deviceCombo.blockSignals(False)
         self.设置状态(f'已连接 {len(online)} 台设备', ok=len(online) > 0)
+        # 处理待添加的历史记录（连接完成后由 _连接完成时 标记，这里异步取设备名）
+        pending_hist = getattr(self, '_pending_history_dev', None)
+        if pending_hist:
+            self._pending_history_dev = None
+            try:
+                from 对话框.历史连接设备对话框 import 添加历史设备
+                host, port = pending_hist
+                model = ''
+                for d in online:
+                    if d.get('serial') == f'{host}:{port}':
+                        model = d.get('model', '')
+                        break
+                添加历史设备(host, port, model)
+            except Exception:
+                pass
         # 同步文件管理器与日志页的设备下拉框（传入过滤后的在线设备）
         if getattr(self, 'file_mgr', None) is not None:
             self.file_mgr.sync_devices(online, select)
@@ -82,9 +97,8 @@ class 设备管理Mixin:
 
     def _连接完成时(self, result):
         self.日志(str(result))
-        # 连接成功后，添加到历史记录
+        # 连接成功后，标记待添加到历史记录（设备名稍后在刷新设备回调里异步获取，避免阻塞UI）
         try:
-            from 对话框.历史连接设备对话框 import 添加历史设备
             ip = self.ipInput.text().strip()
             if ip:
                 # 解析端口
@@ -94,15 +108,9 @@ class 设备管理Mixin:
                 else:
                     host = ip
                     port = 5555
-                # 从设备列表里取设备名
-                model = ''
-                for d in self.adb.获取设备列表():
-                    if d.get('serial') == f'{host}:{port}':
-                        model = d.get('model', '')
-                        break
-                添加历史设备(host, port, model)
+                self._pending_history_dev = (host, port)
         except Exception:
-            pass
+            self._pending_history_dev = None
         # 连接命令返回后重新扫描，让三处下拉框加载到新设备
         self.刷新设备()
 

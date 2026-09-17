@@ -15,6 +15,7 @@ import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import shiboken6
 from PySide6.QtCore import Qt, QThread, Signal, QObject
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
@@ -31,6 +32,15 @@ ADB_PORT = 5555
 DEFAULT_TIMEOUT = 0.8       # 每个IP的socket超时（秒），WiFi环境建议0.8-1.0
 MAX_WORKERS = 100          # 并发扫描线程数
 SCAN_BATCH_SIZE = 20       # 每批信号汇报的条目数（避免频繁UI刷新）
+
+
+def _is_valid(obj):
+    """安全检查 Qt/C++ 对象是否仍未被销毁。
+
+    后台线程回调执行时，对话框/按钮可能已因重新扫描、排序重建或窗口关闭而被删除；
+    直接访问会抛出 RuntimeError: libshiboken: Internal C++ object already deleted。
+    """
+    return obj is not None and shiboken6.isValid(obj)
 
 
 class _ScanWorker(QObject):
@@ -574,7 +584,8 @@ class 局域网扫描对话框(QDialog):
                                  "• 单个: 192.168.1.100")
             return
 
-        # 清空旧结果
+        # 清空旧结果前先中止所有进行中的连接，否则回调会访问已销毁的按钮
+        self._abort_all_connects()
         self.table.setRowCount(0)
         self._found_ips = []  # 保留发现列表供"一键连接"
 
@@ -615,6 +626,8 @@ class 局域网扫描对话框(QDialog):
     # ── 回调信号 ──
 
     def _on_device_found(self, ip, latency_ms, _extra):
+        if not _is_valid(self) or getattr(self, '_closing', False):
+            return
         row = self.table.rowCount()
         self.table.insertRow(row)
 
@@ -638,12 +651,14 @@ class 局域网扫描对话框(QDialog):
         self.lbl_status.setText(f"已发现 {len(self._found_ips)} 台设备...")
 
     def _on_progress(self, current, total):
+        if not _is_valid(self) or getattr(self, '_closing', False):
+            return
         self.progress.setValue(current)
         pct = current * 100 // total if total else 0
         self.lbl_status.setText(f"扫描中... {current}/{total} ({pct}%)")
 
     def _on_scan_finished(self, results):
-        if getattr(self, '_closing', False):
+        if not _is_valid(self) or getattr(self, '_closing', False):
             return
         self._cleanup_thread()
         total_scanned = self.progress.maximum()
@@ -673,7 +688,7 @@ class 局域网扫描对话框(QDialog):
             self.table.setSpan(0, 0, 1, 4)
 
     def _on_scan_stopped(self):
-        if getattr(self, '_closing', False):
+        if not _is_valid(self) or getattr(self, '_closing', False):
             return
         self._cleanup_thread()
         self.progress.setValue(self.progress.maximum())
@@ -759,20 +774,24 @@ class 局域网扫描对话框(QDialog):
                 if w is sender:
                     ip = w._ip
                     break
-        if ip is None or getattr(self, '_closing', False):
+        if ip is None or getattr(self, '_closing', False) or not _is_valid(self):
             return
-        # 恢复按钮
+        # 恢复按钮（按钮可能因重新扫描/排序重建/窗口关闭而被销毁）
         btn = self._busy_buttons.pop(ip, None)
-        if btn is not None:
+        if _is_valid(btn):
             btn.setText("连接")
             btn.setEnabled(True)
         # 更新状态列 & 弹窗
-        if ok:
-            self._set_status_for_ip(ip, f"🟢 在线", ACCENT_COLOR_GREEN)
-            self.lbl_status.setText(f"✅ 已连接 {ip}:{self._port}")
-        else:
-            self._set_status_for_ip(ip, "❌ 离线/失败", TIP_GRAY)
-            self.lbl_status.setText(f"❌ {ip}:{self._port} {msg}")
+        if _is_valid(self.table):
+            if ok:
+                self._set_status_for_ip(ip, f"🟢 在线", ACCENT_COLOR_GREEN)
+            else:
+                self._set_status_for_ip(ip, "❌ 离线/失败", TIP_GRAY)
+        if _is_valid(self.lbl_status):
+            if ok:
+                self.lbl_status.setText(f"✅ 已连接 {ip}:{self._port}")
+            else:
+                self.lbl_status.setText(f"❌ {ip}:{self._port} {msg}")
         # 不论成功失败都清理对应 worker (成功的话再异步回填机型)
         self._cleanup_worker_list(self._connect_threads, ip)
         if ok:
@@ -807,6 +826,30 @@ class 局域网扫描对话框(QDialog):
                 kept.append((t, w))
         lst.clear()
         lst.extend(kept)
+
+    def _abort_all_connects(self):
+        """中止所有进行中的连接 worker，断开信号并清空按钮引用。
+
+        在重新扫描/排序重建等会销毁表格行（及其中按钮）的操作前必须调用，
+        否则后台回调会访问已删除的 QPushButton 导致 RuntimeError。
+        """
+        for t, w in list(self._connect_threads):
+            try:
+                # 先断开 done 信号，防止已排队的信号在 wait 后触发回调
+                try:
+                    w.done.disconnect()
+                except Exception:
+                    pass
+                w.cancel()
+                if t.isRunning():
+                    t.quit()
+                    t.wait(2000)
+                w.deleteLater()
+                t.deleteLater()
+            except Exception:
+                pass
+        self._connect_threads.clear()
+        self._busy_buttons.clear()
 
     def _connect_all_found(self):
         """一键连接所有发现的设备（异步串行：避免一次性起 N 个 adb 进程卡死）。"""
@@ -876,15 +919,16 @@ class 局域网扫描对话框(QDialog):
         thread.started.connect(worker.run)
 
         def _done(ok, msg):
-            if getattr(self, '_closing', False):
+            if getattr(self, '_closing', False) or not _is_valid(self):
                 return
             btn = self._busy_buttons.pop(ip, None)
-            if btn is not None:
+            if _is_valid(btn):
                 btn.setText("连接")
                 btn.setEnabled(True)
             color = ACCENT_COLOR_GREEN if ok else TIP_GRAY
             text = "🟢 在线" if ok else "❌ 离线/失败"
-            self._set_status_for_ip(ip, text, color)
+            if _is_valid(self.table):
+                self._set_status_for_ip(ip, text, color)
             self._cleanup_worker_list(self._connect_threads, ip)
             if ok:
                 self._enrich_after_connect(ip)
@@ -955,6 +999,8 @@ class 局域网扫描对话框(QDialog):
             st_fg = st_item.foreground().color()
             lat_text = self.table.item(r, 2).text()
             snapshot.append((ip, st_text, st_fg, lat_text))
+        # 重建会销毁所有旧按钮，先中止进行中的连接避免回调访问失效对象
+        self._abort_all_connects()
         self.table.setRowCount(0)
         for ip, st_text, st_fg, lat_text in snapshot:
             row = self.table.rowCount()
@@ -986,7 +1032,7 @@ class 局域网扫描对话框(QDialog):
         使用 QObject + moveToThread 模式（旧版 threading.Thread + QTimer 跨线程投递
         在某些 PySide6 下不安全）。失败一律静默（不动 UI）。
         """
-        if getattr(self, '_closing', False):
+        if getattr(self, '_closing', False) or not _is_valid(self):
             return
         # 同一个 ip 短时间内多次触发（比如批量连接后再 enrich）→ 合并到一个 worker
         for t, w in self._enrich_threads:
@@ -997,7 +1043,7 @@ class 局域网扫描对话框(QDialog):
 
         def _on_done(_ip, name, _t=thread, _w=worker):
             # 先回填 UI
-            if name and not getattr(self, '_closing', False):
+            if name and not getattr(self, '_closing', False) and _is_valid(self) and _is_valid(self.table):
                 # 先尝试匹配「🟢 在线」/「🟢 在线 · XXX」行,加名称后缀
                 target_row = None
                 for r in range(self.table.rowCount()):
@@ -1031,14 +1077,26 @@ class 局域网扫描对话框(QDialog):
         # 扫描线程
         if self._scan_thread and self._scan_thread.isRunning():
             if self._worker:
+                # 先断开信号，防止已排队的信号在窗口销毁后触发回调
+                try:
+                    self._worker.found.disconnect()
+                    self._worker.progress.disconnect()
+                    self._worker.finished.disconnect()
+                    self._worker.stopped.disconnect()
+                except Exception:
+                    pass
                 self._worker.cancel()
             self._scan_thread.quit()
             self._scan_thread.wait(2000)
             self._scan_thread = None
             self._worker = None
-        # 连接 worker 线程：cancel 后再 quit+wait(短超时),不会持续阻塞 UI
+        # 连接 worker 线程：先断开信号 → cancel → quit+wait(短超时)
         for t, w in list(self._connect_threads):
             try:
+                try:
+                    w.done.disconnect()
+                except Exception:
+                    pass
                 w.cancel()
                 if t.isRunning():
                     t.quit()
@@ -1048,9 +1106,14 @@ class 局域网扫描对话框(QDialog):
             except Exception:
                 pass
         self._connect_threads.clear()
+        self._busy_buttons.clear()
         # 机型回填 worker 线程
         for t, w in list(self._enrich_threads):
             try:
+                try:
+                    w.done.disconnect()
+                except Exception:
+                    pass
                 w.cancel()
                 if t.isRunning():
                     t.quit()

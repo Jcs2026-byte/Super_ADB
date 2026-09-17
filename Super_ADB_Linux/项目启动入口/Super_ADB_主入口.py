@@ -735,14 +735,14 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             _c_warn = '#9a5a00'     # 警告（深棕橙）
             _c_ts = '#6b7280'       # 时间戳（中灰）
         else:
-            _c_cmd = '#1de9b6'      # 命令行（青）
-            _c_kw = '#a7ffeb'       # 命令关键字（浅青）
-            _c_out = '#e0e0e0'      # 普通输出（浅灰）
-            _c_label = '#80deea'    # 键名标签（青）
+            _c_cmd = '#f0f0f0'      # 命令行（近白，最清晰）
+            _c_kw = '#f0f0f0'       # 命令关键字（与命令同色，靠加粗区分）
+            _c_out = '#ececec'      # 普通输出（浅灰白）
+            _c_label = '#b0bec5'    # 键名标签（浅灰蓝）
             _c_err = '#ff6b6b'      # 错误（红）
             _c_ok = '#69f0ae'       # 成功（绿）
             _c_warn = '#ffd54f'     # 警告（黄）
-            _c_ts = '#aaaaaa'       # 时间戳（浅灰，比之前更亮）
+            _c_ts = '#bdbdbd'       # 时间戳（中亮灰）
 
         lines = str(text).splitlines()
         body_parts = []

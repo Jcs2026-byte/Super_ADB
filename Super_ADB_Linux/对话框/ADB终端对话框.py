@@ -394,9 +394,47 @@ class ADB终端对话框(QDialog):
             self.input_edit.setFocus()
             # 连接后刷新残余，确保 shell 提示符立即显示
             QTimer.singleShot(200, self._刷新残余)
+            # 设置 PTY 窗口宽度为 200 列：避免长命令触发 shell 折行重绘
+            # （折行会输出 \r / ANSI 光标移动 / 清除行序列，导致显示错乱）
+            QTimer.singleShot(250, self._设置终端宽度)
         except Exception as e:
             self.status_label.setText(f'连接失败: {e}')
             self._shell = None
+
+    def _设置终端宽度(self, cols: int = 200):
+        """通过 stty 设置 PTY 窗口宽度，然后在 GUI 层面清理多余行。
+
+        长命令超过默认 80 列时，mksh 会做行编辑重绘（输出 \\r、ANSI 光标
+        移动、清除行等序列），本终端只过滤 ANSI 不模拟效果，会导致显示
+        错乱。设置足够宽的终端可从根源避免折行。
+        """
+        if not self._shell or self._shell.已关闭:
+            return
+        # 发送 stty 命令设置宽度（toybox 自带，绝大多数 Android 设备可用）
+        self._shell.发送输入(f'stty cols {cols}\n')
+        # 等待 stty 执行完成后，在 GUI 层面只保留最后一行提示符
+        QTimer.singleShot(200, self._只保留最后一行提示符)
+
+    def _只保留最后一行提示符(self):
+        """连接初始化后清理多余行：只保留最后一行（stty 后的提示符），删除前面所有行。
+
+        连接后终端通常有：初始提示符行 + stty 回显行 + stty 后提示符行。
+        只保留最后一行，避免空行和多余回显，同时保证 shell 的当前提示符
+        行不被破坏（后续命令回显会正确追加在该行）。
+        """
+        doc = self.output.document()
+        if doc.blockCount() <= 1:
+            return  # 只有一行或空，不处理
+        cursor = self.output.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
+        # 选择前面所有行（保留最后一行）
+        blocks_to_remove = doc.blockCount() - 1
+        cursor.movePosition(QTextCursor.MoveOperation.NextBlock,
+                            QTextCursor.MoveMode.KeepAnchor, blocks_to_remove)
+        cursor.removeSelectedText()
+        # 光标移到末尾
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        self.output.setTextCursor(cursor)
 
     def _断开终端(self):
         """断开当前终端连接。"""
@@ -508,8 +546,9 @@ class ADB终端对话框(QDialog):
         # ── 2. 解码 + 过滤控制字符 ──
         text = self._智能解码(output_bytes)
         text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
-        # 换行符处理：\r\n → \n；单独的 \r（回车）去掉
-        text = text.replace('\r\n', '\n').replace('\r', '')
+        # 换行符处理：\r\n → \n（Windows风格换行）
+        # 注意：单独的 \r（回车）不删除，保留到行级处理中模拟其"回到行首覆盖"的真实终端行为
+        text = text.replace('\r\n', '\n')
         if not text:
             return
 
@@ -530,7 +569,11 @@ class ADB终端对话框(QDialog):
         if not lines:
             return
 
-        # ── 4. 制表符展开为空格（8字符对齐，含中文宽度计算）──
+        # ── 4. 处理回车（\r）：模拟终端"回到行首，后续内容覆盖前面"的真实行为 ──
+        # 必须在制表符展开之前处理，因为 \r 会重置列位置
+        lines = [self._处理回车(line) for line in lines]
+
+        # ── 5. 制表符展开为空格（8字符对齐，含中文宽度计算）──
         expanded_lines = []
         for line in lines:
             expanded_lines.append(self._展开制表符(line))
@@ -579,6 +622,33 @@ class ADB终端对话框(QDialog):
         ):
             return 2
         return 1
+
+    @staticmethod
+    def _处理回车(line: str) -> str:
+        """模拟终端中 \\r（回车）的真实行为：回到行首，后续内容从行首开始覆盖。
+
+        与简单删除 \\r 不同，此方法正确处理 shell 行编辑中的"清除行"操作
+        （\\r + 大量空格 + \\r），避免长命令回显时出现大段空白。
+
+        规则:
+          - 每个 \\r 后的片段从行首开始覆盖当前内容
+          - 新片段比当前行短时，未被覆盖的尾部保留
+          - 空格也是可打印字符，会覆盖目标位置
+
+        示例:
+          'abc\\rdef'      → 'def'
+          'abc\\rde'       → 'dec'
+          'abc\\r   \\rxy' → 'xy'
+        """
+        if '\r' not in line:
+            return line
+        current = ''
+        for part in line.split('\r'):
+            if len(part) >= len(current):
+                current = part
+            else:
+                current = part + current[len(part):]
+        return current
 
     @classmethod
     def _展开制表符(cls, text: str, tab_size: int = 8) -> str:
@@ -681,6 +751,8 @@ class ADB终端对话框(QDialog):
         if self._不完整行:
             line = self._不完整行
             self._不完整行 = ''
+            # 先处理回车，再展开制表符
+            line = self._处理回车(line)
             expanded = self._展开制表符(line)
             cursor = self.output.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.End)

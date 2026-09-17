@@ -7,7 +7,7 @@
 ![Super_ADB](docs/灰色主题.png)
 - 这三个分页条都可以折叠界面，折叠后调整窗口大小隐藏不需要的功能，下次需要的时候再展开
 - 主题样式丰富
-- **最新版本：`2026.09.16`**（GitHub / Gitee / GitCode 均已同步）
+- **最新版本：**（GitHub / Gitee / GitCode 均已同步）
 
 ## ✨ 功能特性
 
@@ -126,13 +126,6 @@ adb shell pm dump com.migu.aijia | grep version发送，会自动改成shell 命
 - 2，填入包名，点击监控，就可以监控该应用的性能情况
 - 3，点击导出html 会导出html报告到桌面文件夹内
 
-## 🖥️ 支持平台
-
-| 平台 | 目录 | 状态 |
-|------|------|------|
-| Windows | `Super_ADB_Win/` | ✅ 完整支持 |
-| macOS | `Super_ADB_MAC/` | ✅ 完整支持 |
-| Linux | `Super_ADB_Linux/` | ✅ 完整支持 |
 
 ## 🚀 快速开始
 
@@ -155,19 +148,26 @@ cd Super_ADB_Win
 python 项目启动入口/Super_ADB_主入口.py
 ```
 
+
+
+## 🖥️ 支持平台
+
+| 平台 | 目录 | 状态 |
+|------|------|------|
+| Windows | `Super_ADB_Win/` | ✅ 完整支持 |
+| macOS | `Super_ADB_MAC/` | ✅ 完整支持 |
+| Linux | `Super_ADB_Linux/` | ✅ 完整支持 |
 ### 下载安装包
-
 三平台安装包由 CI（打标签后）自动构建发布，提供三个下载渠道：
-
-- **GitHub Releases**（主选，CI 自动打包）：https://github.com/Jcs2026-byte/Super_ADB/releases
-- **Gitee 发行版**（国内镜像，大包超 100MB 请去其他渠道）：https://gitee.com/Jcs2026/super_adb/releases
 - **GitCode 发行版**（国内镜像，支持大文件）：https://gitcode.com/Jcs2026/Super_ADB/releases
-- 夸克网盘：https://pan.quark.cn/s/2b7b11ebe1e5?pwd=fAXN#/list/share
-![Super_ADB](docs/ci打包警告.png)
+- **GitHub Releases**（CI 自动打包）：https://github.com/Jcs2026-byte/Super_ADB/releases
+- **Gitee 发行版**（linux无法同步过来）：https://gitee.com/Jcs2026/super_adb/releases
 - 安装包是通过 CI 打包的，会被打上网络标签，因为没钱买签名所有第一次运行会提示未知警告，点击允许允许即可，
 - 本地打的包不会被打上网络来源标签不会触发警告
-
 解压后找个盘放一下，右击执行文件创建快捷方式放桌面就行
+
+
+
 ![Super_ADB](docs/MAC拦截.png)
 MAC:
 这是 macOS Gatekeeper 拦截 ——CI 打的包没做 Apple 签名和公证，系统默认不让跑。三种放行方式，任选一种：

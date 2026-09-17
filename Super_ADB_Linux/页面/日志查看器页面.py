@@ -82,7 +82,7 @@ FAV_KEY = 'log_favs'
 
 # 级别颜色：深色主题用浅色系、浅色主题用深色系，保证两种背景下都清晰
 LEVEL_COLORS_DARK = {
-    'V': '#9aa0a6', 'D': '#6db3f2', 'I': '#cfd8dc',
+    'V': '#b0bec5', 'D': '#6db3f2', 'I': '#cfd8dc',
     'W': '#f5c542', 'E': '#ff6b6b', 'F': '#ff4d4d',
 }
 LEVEL_COLORS_LIGHT = {
@@ -117,7 +117,7 @@ def _级别颜色(level, theme_id):
 
 
 def _parse_line(raw: str):
-    m = re.match(r'^(\d{2}-\d{2})\s+(\d{1,2}:\d{2}:\d{2}\.\d+)\s+(\d+)\s+(\d+)\s+([VDIWEF])\s+(\S+?):\s?(.*)$', raw)
+    m = re.match(r'^(\d{2}-\d{2})\s+(\d{1,2}:\d{2}:\d{2}\.\d+)\s+(\d+)\s+(\d+)\s+([VDIWEF])\s+(\S+?)\s*:\s?(.*)$', raw)
     if m:
         return {
             'raw': raw, 'date': m.group(1), 'time': m.group(2),
@@ -867,7 +867,6 @@ class 日志查看器页(QWidget):
         if win is not None:
             win = win.window()
         tid = getattr(win, '_current_theme', None) or 'dark_cyan'
-        self._theme_id = tid
         return tid
 
     def apply_theme(self, theme_id):

@@ -8,11 +8,12 @@
 import sys
 
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import QMenu
 
 from 项目UI.界面样式 import (
     THEMES, DEFAULT_THEME, get_stylesheet, get_theme_ids, get_theme_name, FONT_FAMILY,
+    生成旋转图标像素图,
 )
 from 工具.android调试工具.ADB工具 import 加载json配置, 保存json配置
 
@@ -95,11 +96,13 @@ class 主题系统Mixin:
             act.setChecked(tid == self._current_theme)
 
     def 刷新标题栏按钮样式(self):
-        """统一刷新标题栏所有按钮的局部样式（关于/环境配置/主题/品牌文字）。"""
+        """统一刷新标题栏所有按钮的局部样式（关于/环境配置/主题/隐藏/退出/品牌文字）。"""
         for btn, style_fn in (
             (getattr(self, '_btn_about', None), self._关于按钮样式),
             (getattr(self, '_btn_env', None), self._环境配置按钮样式),
             (getattr(self, '_btn_theme', None), self._主题按钮样式),
+            (getattr(self, '_btn_close', None), lambda: self._窗口按钮样式(False)),
+            (getattr(self, '_btn_exit', None), lambda: self._窗口按钮样式(True)),
             (getattr(self, 'brandText', None), self._品牌文字样式),
                     ):
             if btn is not None:
@@ -107,6 +110,13 @@ class 主题系统Mixin:
                     btn.setStyleSheet(style_fn())
                 except Exception as e:
                     print(f'[主题] 标题栏按钮样式刷新失败: {e!r}')
+        # 隐藏到托盘按钮图标随主题刷新（系统图标在浅色主题下为白色不可见）
+        btn_close = getattr(self, '_btn_close', None)
+        if btn_close is not None:
+            try:
+                btn_close.setIcon(self._隐藏按钮图标())
+            except Exception as e:
+                print(f'[主题] 隐藏按钮图标刷新失败: {e!r}')
 
     def _切换主题(self, theme_id):
         """切换主题：setStyleSheet + 重应用标题栏按钮局部样式 + 持久化。"""
@@ -120,6 +130,12 @@ class 主题系统Mixin:
         self.刷新标题栏按钮样式()
         # 设置 fileMgr_tree 和 logViewer_textEdit 背景色
         self._设置列表背景色(theme_id)
+        # 同步更新日志查看器页（logcat 级别颜色随主题）
+        if hasattr(self, 'log_viewer'):
+            try:
+                self.log_viewer.apply_theme(theme_id)
+            except Exception:
+                pass
                 # 强制刷新 QTreeView 样式（切换主题后可能不立即更新）
         if hasattr(self, 'fileMgr_tree'):
             self.fileMgr_tree.style().unpolish(self.fileMgr_tree)
@@ -248,17 +264,35 @@ class 主题系统Mixin:
                 f"QPushButton:hover{{background:rgba({r},{g},{b},35);color:#ffffff;}}"
                 f"QPushButton:pressed{{background:rgba({r},{g},{b},60);color:#ffffff;}}")
 
+    def _隐藏按钮图标(self):
+        """生成隐藏到托盘按钮的旋转箭头图标，颜色随主题背景自适应。
+
+        深色标题栏用浅灰图标、浅色标题栏用深灰图标，保证所有主题下都可见。
+        """
+        t = THEMES.get(self._current_theme, THEMES[DEFAULT_THEME])
+        glyph = '#cccccc' if self._背景是否深色(t['bg_window']) else '#4a4a4a'
+        return QIcon(生成旋转图标像素图(glyph))
+
     def _窗口按钮样式(self, is_close=True):
-        """生成标题栏「关闭」按钮的局部样式表。hover 为红色（Windows 风格）。"""
-        common = (f"QPushButton{{background:transparent;border:none;color:#cccccc;"
+        """生成标题栏「隐藏/关闭」按钮的局部样式表。hover 为红色（Windows 风格）。
+
+        字形色与 hover 底色随主题背景自适应：浅色主题用深灰字形 + 深色 hover 底，
+        深色主题用浅灰字形 + 浅色 hover 底，否则浅色主题下按钮与 hover 反馈都不可见。
+        """
+        t = THEMES.get(self._current_theme, THEMES[DEFAULT_THEME])
+        dark_bg = self._背景是否深色(t['bg_window'])
+        glyph = '#cccccc' if dark_bg else '#4a4a4a'
+        hover_bg = 'rgba(255,255,255,30)' if dark_bg else 'rgba(0,0,0,25)'
+        press_bg = 'rgba(255,255,255,55)' if dark_bg else 'rgba(0,0,0,45)'
+        common = (f"QPushButton{{background:transparent;border:none;color:{glyph};"
                   f"font:16px 'Segoe UI','{FONT_FAMILY}';border-radius:4px;}}")
         if is_close:
             return (common +
                     "QPushButton:hover{background:#e81123;color:#ffffff;}"
                     "QPushButton:pressed{background:#b0091a;color:#ffffff;}")
         return (common +
-                "QPushButton:hover{background:rgba(255,255,255,30);color:#ffffff;}"
-                "QPushButton:pressed{background:rgba(255,255,255,55);color:#ffffff;}")
+                f"QPushButton:hover{{background:{hover_bg};color:#ffffff;}}"
+                f"QPushButton:pressed{{background:{press_bg};color:#ffffff;}}")
 
     def _初始化品牌标签(self):
         """品牌标识由 .ui 定义，这里只设透明背景和主题色文字。"""

@@ -80,12 +80,40 @@ DRAG_BATCH = 100
 CONFIG_NAME = '配置/Super_ADB配置.json'
 FAV_KEY = 'log_favs'
 
-# 级别颜色
-LEVEL_COLORS = {
+# 级别颜色：深色主题用浅色系、浅色主题用深色系，保证两种背景下都清晰
+LEVEL_COLORS_DARK = {
     'V': '#9aa0a6', 'D': '#6db3f2', 'I': '#cfd8dc',
-    'W': '#f5c542', 'E': '#ff6b6b', 'F': '#ff3b30',
+    'W': '#f5c542', 'E': '#ff6b6b', 'F': '#ff4d4d',
 }
-LEVEL_DEFAULT = '#cfd8dc'
+LEVEL_COLORS_LIGHT = {
+    'V': '#5f6368', 'D': '#1565c0', 'I': '#37474f',
+    'W': '#9a5a00', 'E': '#c62828', 'F': '#b71c1c',
+}
+
+
+def _主题是否深色(theme_id):
+    """按主题背景亮度判断：True=深色背景（用于日志级别配色）。"""
+    from 项目UI.界面样式 import THEMES, DEFAULT_THEME
+    t = THEMES.get(theme_id, THEMES[DEFAULT_THEME])
+    s = t['bg_window'].lstrip('#')
+    if len(s) != 6:
+        return True
+    try:
+        r, g, b = int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16)
+    except ValueError:
+        return True
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255.0 < 0.55
+
+
+def _级别色板(theme_id):
+    """当前主题对应的 logcat 级别颜色表。"""
+    return LEVEL_COLORS_DARK if _主题是否深色(theme_id) else LEVEL_COLORS_LIGHT
+
+
+def _级别颜色(level, theme_id):
+    """当前主题下某日志级别的文字颜色（未知级别回退 I 级）。"""
+    colors = _级别色板(theme_id)
+    return colors.get(level, colors['I'])
 
 
 def _parse_line(raw: str):
@@ -221,6 +249,8 @@ class 日志查看器页(QWidget):
 
         # E/F 级别加粗字体（日志列表项用），与 _beautify_view 的等宽字体同源
         self._bold_font = QFont('Consolas', 9)
+        # 当前主题 id（apply_theme 更新）；未设置时 _当前主题id 从主窗口读取
+        self._theme_id = None
         self._bold_font.setBold(True)
         self._bold_font.setStyleHint(QFont.Monospace)
 
@@ -833,6 +863,36 @@ class 日志查看器页(QWidget):
         path = self._log_path or os.path.join(self._save_dir, 'x.log')
         QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
 
+    def _当前主题id(self):
+        """取当前主题 id：优先 apply_theme 传入值，未设置时从主窗口读取。"""
+        if self._theme_id:
+            return self._theme_id
+        win = getattr(self, 'text_edit', None)
+        if win is not None:
+            win = win.window()
+        tid = getattr(win, '_current_theme', None) or 'dark_cyan'
+        self._theme_id = tid
+        return tid
+
+    def apply_theme(self, theme_id):
+        """主题切换后：更新日志级别配色，并重刷已有行的文字颜色。"""
+        self._theme_id = theme_id
+        te = getattr(self, 'text_edit', None)
+        if te is None:
+            return
+        colors = _级别色板(theme_id)
+        hl_bg = getattr(self, '_hl_bg', None)
+        for i in range(te.count()):
+            item = te.item(i)
+            if item is None:
+                continue
+            # 高亮命中行保持红底白字，不覆盖
+            if hl_bg is not None and item.background().color() == hl_bg:
+                continue
+            e = _parse_line(item.text())
+            if e['level']:
+                item.setForeground(QColor(colors.get(e['level'], colors['I'])))
+
     def _insert_batch(self, entries):
         """批量追加日志行到 QListWidget（仅画可见行，paint 常数级）。"""
         te = self.text_edit
@@ -841,7 +901,7 @@ class 日志查看器页(QWidget):
             hl = self._hl_keywords
             for e in entries:
                 item = QListWidgetItem(e['raw'])
-                item.setForeground(QColor(LEVEL_COLORS.get(e['level'], LEVEL_DEFAULT)))
+                item.setForeground(QColor(_级别颜色(e['level'], self._当前主题id())))
                 if e['level'] in ('E', 'F'):
                     item.setFont(self._bold_font)
                 if hl and any(k in e['raw'].lower() for k in hl):

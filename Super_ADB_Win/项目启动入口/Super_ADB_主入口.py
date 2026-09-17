@@ -457,6 +457,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self._no_track = set()
         self._btn_close = self.winBtnClose  # 隐藏到托盘按钮（旋转图标）
         self._btn_close.setStyleSheet(self._窗口按钮样式(False))
+        self._btn_close.setIcon(self._隐藏按钮图标())  # 图标随主题自适应，浅色主题不再隐身
         self._no_track.add(self._btn_close)
 
         # 右上角 X 关闭程序按钮（由 ui 文件定义，点击弹确认框，防止误关）
@@ -725,14 +726,14 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             _亮度 = 30  # 默认深色
         _is_light = _亮度 > 128
         if _is_light:
-            _c_cmd = '#00695c'      # 命令行（深青）
-            _c_kw = '#00838f'       # 命令关键字（深青）
-            _c_out = '#333333'      # 普通输出（深灰）
-            _c_label = '#00838f'    # 键名标签（深青）
-            _c_err = '#c62828'      # 错误（深红）
-            _c_ok = '#2e7d32'       # 成功（深绿）
-            _c_warn = '#f57f17'     # 警告（深黄）
-            _c_ts = '#666666'       # 时间戳（中灰）
+            _c_cmd = '#111827'      # 命令行（近黑，最清晰）
+            _c_kw = '#111827'       # 命令关键字（与命令同色，靠加粗区分）
+            _c_out = '#374151'      # 普通输出（深灰）
+            _c_label = '#374151'    # 键名标签（深灰）
+            _c_err = '#b91c1c'      # 错误（深红）
+            _c_ok = '#166534'       # 成功（深绿）
+            _c_warn = '#9a5a00'     # 警告（深棕橙）
+            _c_ts = '#6b7280'       # 时间戳（中灰）
         else:
             _c_cmd = '#1de9b6'      # 命令行（青）
             _c_kw = '#a7ffeb'       # 命令关键字（浅青）
@@ -762,7 +763,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
                            'top', 'cat', 'echo', 'grep', 'sed', 'awk'):
                     colored = re.sub(
                         rf'(?<![\w-])({re.escape(kw)})(?![\w-])',
-                        rf'<span style="color:{_c_kw};">\1</span>',
+                        rf'<span style="color:{_c_kw};font-weight:600;">\1</span>',
                         colored,
                         flags=re.IGNORECASE,
                     )

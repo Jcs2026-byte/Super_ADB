@@ -120,9 +120,71 @@ class ADB终端对话框(QDialog):
         self.setStyleSheet(get_stylesheet(theme_id))
         self.card.setStyleSheet(highlight_card_style(theme_id))
         add_green_glow(self.card, accent=QColor(THEMES[theme_id]['accent']))
+        if getattr(self, 'output', None) is not None:
+            self.output.setStyleSheet(self._终端输出样式())
         self.update()
 
     # ── UI 构建 ──
+
+    def _终端输出样式(self):
+        """终端输出区样式：随主题配色（浅色主题白底深字、深色主题黑底浅字），保证文字清晰。"""
+        t = THEMES.get(self._theme_id, THEMES.get('dark_cyan', {}))
+        s = t.get('bg_window', '#252f3d').lstrip('#')
+        try:
+            r, g, b = int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16)
+            dark = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0 < 0.55
+        except Exception:
+            dark = True
+        bg = t['bg_input']
+        fg = t['text_primary']
+        accent = t['accent']
+        if dark:
+            scroll_bg, handle, hover, sel = '#1a1a1a', '#444444', '#555555', '#264f78'
+        else:
+            scroll_bg, handle, hover, sel = '#e8eaed', '#b8bcc2', '#9aa0a6', 'rgba(66,133,244,120)'
+        return f'''
+            QPlainTextEdit {{
+                background-color: {bg};
+                color: {fg};
+                border: 1px solid {accent};
+                border-radius: 4px;
+                padding: 6px 8px;
+                selection-background-color: {sel};
+                font-family: "Consolas", "Courier New", "Microsoft YaHei Mono", "SimSun", monospace;
+            }}
+            QScrollBar:vertical {{
+                background: {scroll_bg};
+                width: 12px;
+                margin: 0;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {handle};
+                min-height: 30px;
+                border-radius: 6px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {hover};
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0;
+            }}
+            QScrollBar:horizontal {{
+                background: {scroll_bg};
+                height: 12px;
+                margin: 0;
+            }}
+            QScrollBar::handle:horizontal {{
+                background: {handle};
+                min-width: 30px;
+                border-radius: 6px;
+            }}
+            QScrollBar::handle:horizontal:hover {{
+                background: {hover};
+            }}
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+                width: 0;
+            }}
+        '''
 
     def _构建UI(self):
         root = QVBoxLayout(self.card)
@@ -191,50 +253,8 @@ class ADB终端对话框(QDialog):
         font_metrics = self.output.fontMetrics()
         char_width = font_metrics.horizontalAdvance(' ')
         self.output.setTabStopDistance(char_width * 8)
-        # 终端风格：深色背景 + 浅色文字 + 滚动条样式
-        self.output.setStyleSheet('''
-            QPlainTextEdit {
-                background-color: #0c0c0c;
-                color: #cccccc;
-                border: 1px solid #2a2a2a;
-                border-radius: 4px;
-                padding: 6px 8px;
-                selection-background-color: #264f78;
-                font-family: "Consolas", "Courier New", "Microsoft YaHei Mono", "SimSun", monospace;
-            }
-            QScrollBar:vertical {
-                background: #1a1a1a;
-                width: 12px;
-                margin: 0;
-            }
-            QScrollBar::handle:vertical {
-                background: #444444;
-                min-height: 30px;
-                border-radius: 6px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #555555;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0;
-            }
-            QScrollBar:horizontal {
-                background: #1a1a1a;
-                height: 12px;
-                margin: 0;
-            }
-            QScrollBar::handle:horizontal {
-                background: #444444;
-                min-width: 30px;
-                border-radius: 6px;
-            }
-            QScrollBar::handle:horizontal:hover {
-                background: #555555;
-            }
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                width: 0;
-            }
-        ''')
+        # 终端风格：随主题（浅色主题白底深字、深色主题黑底浅字）
+        self.output.setStyleSheet(self._终端输出样式())
         # 文档默认边距
         doc = self.output.document()
         doc.setDocumentMargin(4)

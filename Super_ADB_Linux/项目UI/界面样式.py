@@ -20,8 +20,8 @@ import sys
 import tempfile
 import hashlib
 
-from PySide6.QtCore import QPoint
-from PySide6.QtGui import QColor, QPainter, QPolygon, QImage
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QPainter, QPen, QPolygon, QImage, QPixmap
 
 
 # ----------------------------------------------------------------------
@@ -346,6 +346,43 @@ def _arrow_icon_path(theme_id):
     return path.replace('\\', '/')
 
 
+
+def 生成旋转图标像素图(color_str, size=18):
+    """程序化生成「旋转箭头」图标（隐藏到托盘按钮 winBtnClose 用）。
+
+    颜色由调用方按主题传入（深色标题栏传浅色、浅色标题栏传深色），
+    避免依赖系统主题图标：Windows 上 ObjectRotateRight 解析为白色图标，
+    在浅色主题标题栏上不可见。
+    """
+    import math
+    img = QImage(size, size, QImage.Format_ARGB32)
+    img.fill(0x00000000)
+    p = QPainter(img)
+    p.setRenderHint(QPainter.Antialiasing, True)
+    pen = QPen(QColor(color_str), max(1.6, size / 9.0))
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    p.setPen(pen)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    cx = cy = size / 2.0
+    r = size * 0.33
+    # 弧：135° 起顺时针扫 270°（右下留缺口），箭头画在弧末端 45° 处
+    start_deg, span_deg = 135, 270
+    p.drawArc(QRectF(cx - r, cy - r, 2 * r, 2 * r),
+              int(start_deg * 16), int(span_deg * 16))
+    end_deg = (start_deg + span_deg) % 360
+    a = math.radians(end_deg)
+    ex = cx + r * math.cos(a)
+    ey = cy + r * math.sin(a)
+    tang = a + math.pi / 2
+    tip = size * 0.30
+    for da in (0.32, -0.32):
+        x = ex + tip * math.cos(tang + da)
+        y = ey + tip * math.sin(tang + da)
+        p.drawLine(QPointF(ex, ey), QPointF(x, y))
+    p.end()
+    return QPixmap.fromImage(img)
+
+
 # ----------------------------------------------------------------------
 # 样式表模板
 # ----------------------------------------------------------------------
@@ -564,8 +601,8 @@ def get_stylesheet(theme_id=DEFAULT_THEME):
 
     /* ────────────── 按钮 QPushButton ────────────── */
     QPushButton {{
-        font: 400 10pt "{FONT_FAMILY}";
-        color: {accent};
+        font: 500 10pt "{FONT_FAMILY}";
+        color: {t['text_primary']};
         background-color: {t['bg_button']};
         border: 1px solid {accent};
         border-radius: 6px;
@@ -595,8 +632,8 @@ def get_stylesheet(theme_id=DEFAULT_THEME):
         border: none;
     }}
     QPushButton#btnScrcpyMain, QPushButton#btnPkgMain {{
-        font: 400 10pt "{FONT_FAMILY}";
-        color: {accent};
+        font: 500 10pt "{FONT_FAMILY}";
+        color: {t['text_primary']};
         background-color: {t['bg_button']};
         border: 1px solid {accent};
         border-top-left-radius: 6px;
@@ -621,8 +658,8 @@ def get_stylesheet(theme_id=DEFAULT_THEME):
         background-color: {t['bg_window']};
     }}
     QPushButton#btnScrcpyMenu, QPushButton#btnPkgMenu {{
-        font: 400 10pt "{FONT_FAMILY}";
-        color: {accent};
+        font: 500 10pt "{FONT_FAMILY}";
+        color: {t['text_primary']};
         background-color: {t['bg_button']};
         border: 1px solid {accent};
         border-top-right-radius: 6px;
@@ -645,6 +682,14 @@ def get_stylesheet(theme_id=DEFAULT_THEME):
         image: none;
         width: 0px;
         height: 0px;
+    }}
+
+    /* ────────────── 输出/日志区：文字颜色跟随主题，背景保持透明 ────────────── */
+    QPlainTextEdit, QTextEdit, QTextBrowser {{
+        color: {t['text_primary']};
+        background-color: transparent;
+        selection-background-color: {rgba(120)};
+        selection-color: #ffffff;
     }}
 
     /* ────────────── 输入框 QLineEdit ────────────── */

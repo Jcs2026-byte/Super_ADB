@@ -3,7 +3,7 @@
 ADB Shell 整合工具 —— 主入口
 ==============================
 整合常用 ADB 快捷命令、文件管理器、日志查看器于一体。
-UI 布局由 Super_ADB悦.ui 定义，通过 Ui_MainWindow 驱动。
+UI 布局由 Super_ADB.ui 定义，通过 Ui_MainWindow 驱动。
 Super_ADB
 # -*- coding: UTF-8 -*-
 @author:JCS

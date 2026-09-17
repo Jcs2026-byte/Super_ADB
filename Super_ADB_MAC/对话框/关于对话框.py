@@ -131,8 +131,8 @@ class 关于对话框(QDialog, 无边框缩放Mixin):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setObjectName('aboutDialog')  # QSS 选择器稳定锚点（与 无线调试对话框 同款）
-        self.setMinimumSize(360, 480)
-        self.resize(440, 620)
+        self.setMinimumSize(360, 560)
+        self.resize(440, 720)
         self.setWindowTitle('关于 Super_ADB')
         self.setWindowIcon(QIcon(':/Super_ADB.png'))
 
@@ -201,7 +201,7 @@ class 关于对话框(QDialog, 无边框缩放Mixin):
         self.qr_lbl.setPixmap(qr)
         content.addWidget(self.qr_lbl, alignment=Qt.AlignCenter)
 
-        content.addSpacing(12)
+        content.addSpacing(20)
 
         # 提示文字
         self.hint = QLabel(

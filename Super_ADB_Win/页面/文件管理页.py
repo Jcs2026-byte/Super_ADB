@@ -14,7 +14,7 @@ from PySide6.QtGui import QStandardItemModel, QStandardItem, QFont
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTreeView, QComboBox, QPushButton,
     QLabel, QHeaderView, QFileDialog, QInputDialog, QMessageBox, QMenu,
-    QAbstractItemView, QLineEdit, QDialog, QPlainTextEdit, QProgressBar)
+    QAbstractItemView, QLineEdit, QDialog, QPlainTextEdit, QProgressBar, QStyle)
 
 from 工具.android调试工具.ADB工具 import (AdbFileManager, 格式化设备标签,
                                           加载json配置, 保存json配置)
@@ -179,6 +179,7 @@ class 文件管理页(QWidget):
         self._dir_items = {}
         self._loading = set()
         self._live_workers = []
+        self._computed_dir_sizes = set()  # 已后台 du -sh 算过大小的目录，避免重复算
         self._last_browsed_path = None  # 最近一次浏览的目录路径，自动刷新刷它
         # ── 设备管理器开关：默认关闭 → 不执行获取文件 ──
         self._device_mgr_on = False
@@ -539,7 +540,7 @@ class 文件管理页(QWidget):
         QTimer.singleShot(0, self._apply_col_widths)
         _rp = self._root_path
         _nm = _rp.rstrip('/').rsplit('/', 1)[-1] or _rp
-        item = QStandardItem(_rp)
+        item = QStandardItem('📁 ' + _rp)
         item.setData({'is_dir': True, 'path': _rp, 'name': _nm}, Qt.UserRole)
         item.setData(False, LOADED_ROLE)
         item.appendRow(QStandardItem(''))
@@ -609,7 +610,8 @@ class 文件管理页(QWidget):
         w = _CmdWorker(self._mgr.列出目录, self._current_serial, path)
         self._track(w, on_result=lambda e: self._populate(item, e),
                    on_error=lambda e: self._on_list_err(item, path, e),
-                   on_finished=lambda: self._loading.discard(path))
+                   on_finished=lambda: (self._loading.discard(path),
+                                        self._maybe_compute_dir_size(item, path)))
 
     def _populate(self, item, entries):
         """差异更新子项：保留已有节点（含已加载子目录的内容与展开状态），
@@ -675,7 +677,8 @@ class 文件管理页(QWidget):
                     break
             if not found:
                 # 新增：插入新节点
-                child = QStandardItem(e['name'])
+                _prefix = '📁 ' if e['is_dir'] else '📄 '
+                child = QStandardItem(_prefix + e['name'])
                 child.setData(e, Qt.UserRole)
                 child.setData(False, LOADED_ROLE)
                 sz = self._fmt_size(e['size'])
@@ -699,10 +702,16 @@ class 文件管理页(QWidget):
     def _update_row(self, item, i, e):
         """就地更新第 i 行的名称与数据列（复用第0列节点对象）。"""
         child = item.child(i, 0)
-        child.setText(e['name'])
+        _prefix = '📁 ' if e.get('is_dir') else '📄 '
+        child.setText(_prefix + e['name'])
         child.setData(e, Qt.UserRole)
-        sz = self._fmt_size(e['size'])
-        item.setChild(i, 1, QStandardItem(sz))
+        # 已 du 算过大小的目录，保留 du 结果不被 ls 的 0 B 覆盖
+        old_sz_item = item.child(i, 1)
+        if e.get('is_dir') and e['path'] in self._computed_dir_sizes and old_sz_item:
+            pass  # 保留旧大小文本
+        else:
+            sz = self._fmt_size(e['size'])
+            item.setChild(i, 1, QStandardItem(sz))
         item.setChild(i, 2, QStandardItem(e['perm']))
         item.setChild(i, 3, QStandardItem(e['mtime']))
         if e['is_dir']:
@@ -716,6 +725,47 @@ class 文件管理页(QWidget):
         item.setData(False, LOADED_ROLE)
         self._loading.discard(path)
         self._status(f'加载失败: {err}')
+
+    # 虚拟文件系统路径前缀，du 算不出来，直接跳过
+    _虚拟FS前缀 = ('/proc', '/sys', '/acct', '/dev', '/run', '/snap',
+                      '/data/misc/apexdata', '/apex', '/linkerconfig')
+
+    def _maybe_compute_dir_size(self, item, path):
+        """ls 完成后后台跑 du 计算文件夹真实大小，避免与 ls 竞争连接。"""
+        if path in self._computed_dir_sizes:
+            return
+        # 虚拟文件系统跳过
+        if path == '/' or any(path.startswith(p) for p in self._虚拟FS前缀):
+            return
+        self._computed_dir_sizes.add(path)
+        def _do_du():
+            try:
+                # du -sk 输出 KB 数，最通用；失败再试 -sh
+                out = self._mgr.执行shell(self._current_serial, f'du -sk "{path}"', timeout=30)
+                first = out.strip().splitlines()[0] if out.strip() else ''
+                parts = first.split()
+                if len(parts) >= 1 and parts[0].isdigit():
+                    return int(parts[0]) * 1024  # KB → bytes
+                # 兼容 du -sh 输出
+                size_str = parts[0] if parts else ''
+                return _parse_du_size(size_str)
+            except Exception as e:
+                return None
+        def _on_done(size_bytes):
+            try:
+                if size_bytes is None or size_bytes <= 0:
+                    return  # 虚拟FS或无权限目录，静默跳过不刷状态栏
+                # item 是第0列，用 index().siblingAtColumn(1) 取同一行大小列
+                idx = item.index()
+                sz_idx = idx.siblingAtColumn(1)
+                sz_item = self.model.itemFromIndex(sz_idx) if sz_idx.isValid() else None
+                if sz_item:
+                    sz_item.setText(self._fmt_size(size_bytes))
+                self._status(f'大小: {self._fmt_size(size_bytes)}  ({path})')
+            except Exception:
+                pass
+        w = _CmdWorker(_do_du)
+        self._track(w, on_result=_on_done)
 
     def _refresh_dir(self, path):
         item = self._dir_items.get(path)
@@ -1646,4 +1696,18 @@ class 文件管理页(QWidget):
         msg_box.exec()
 
     def _status(self, msg):
-        self.status_label.setText(msg)
+        self.status_label.setText(msg)
+
+def _parse_du_size(s):
+    """把 du -sh 的输出（如 1.2G、500M、3.4K）转成字节数。"""
+    if not s:
+        return None
+    s = s.strip().upper()
+    units = {'K': 1024, 'M': 1024**2, 'G': 1024**3, 'T': 1024**4, 'B': 1}
+    try:
+        if s[-1] in units:
+            num = float(s[:-1])
+            return int(num * units[s[-1]])
+        return int(s)
+    except (ValueError, IndexError):
+        return None

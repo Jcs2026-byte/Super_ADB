@@ -645,7 +645,8 @@ class AdbHelper:
                 try:
                     if sys.platform == 'win32':
                         ping_ret = _sp.run(['ping', '-n', '1', '-w', '1000', host],
-                                         capture_output=True, timeout=3)
+                                         capture_output=True, timeout=3,
+                                         creationflags=CREATE_NO_WINDOW)
                     else:
                         ping_ret = _sp.run(['ping', '-c', '1', '-W', '1', host],
                                          capture_output=True, timeout=3)
@@ -1552,6 +1553,119 @@ class AdbHelper:
         elif tail:
             msg += f'：{tail}'
         return msg
+
+
+    # ------------------------------------------------------------------
+    # 单通道设备（单客户盒子）自动识别与持久化
+    # ------------------------------------------------------------------
+    def _查询历史设备型号版本(self, serial):
+        """从 历史连接设备.json 查 serial 对应的 (model, system_version)。"""
+        try:
+            if ':' not in str(serial):
+                return '', ''
+            ip = str(serial).rsplit(':', 1)[0]
+            history = 加载json配置('历史连接设备.json')
+            if isinstance(history, list):
+                for d in history:
+                    if d.get('ip') == ip:
+                        return d.get('model', '') or '', d.get('system_version', '') or ''
+        except Exception:
+            pass
+        return '', ''
+
+    def 预加载单通道标记(self, serial):
+        """启动设备管理时调用：从设备能力读已知单通道结果，预置到自研客户端。
+
+        返回值：
+            True  — 已知单通道，已预置 _单客户端设备=True，走单客户分支
+            False — 已知多通道
+            None  — 未知，需要运行中检测
+        """
+        if not serial or ':' not in str(serial):
+            return None
+        try:
+            from 工具.android调试工具.设备能力 import 是否单通道
+            model, version = self._查询历史设备型号版本(serial)
+            if not model:
+                return None
+            结果 = 是否单通道(model, version)
+            if 结果 is True:
+                client = self._自研adb缓存.get(serial)
+                if client is not None:
+                    client._单客户端设备 = True
+                    self._log(f'[单通道] 已知单通道设备，直接走单客户分支: {model} Android {version}')
+            return 结果
+        except Exception as e:
+            self._log(f'[单通道] 预加载标记异常: {e}')
+            return None
+
+    def 检测并记录单通道(self, serial):
+        """首次 ls 成功后调用：检查自研客户端运行时标记，若确认单通道且未记录，
+        取机型+系统版本写入设备能力，下次启动直接走单客户分支。"""
+        if not serial or ':' not in str(serial):
+            return
+        try:
+            client = self._自研adb缓存.get(serial)
+            if client is None:
+                return
+            if not getattr(client, '_单客户端设备', False):
+                return
+            from 工具.android调试工具.设备能力 import 是否单通道, 设置单通道
+            model, version = self._查询历史设备型号版本(serial)
+            if not model:
+                try:
+                    model = client.执行shell('getprop ro.product.model', timeout=3).strip()
+                    version = client.执行shell('getprop ro.build.version.release', timeout=3).strip()
+                except Exception:
+                    return
+            if not model:
+                return
+            if 是否单通道(model, version) is not True:
+                设置单通道(model, version, is_single_channel=True)
+                self._log(f'[单通道] 检测到单通道设备，已记录: {model} Android {version}')
+        except Exception:
+            pass
+
+    def 主动检测并记录单通道(self, serial, model='', android_version=''):
+        """设备信息获取后调用：若设备能力里没有单通道记录（None），主动探测一次并写入。
+
+        已知 True/False 直接跳过，不做网络探测。
+        探测通过自研客户端借第二连接执行 echo，超时即判定单通道。
+        """
+        if not serial or ':' not in str(serial):
+            return
+        try:
+            from 工具.android调试工具.设备能力 import 是否单通道, 设置单通道
+            # model/version 为空时从历史记录补
+            if not model or not android_version:
+                h_model, h_version = self._查询历史设备型号版本(serial)
+                model = model or h_model
+                android_version = android_version or h_version
+            if not model:
+                return
+            已有 = 是否单通道(model, android_version)
+            if 已有 is not None:
+                self._log(f'[单通道] 设备 {model} Android {android_version} 已有记录={已有}，跳过探测')
+                return
+            # 缓存里没有 client 时主动获取（设备信息对话框可能刚连接完还没进缓存）
+            client = self._自研adb缓存.get(serial)
+            if client is None:
+                try:
+                    client = self._获取自研adb(serial)
+                except Exception:
+                    client = None
+            if client is None:
+                self._log(f'[单通道] 未拿到自研客户端 {serial}，跳过探测（非自研模式？）')
+                return
+            self._log(f'[单通道] 设备 {model} Android {android_version} 未记录，开始探测通道类型...')
+            是单通道 = client.探测单通道()
+            设置单通道(model, android_version, is_single_channel=是单通道)
+            if 是单通道:
+                self._log(f'[单通道] 探测完成：单通道设备，已记录: {model} Android {android_version}')
+            else:
+                self._log(f'[单通道] 探测完成：多通道设备，已记录: {model} Android {android_version}')
+        except Exception as e:
+            self._log(f'[单通道] 主动探测异常: {e}')
 
 
 class Adb设备操作(AdbHelper):

@@ -79,7 +79,7 @@ class 历史连接设备对话框(QDialog):
         self._devices = []
         self._theme_id = theme_id or 'default'
         self.setWindowTitle("历史连接设备")
-        self.setMinimumWidth(500)
+        self.setMinimumWidth(680)
         self.setMinimumHeight(400)
         from 项目UI.界面样式 import get_stylesheet
         from 项目UI.弹窗样式 import _create_popup_card
@@ -94,9 +94,17 @@ class 历史连接设备对话框(QDialog):
         root.setSpacing(10)
         root.setContentsMargins(16, 16, 16, 16)
 
+        title_row = QHBoxLayout()
+        title_row.setSpacing(8)
         title = QLabel("📜 历史连接过的设备")
         title.setStyleSheet("font-size: 14px; font-weight: bold;")
-        root.addWidget(title)
+        title_row.addWidget(title)
+        title_row.addStretch()
+        hint = QLabel("⚠️ 单通道设备仅允许一个 ADB 连接，自研与官方不可同时保持")
+        hint.setStyleSheet("font-size: 11px; color: #888;")
+        hint.setWordWrap(True)
+        title_row.addWidget(hint)
+        root.addLayout(title_row)
 
         self._list_layout = QVBoxLayout()
         self._list_layout.setSpacing(4)

@@ -369,6 +369,28 @@ class 自研adb客户端:
                     self._主连接 = None
                 raise
 
+
+    def 探测单通道(self) -> bool:
+        """主动探测本设备是否为单客户端设备（adbd 只接受 1 条 TCP 连接）。
+
+        原理：尝试借第二连接执行一个 echo。若第二连接 CNXN 超时，
+        ``_用连接`` 内部会自动把 ``_单客户端设备`` 置为 True 并降级走主连接。
+        调用后直接读 ``self._单客户端设备`` 即可得到结论。
+
+        返回 True 表示已确认单客户端；False 表示多客户端（第二连接可用）。
+        """
+        if self._单客户端设备:
+            return True
+        try:
+            self._用连接(
+                lambda c: c.执行shell('echo __channel_probe__', timeout=3),
+                timeout=8.0,
+            )
+        except Exception:
+            # _用连接 内部已在超时分支设置了 _单客户端设备=True
+            pass
+        return self._单客户端设备
+
     def 借用流连接(self, timeout: float = 10.0):
         """为长连接流（交互式 shell / logcat / tcpdump）借用连接。
 

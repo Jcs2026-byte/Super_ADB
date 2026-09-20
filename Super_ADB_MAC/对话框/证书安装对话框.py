@@ -45,6 +45,59 @@ def 计算证书哈希(证书路径):
     return md5.hexdigest()[:8]
 
 
+def _带单位转KB(文本):
+    """把 ``243.3M`` / ``1024K`` / ``1.5G`` / ``512`` 转成 KB 整数；无法识别返回 None。"""
+    import re
+    if not 文本:
+        return None
+    m = re.match(r'^([\d.]+)\s*([kmgtKMGT])?$', 文本.strip())
+    if not m:
+        return None
+    try:
+        num = float(m.group(1))
+    except ValueError:
+        return None
+    单位 = (m.group(2) or '').upper()
+    乘数 = {'': 1, 'K': 1, 'M': 1024, 'G': 1024 * 1024, 'T': 1024 * 1024 * 1024}
+    return int(num * 乘数.get(单位, 1))
+
+
+def _解析df可用KB(df输出, 挂载点='/system'):
+    """从 df 输出中解析指定挂载点的可用空间（KB）。
+
+    兼容多种 toybox/busybox/GNU df 变体：
+    - GNU df -k: ``Filesystem 1K-blocks Used Available Use% Mounted on``
+    - toybox df: ``Filesystem Size Used Free Blksize``（数值带 K/M/G 单位）
+
+    返回 None 表示无法解析（调用方应跳过检查，不要误判为 0）。
+    """
+    行列表 = [l.strip() for l in (df输出 or '').splitlines() if l.strip()]
+    # 过滤错误行 / 表头行
+    有效行 = []
+    for l in 行列表:
+        低 = l.lower()
+        if 'no such file' in 低 or 'not found' in 低 or 'usage:' in 低:
+            continue
+        if 低.startswith('filesystem'):
+            continue
+        有效行.append(l)
+    if not 有效行:
+        return None
+    # 找包含挂载点的数据行（优先精确匹配挂载点列，否则取最后一行）
+    数据行 = None
+    for l in 有效行:
+        if 挂载点 in l.split():
+            数据行 = l
+            break
+    if 数据行 is None:
+        数据行 = 有效行[-1]
+    部分 = 数据行.split()
+    if len(部分) < 4:
+        return None
+    # 第 4 列（index 3）在两种格式下都是可用/空闲空间
+    return _带单位转KB(部分[3])
+
+
 # ----------------------------------------------------------------------
 # 后台执行线程（避免卡 UI）
 # ----------------------------------------------------------------------
@@ -97,19 +150,19 @@ class 证书安装线程(QThread):
         # 3. 检查 /system 分区可用空间和可写性
         远程路径 = f'/system/etc/security/cacerts/{哈希值}.0'
         try:
-            df_out = self._adb.执行shell(self._序列号, 'df -k /system', timeout=10)
-            self.日志.emit(f'    /system 空间: {df_out.strip()}')
-            # 解析可用空间 (df -k 输出: Filesystem 1K-blocks Used Available Use% Mounted on)
-            lines = [l for l in df_out.strip().splitlines() if l.strip()]
-            if len(lines) >= 2:
-                parts = lines[-1].split()
-                if len(parts) >= 4:
-                    可用KB = int(parts[3]) if parts[3].isdigit() else 0
-                    证书大小KB = max(1, (os.path.getsize(临时路径) + 1023) // 1024)
-                    if 可用KB < 证书大小KB:
-                        self.日志.emit(f'    ✗ /system 可用空间不足: {可用KB}KB < 证书大小 {证书大小KB}KB')
-                        self.完成.emit(False, f'/system 可用空间不足 ({可用KB}KB)，证书需要 {证书大小KB}KB。请清理 /system 分区或使用 Magisk 模块方式安装。')
-                        return
+            # 不用 df -k：部分设备 toybox/busybox df 不支持 -k，会把它当路径报错
+            df_out = self._adb.执行shell(self._序列号, 'df /system', timeout=10)
+            self.日志.emit(f'    /system 空间: {(df_out or "").strip()}')
+            可用KB = _解析df可用KB(df_out, '/system')
+            证书大小KB = max(1, (os.path.getsize(临时路径) + 1023) // 1024)
+            if 可用KB is not None:
+                self.日志.emit(f'    可用空间: {可用KB} KB（证书需 {证书大小KB} KB）')
+                if 可用KB < 证书大小KB:
+                    self.日志.emit(f'    ✗ /system 可用空间不足: {可用KB}KB < 证书大小 {证书大小KB}KB')
+                    self.完成.emit(False, f'/system 可用空间不足 ({可用KB}KB)，证书需要 {证书大小KB}KB。请清理 /system 分区或使用 Magisk 模块方式安装。')
+                    return
+            else:
+                self.日志.emit('    ⚠ 无法解析 df 输出，跳过空间检查')
         except Exception as e:
             self.日志.emit(f'    空间检查跳过: {e}')
 
@@ -174,7 +227,7 @@ class 证书安装线程(QThread):
             # 诊断4: 检查 /system 分区剩余空间
             try:
                 空间 = self._adb.执行shell(
-                    self._序列号, 'df -k /system 2>&1', timeout=5)
+                    self._序列号, 'df /system 2>&1', timeout=5)
                 self.日志.emit(f'    诊断: /system 分区空间: {(空间 or "").strip()}')
             except Exception:
                 pass

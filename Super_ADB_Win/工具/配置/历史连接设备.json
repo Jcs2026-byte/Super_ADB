@@ -1,5 +1,11 @@
 [
   {
+    "ip": "192.168.75.10",
+    "port": 5555,
+    "model": "DBBOX-A2",
+    "system_version": "12"
+  },
+  {
     "ip": "192.168.1.16",
     "port": 38393,
     "model": "ELZ-AN20",

@@ -496,10 +496,19 @@ class 设备信息对话框(QDialog):
     def _启动获取(self):
         def _work():
             # 1) 先获取 getprop 并展示（关闭后丢弃结果）
+            model = ''
+            android_version = ''
             if not self._cancelled.is_set():
                 try:
                     raw = self.adb.执行shell(self.serial, 'getprop', timeout=10)
                     getprop_text = 设备信息_属性字典(raw or '', self.serial)
+                    # 从原始 getprop 提取 model / android_version，供后续单通道探测
+                    for line in (raw or '').splitlines():
+                        line = line.strip()
+                        if line.startswith('[ro.product.model]'):
+                            model = line.split(']:', 1)[-1].strip().strip('[]').strip()
+                        elif line.startswith('[ro.build.version.release]'):
+                            android_version = line.split(']:', 1)[-1].strip().strip('[]').strip()
                 except Exception as e:
                     getprop_text = f'getprop 获取失败: {e}'
                 if not self._cancelled.is_set():
@@ -517,6 +526,13 @@ class 设备信息对话框(QDialog):
                 if self._cancelled.is_set():
                     return
                 self._信号.标识符获取到.emit(名称, str(值))
+
+            # 3) 标识符全部取完后，若设备能力里没有单通道记录，主动探测一次并写入
+            if not self._cancelled.is_set():
+                try:
+                    self.adb.主动检测并记录单通道(self.serial, model, android_version)
+                except Exception:
+                    pass
 
             if not self._cancelled.is_set():
                 self._信号.全部完成.emit()

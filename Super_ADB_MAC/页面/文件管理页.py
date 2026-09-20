@@ -556,6 +556,11 @@ class 文件管理页(QWidget):
         if self._device_mgr_on:
             self.btn_device_mgr.setText('关闭设备管理器')
             if self._current_serial:
+                # 启动设备管理前先读设备能力：已知单通道则预置单客户分支，避免首次借第二连接白等超时
+                try:
+                    self._mgr.预加载单通道标记(self._current_serial)
+                except Exception:
+                    pass
                 self._build_root()
             else:
                 self._status('请先选择设备')
@@ -617,6 +622,11 @@ class 文件管理页(QWidget):
             was_exp = self.tree.isExpanded(item.index())
         except RuntimeError:
             return
+        # 首次成功列目后检测单通道并写入设备能力（幂等：已记录则跳过）
+        try:
+            self._mgr.检测并记录单通道(self._current_serial)
+        except Exception:
+            pass
         dirs = sorted([e for e in entries if e['is_dir']], key=lambda e: e['name'].lower())
         files = sorted([e for e in entries if not e['is_dir']], key=lambda e: e['name'].lower())
         new_list = dirs + files

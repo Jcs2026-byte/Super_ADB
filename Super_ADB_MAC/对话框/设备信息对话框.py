@@ -552,7 +552,13 @@ class 设备信息对话框(QDialog):
                     from 工具.android调试工具.设备能力 import 设置root支持, 是否支持root
                     # 先读缓存，已有记录就跳过
                     if 是否支持root(model, android_version) is None:
-                        build_type = (props.get('ro.build.type') or '').strip().lower()
+                        # 从 raw getprop 里解析 build.type
+                        build_type = ''
+                        for line in (raw or '').splitlines():
+                            line = line.strip()
+                            if line.startswith('[ro.build.type]'):
+                                build_type = line.split(']:', 1)[-1].strip().strip('[]').strip().lower()
+                                break
                         if build_type in ('userdebug', 'eng'):
                             设置root支持(model, android_version, True)
                         elif build_type == 'user':

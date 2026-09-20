@@ -1583,10 +1583,11 @@ class 文件管理页(QWidget):
             return
         # 过滤单引号防止 shell 注入
         safe_kw = text.replace("'", "'\\''")
-        search_path = self._root_path
-        cmd = f"find -H {search_path} -iname '*{safe_kw}*' 2>/dev/null"
-        self._status(f'深度搜索 "{text}" …')
-        w = _CmdWorker(self._mgr.执行shell, self._current_serial, cmd)
+        search_path = '/'  # 深度搜索始终从根目录开始，不管当前浏览哪个目录
+        cmd = f"find {search_path} -iname '*{safe_kw}*' 2>/dev/null"
+        self._status(f'深度搜索: {cmd} …')
+        print(f'[深度搜索] serial={self._current_serial}, cmd={cmd}')
+        w = _CmdWorker(self._mgr.执行shell, self._current_serial, cmd, 60)
         self._track(w, on_result=lambda out: self._show_deep_results(out, text),
                    on_error=lambda e: self._status(f'搜索失败: {e}'))
 
@@ -1614,7 +1615,9 @@ class 文件管理页(QWidget):
             ni.setData(entry, Qt.UserRole)
             ni.setData(True, LOADED_ROLE)  # 防止展开
             self.model.appendRow([ni, QStandardItem('—'), QStandardItem('—'), QStandardItem(p)])
-        self._status(f'搜索 "{keyword}" 完成: {len(paths)} 个结果（清空搜索框恢复目录浏览）')
+        raw_len = len(output or '')
+        print(f'[深度搜索] 原始输出长度={raw_len}, 结果数={len(paths)}')
+        self._status(f'搜索 "{keyword}" 完成: {len(paths)} 个结果 (原始{raw_len}字符)')
 
     def _exit_deep_search(self):
         """退出深度搜索模式，恢复正常目录浏览。"""
@@ -1630,6 +1633,10 @@ class 文件管理页(QWidget):
         if not target_path:
             return
         parent_dir = self._dirname(target_path)
+        # 如果目标路径不在当前根目录下，自动切到根目录 /
+        if not target_path.startswith(self._root_path.rstrip('/') + '/') and self._root_path != '/':
+            self._root_path = '/'
+            self.btn_root.setText(f'根目录: {self._root_path}')
         # 清空搜索框
         if self.search_edit:
             self.search_edit.clear()
@@ -1686,9 +1693,9 @@ class 文件管理页(QWidget):
             return
         # 展开当前目录
         self.tree.setExpanded(item.index(), True)
-        # 计算下一级路径段
-        cur_parts = current_dir.strip('/').split('/')
-        tgt_parts = target_parent.strip('/').split('/')
+        # 计算下一级路径段（split 后过滤空字符串，根目录 / 为 0 层）
+        cur_parts = [p for p in current_dir.split('/') if p]
+        tgt_parts = [p for p in target_parent.split('/') if p]
         if len(tgt_parts) <= len(cur_parts):
             return
         next_name = tgt_parts[len(cur_parts)]
@@ -1697,7 +1704,9 @@ class 文件管理页(QWidget):
         def _find_and_expand():
             for r in range(item.rowCount()):
                 child = item.child(r, 0)
-                if child and (child.data(Qt.UserRole) or {}).get('name') == next_name:
+                child_entry = child.data(Qt.UserRole) or {}
+                # 比较路径而不是名称（名称可能带 emoji 前缀）
+                if child and child_entry.get('path', '').rstrip('/') == next_path.rstrip('/'):
                     self._expand_step(next_path, target_parent, file_path, depth + 1)
                     return
             # 还没找到，等一下再试

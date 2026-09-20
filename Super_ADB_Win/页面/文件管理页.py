@@ -651,9 +651,9 @@ class 文件管理页(QWidget):
                 continue
             entry = child.data(Qt.UserRole) or {}
             p = entry.get('path')
-            if not p or p not in new_paths:
-                if p:
-                    self._dir_items.pop(p, None)
+            # 只删除有 path 但不在新列表里的行；占位子项(path为空)保留，避免空目录展开后三角箭头消失
+            if p and p not in new_paths:
+                self._dir_items.pop(p, None)
                 item.removeRow(r)
 
         # 3) 按新顺序逐行同步（就地更新 / 移动复用 / 插入新建）
@@ -697,7 +697,16 @@ class 文件管理页(QWidget):
             if entry.get('path') in expanded_sub:
                 self.tree.setExpanded(child.index(), True)
         self._apply_search_filter()
+        # 有真实子项时删掉占位子项，避免多一个空行；空目录保留占位（三角箭头才在）
+        if len(new_list) > 0:
+            for r in range(item.rowCount() - 1, -1, -1):
+                c = item.child(r, 0)
+                if c and not (c.data(Qt.UserRole) or {}).get('path'):
+                    item.removeRow(r)
+                    break
         self._status(f'已加载 {self._item_path(item)}（{len(entries)} 项）')
+        # 自动批量计算所有一级子目录大小
+        self._batch_compute_sizes(item, entries)
 
     def _update_row(self, item, i, e):
         """就地更新第 i 行的名称与数据列（复用第0列节点对象）。"""
@@ -725,6 +734,60 @@ class 文件管理页(QWidget):
         item.setData(False, LOADED_ROLE)
         self._loading.discard(path)
         self._status(f'加载失败: {err}')
+
+    def _batch_compute_sizes(self, parent_item, entries):
+        """遍历当前目录下所有子目录，依次跑 du 计算大小（串行，避免单通道设备连接竞争）。"""
+        dirs = [e for e in entries if e['is_dir']]
+        if not dirs:
+            return
+        # 过滤已算过的和虚拟FS的
+        pending = []
+        for e in dirs:
+            path = e['path']
+            if path in self._computed_dir_sizes:
+                continue
+            if path == '/' or any(path.startswith(p) for p in self._虚拟FS前缀):
+                continue
+            # 找到对应的子 item
+            child_item = None
+            for r in range(parent_item.rowCount()):
+                c = parent_item.child(r, 0)
+                if c and (c.data(Qt.UserRole) or {}).get('path') == path:
+                    child_item = c
+                    break
+            if child_item:
+                pending.append((child_item, path))
+        if not pending:
+            return
+        # 串行执行：第一个跑完再跑下一个
+        def _run_next(idx):
+            if idx >= len(pending):
+                return
+            ci, cp = pending[idx]
+            self._computed_dir_sizes.add(cp)
+            def _do_du():
+                try:
+                    out = self._mgr.执行shell(self._current_serial, f'du -sk "{cp}"', timeout=30)
+                    first = out.strip().splitlines()[0] if out.strip() else ''
+                    parts = first.split()
+                    if len(parts) >= 1 and parts[0].isdigit():
+                        return int(parts[0]) * 1024
+                    return _parse_du_size(parts[0] if parts else '')
+                except Exception:
+                    return None
+            def _on_done(size_bytes):
+                try:
+                    if size_bytes and size_bytes > 0:
+                        idx2 = ci.index().siblingAtColumn(1)
+                        si = self.model.itemFromIndex(idx2) if idx2.isValid() else None
+                        if si:
+                            si.setText(self._fmt_size(size_bytes))
+                except Exception:
+                    pass
+                _run_next(idx + 1)  # 跑完下一个
+            w = _CmdWorker(_do_du)
+            self._track(w, on_result=_on_done)
+        _run_next(0)
 
     # 虚拟文件系统路径前缀，du 算不出来，直接跳过
     _虚拟FS前缀 = ('/proc', '/sys', '/acct', '/dev', '/run', '/snap',

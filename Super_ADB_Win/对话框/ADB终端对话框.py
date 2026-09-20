@@ -59,6 +59,7 @@ class _终端信号桥(QObject):
     """跨线程信号桥：交互式Shell 的回调在后台线程，通过信号回主线程。"""
     输出 = Signal(bytes)
     关闭 = Signal()
+    连接完成 = Signal(object, str)  # (shell或None, 错误信息)
 
 
 class ADB终端对话框(QDialog):
@@ -85,6 +86,7 @@ class ADB终端对话框(QDialog):
         self._信号桥 = _终端信号桥()
         self._信号桥.输出.connect(self._追加输出)
         self._信号桥.关闭.connect(self._会话已关闭)
+        self._信号桥.连接完成.connect(self._连接完成)
         self._命令历史 = deque(maxlen=200)
         self._历史索引 = -1
         self._正在同步 = False
@@ -369,37 +371,47 @@ class ADB终端对话框(QDialog):
     # ── 终端连接 / 断开 ──
 
     def _连接终端(self, serial):
-        """连接到指定设备的交互式 shell。"""
+        """连接到指定设备的交互式 shell（后台线程，不阻塞 UI）。"""
         # 先断开已有连接
         self._断开终端()
         # 切换设备时自动清屏，避免新旧设备输出混杂
         self.output.clear()
+        self.status_label.setText('正在打开终端...')
 
-        try:
-            连接源 = self._adb._获取自研adb(serial)
-            if 连接源 is None:
-                self.status_label.setText('自研 ADB 客户端不可用')
-                return
+        import threading
+        def _do_connect():
+            try:
+                连接源 = self._adb._获取自研adb(serial)
+                if 连接源 is None:
+                    self._信号桥.连接完成.emit(None, '自研 ADB 客户端不可用')
+                    return
+                from 工具.android调试工具.自研adb.自研adb客户端 import 交互式Shell
+                shell = 交互式Shell(
+                    连接源,
+                    on_output=lambda data: self._信号桥.输出.emit(data),
+                    on_close=lambda: self._信号桥.关闭.emit(),
+                )
+                shell.启动()
+                self._信号桥.连接完成.emit(shell, '')
+            except Exception as e:
+                self._信号桥.连接完成.emit(None, str(e))
+        threading.Thread(target=_do_connect, daemon=True).start()
 
-            self.status_label.setText('正在打开终端...')
-            from 工具.android调试工具.自研adb.自研adb客户端 import 交互式Shell
-            self._shell = 交互式Shell(
-                连接源,
-                on_output=lambda data: self._信号桥.输出.emit(data),
-                on_close=lambda: self._信号桥.关闭.emit(),
-            )
-            self._shell.启动()
-            self._已连接UI()
-            self.status_label.setText(f'已连接 {serial}')
-            self.input_edit.setFocus()
-            # 连接后刷新残余，确保 shell 提示符立即显示
-            QTimer.singleShot(200, self._刷新残余)
-            # 设置 PTY 窗口宽度为 200 列：避免长命令触发 shell 折行重绘
-            # （折行会输出 \r / ANSI 光标移动 / 清除行序列，导致显示错乱）
-            QTimer.singleShot(250, self._设置终端宽度)
-        except Exception as e:
-            self.status_label.setText(f'连接失败: {e}')
+    def _连接完成(self, shell, err):
+        """后台连接完成 → 主线程更新 UI。"""
+        if shell is None:
+            self.status_label.setText(f'连接失败: {err}')
             self._shell = None
+            return
+        self._shell = shell
+        self._已连接UI()
+        serial = self.device_combo.currentData() or ''
+        self.status_label.setText(f'已连接 {serial}')
+        self.input_edit.setFocus()
+        # 连接后刷新残余，确保 shell 提示符立即显示
+        QTimer.singleShot(200, self._刷新残余)
+        # 设置 PTY 窗口宽度为 200 列
+        QTimer.singleShot(250, self._设置终端宽度)
 
     def _设置终端宽度(self, cols: int = 200):
         """通过 stty 设置 PTY 窗口宽度，然后在 GUI 层面清理多余行。

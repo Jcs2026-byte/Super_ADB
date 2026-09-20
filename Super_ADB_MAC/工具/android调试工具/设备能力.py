@@ -166,3 +166,29 @@ def 是否支持monkey(model, android_version):
     return _read_capability(data=_load_capacity(), model=model,
                             android_version=android_version,
                             field='支持monkey')
+
+
+# ----------------------------------------------------------------------
+# root 支持
+# ----------------------------------------------------------------------
+def 设置root支持(model, android_version, 支持):
+    """设置某个 型号+版本 的设备是否支持 root（userdebug/eng 固件）。"""
+    if not model:
+        return
+    data = _load_capacity()
+    _, ver_node = _get_version_entry(data, model, android_version)
+    if ver_node is not None:
+        ver_node['支持root'] = 支持
+        _save_capacity(data)
+
+
+def 是否支持root(model, android_version):
+    """查询某个 型号+版本 的设备是否支持 root。
+    返回值：
+        True：已知支持（userdebug/eng）
+        False：已知不支持（user）
+        None：未知，需要检测
+    """
+    return _read_capability(data=_load_capacity(), model=model,
+                            android_version=android_version,
+                            field='支持root')

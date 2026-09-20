@@ -337,6 +337,18 @@ def 设备信息_属性字典(getprop_raw, serial):
         if key not in 已映射:
             分组数据['其他属性'].append((key, val))
 
+    # 根据 build.type 计算 root 支持情况
+    build_type = (props.get('ro.build.type') or '').strip().lower()
+    if build_type in ('userdebug', 'eng'):
+        root_support = '支持'
+    elif build_type == 'user':
+        root_support = '不支持'
+    else:
+        root_support = '未知'
+    # 插入到 系统状态 分组的末尾
+    if '系统状态' in 分组数据:
+        分组数据['系统状态'].append(('Root 支持', root_support))
+
     lines_out = [f'设备序列号: {serial}', f'属性总数: {len(props)}', '=' * 50, '']
     for 分组 in 分组顺序:
         items = 分组数据[分组]
@@ -531,6 +543,20 @@ class 设备信息对话框(QDialog):
             if not self._cancelled.is_set():
                 try:
                     self.adb.主动检测并记录单通道(self.serial, model, android_version)
+                except Exception:
+                    pass
+
+            # 4) 从 getprop 结果里提取 build.type，把 root 支持情况写入设备能力
+            if not self._cancelled.is_set() and model and android_version:
+                try:
+                    from 工具.android调试工具.设备能力 import 设置root支持, 是否支持root
+                    # 先读缓存，已有记录就跳过
+                    if 是否支持root(model, android_version) is None:
+                        build_type = (props.get('ro.build.type') or '').strip().lower()
+                        if build_type in ('userdebug', 'eng'):
+                            设置root支持(model, android_version, True)
+                        elif build_type == 'user':
+                            设置root支持(model, android_version, False)
                 except Exception:
                     pass
 

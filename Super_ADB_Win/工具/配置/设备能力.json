@@ -16,5 +16,14 @@
     "model": "ELZ_AN20",
     "android_version": "14",
     "支持monkey": true
+  },
+  "DBBOX-A2": {
+    "model": "DBBOX-A2",
+    "versions": {
+      "12": {
+        "is_single_channel": false,
+        "支持root": false
+      }
+    }
   }
 }

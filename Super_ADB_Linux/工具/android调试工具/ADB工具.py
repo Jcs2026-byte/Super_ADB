@@ -1946,6 +1946,43 @@ echo "___END___"'''
         每步独立捕获 AdbError, 永不抛到上层。"""
         lines = []
 
+        # 0) 前置检查：先查设备能力缓存
+        cached_root = None
+        model = android_ver = None
+        try:
+            from 工具.android调试工具.设备能力 import 是否支持root, 设置root支持
+            model, android_ver = self._查询历史设备型号版本(serial)
+            if model and android_ver:
+                cached_root = 是否支持root(model, android_ver)
+                if cached_root is True:
+                    lines.append('✓ 设备已知支持 root（设备能力缓存）')
+        except Exception:
+            pass
+
+        # 0.5) 已知支持就跳过 getprop；已知不支持或未知都要查，顺便更新缓存
+        if cached_root is not True:
+            try:
+                build_type = (self.执行shell(serial, 'getprop ro.build.type', timeout=5) or '').strip().lower()
+                if build_type == 'user':
+                    # 写入设备能力缓存
+                    if model and android_ver:
+                        try:
+                            设置root支持(model, android_ver, False)
+                        except Exception:
+                            pass
+                    lines.append('✗ 设备固件为 user 版本，不支持 root，无法挂载 system 分区。')
+                    lines.append('  如需挂载 system，请使用 userdebug 或 eng 版本固件的设备。')
+                    return '\n'.join(lines)
+                elif build_type in ('userdebug', 'eng'):
+                    if model and android_ver:
+                        try:
+                            设置root支持(model, android_ver, True)
+                        except Exception:
+                            pass
+                    lines.append(f'✓ 固件类型: {build_type}（支持 root）')
+            except Exception:
+                pass  # 查不到就继续走原流程
+
         # 1) adb root —— 没 root 后续都没戏, 直接结束
         try:
             if self._用自研adb and serial:

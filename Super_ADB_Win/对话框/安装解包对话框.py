@@ -707,7 +707,7 @@ class 安装解包对话框(对话框基类):
             item.setText(1, self._fmt_size(node['size']))
 
     # 文件夹展开时一次性创建太多 QTreeWidgetItem 会卡 UI，改为分批加载
-    _EXPAND_BATCH = 50
+    _EXPAND_BATCH = 10
 
     def _on_item_expanded(self, item):
         if item.childCount() > 0:

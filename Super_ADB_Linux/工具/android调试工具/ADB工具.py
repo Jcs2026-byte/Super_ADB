@@ -514,40 +514,17 @@ class AdbHelper:
         _th.Thread(target=_close_and_clear, daemon=True).start()
 
     def 异步获取设备型号(self, serial):
-        """后台线程：建立连接获取设备型号，存到 _设备名缓存。供 UI 层异步调用。"""
+        """后台线程：触发设备连接，_获取自研adb 内部会异步获取型号并存入缓存。
+        QTimer 轮询会自动发现新型号并更新下拉框。这里只负责触发连接，不重复 getprop。"""
         import threading as _th
         def _do():
             try:
                 if serial in self._设备名缓存:
-                    return  # 已有缓存
-                client = self._获取自研adb(serial)
-                if client is None:
-                    return
-                model = client.执行shell('getprop ro.product.model', timeout=3).strip()
-                android_version = client.执行shell('getprop ro.build.version.release', timeout=3).strip()
-                if model:
-                    self._设备名缓存[serial] = model
-                # 更新历史记录
-                if model or android_version:
-                    try:
-                        ip, port = serial.rsplit(':', 1)
-                        history = 加载json配置('历史连接设备.json')
-                        if isinstance(history, list):
-                            for hd in history:
-                                if hd.get('ip') == ip:
-                                    if model:
-                                        hd['model'] = model
-                                    if android_version:
-                                        hd['system_version'] = android_version
-                                    break
-                            保存json配置('历史连接设备.json', history)
-                    except Exception:
-                        pass
-                if self.log_callback:
-                    try:
-                        self.log_callback(f'[自研adb] 获取到设备 {serial} 型号: {model}')
-                    except Exception:
-                        pass
+                    return  # 已有缓存，不用再连
+                # _获取自研adb 内部连接成功后会自动后台获取型号 + Android版本 + 更新历史记录 + 打印日志
+                # 这里调用它只是为了触发连接，型号获取交给它内部的 _异步获取设备信息 去做
+                # 避免重复执行 getprop 导致两遍日志
+                self._获取自研adb(serial)
             except Exception:
                 pass
         _th.Thread(target=_do, daemon=True).start()
@@ -868,15 +845,13 @@ class AdbHelper:
                         import concurrent.futures as _cf
                         def _验证(d):
                             try:
-                                is_adb, is_authorized = 验证ADB设备(d['ip'], d['port'], timeout=1.5)
-                                return d, is_adb, is_authorized
+                                return d, 验证ADB设备(d['ip'], d['port'], timeout=1.5)
                             except Exception:
-                                return d, False, False
+                                return d, False
                         verified = []
                         with _cf.ThreadPoolExecutor(max_workers=16) as _ex:
-                            for d, is_adb, is_authorized in _ex.map(_验证, found):
-                                if is_adb:
-                                    d['_已授权'] = is_authorized
+                            for d, ok in _ex.map(_验证, found):
+                                if ok:
                                     verified.append(d)
                         for d in verified:
                             serial = f'{d["ip"]}:{d["port"]}'
@@ -884,9 +859,6 @@ class AdbHelper:
                                 seen.add(serial)
                                 model = self._设备名缓存.get(serial, '')
                                 devices.append({'serial': serial, 'model': model, 'state': 'device'})
-                                # 未授权的设备标记：后续异步获取型号时跳过，避免干等 60 秒授权超时
-                                if not d.get('_已授权'):
-                                    devices[-1]['_需授权'] = True
                     except Exception:
                         pass
 

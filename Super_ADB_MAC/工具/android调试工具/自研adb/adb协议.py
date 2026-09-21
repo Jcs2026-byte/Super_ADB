@@ -2062,38 +2062,36 @@ def 扫描局域网设备(port: int = 5555, timeout: float = 0.5, 网段: str = 
     return devices
 
 
-def 验证ADB设备(host: str, port: int = 5555, timeout: float = 1.5):
+def 验证ADB设备(host: str, port: int = 5555, timeout: float = 1.5) -> bool:
     """轻量验证目标是否真的在跑 adbd：发一个 CNXN，看对方是否按 ADB 协议回应。
 
     只发一个 CNXN 包、读一个包头，不做完整 AUTH/TLS 握手，验完立即关闭 socket。
+    对方回包命令字是 CNXN / AUTH / STLS 任一即视为真 ADB 设备；
+    非 ADB 服务（占用 5555 的其他端口/HTTP 等）回包命令字不对或直接断开，判为假设备。
 
-    返回: (is_adb: bool, is_authorized: bool)
-        - is_adb: 对方是否真的在跑 ADB 协议（CNXN/AUTH/STLS 任一）
-        - is_authorized: 设备是否已授权（回 CNXN 表示已授权；回 AUTH 表示需要授权弹窗）
-        非 ADB 服务（占用 5555 的其他端口/HTTP 等）回包命令字不对或直接断开，判为假设备。
+    注意：这里只判断"是不是 ADB 设备"，不判断"是否已授权"——
+    因为 ADB 握手第一个回包永远是 AUTH（TOKEN），不管设备是否已授权，
+    要判断是否已授权需要完成完整的 AUTH 握手，那就不是"轻量验证"了。
+    是否已授权由后续异步获取型号时的连接成功/超时来判断。
     """
     banner = b'host::features=shell_v2,cmd'
     pkt = 打包消息(CMD_CNXN, ADB_VERSION, ADB_MAX_PAYLOAD, banner)
     try:
         s = socket.create_connection((host, port), timeout=timeout)
     except Exception:
-        return False, False
+        return False
     try:
         s.sendall(pkt)
         s.settimeout(timeout)
         header = s.recv(24)
         if len(header) < 24:
-            return False, False
+            return False
         command, _a0, _a1, _length, _crc, magic = struct.unpack('<IIIIII', header)
         if magic != _计算魔数(command):
-            return False, False
-        if command not in (CMD_CNXN, CMD_AUTH, CMD_STLS):
-            return False, False
-        # 回 CNXN = 已授权（直接握手成功）；回 AUTH = 需要授权弹窗；STLS = 需要 TLS（也视为需进一步处理）
-        is_authorized = (command == CMD_CNXN)
-        return True, is_authorized
+            return False
+        return command in (CMD_CNXN, CMD_AUTH, CMD_STLS)
     except Exception:
-        return False, False
+        return False
     finally:
         try:
             s.close()

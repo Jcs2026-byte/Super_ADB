@@ -79,11 +79,10 @@ class 设备管理Mixin:
         if getattr(self, '_adb_终端_dialog', None) is not None and self._adb_终端_dialog.isVisible():
             self._adb_终端_dialog.sync_devices(online, select)
         # 型号为空的设备：后台异步获取型号，获取到后通过 QTimer 轮询更新下拉框
-        # 注意：标记了 _需授权 的设备（自动扫描时对方回 AUTH）跳过，避免自动连接阶段干等 60 秒授权超时
-        #       这种设备等用户手动点"连接"按钮时再走完整授权流程
+        # 已授权的设备几秒就拿到型号；未授权的连接超时后自然停止（后台等不阻塞 UI）
         self._待获取型号的设备 = [
             d.get('serial') for d in online
-            if not d.get('model') and d.get('serial') and not d.get('_需授权')
+            if not d.get('model') and d.get('serial')
         ]
         if self._待获取型号的设备:
             for serial in self._待获取型号的设备:

@@ -453,7 +453,8 @@ class 自研adb客户端:
                     self._主连接 = None
                 raise
 
-    def shell流(self, command: str, on_data, stop_event, open_timeout: float = 10.0, service: str = 'shell'):
+    def shell流(self, command: str, on_data, stop_event, open_timeout: float = 10.0,
+                service: str = 'shell', on_exit=None):
         """在独立连接上运行流式 shell（如 logcat / tcpdump），供后台线程作为 target 使用。
 
         Parameters
@@ -516,6 +517,12 @@ class 自研adb客户端:
             if 流锁 is not None:
                 try:
                     流锁.release()
+                except Exception:
+                    pass
+            # 通知调用方线程已退出（无论正常/异常）
+            if on_exit:
+                try:
+                    on_exit()
                 except Exception:
                     pass
 

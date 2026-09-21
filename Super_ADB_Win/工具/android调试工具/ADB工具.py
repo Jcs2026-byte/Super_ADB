@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 ADB Shell 整合工具 —— ADB 命令封装层
 ======================================
@@ -490,22 +490,28 @@ class AdbHelper:
         # 赋新 dict 会让当前实例的 self._自研adb缓存 脱离类级共享，
         # 导致其它实例（TCPDump/Monkey/日志页等）仍持旧共享 dict，
         # 设置变更无法同步。.clear() 原地清空，所有实例同步生效。
-        # 加锁：清缓存前先关闭所有已连接 client，避免与并发建连产生悬垂引用。
-        with self._自研adb锁:
-            try:
-                for _client in list(self._自研adb缓存.values()):
-                    try:
-                        _client.关闭()
-                    except Exception:
-                        pass
-                for _usb in list(self._自研adb_usb缓存.values()):
-                    try:
-                        _usb.关闭()
-                    except Exception:
-                        pass
-            finally:
-                self._自研adb缓存.clear()
-                self._自研adb_usb缓存.clear()
+        #
+        # ★ 关闭已连接 client 涉及网络 I/O（设备 adbd 响应慢时会卡几百 ms 到数秒），
+        #   绝不能在主线程同步执行（会导致切换模式时 UI 卡死/未响应）。
+        #   放到后台线程：主线程立即返回，关闭操作异步完成。
+        import threading as _th
+        def _close_and_clear():
+            with self._自研adb锁:
+                try:
+                    for _client in list(self._自研adb缓存.values()):
+                        try:
+                            _client.关闭()
+                        except Exception:
+                            pass
+                    for _usb in list(self._自研adb_usb缓存.values()):
+                        try:
+                            _usb.关闭()
+                        except Exception:
+                            pass
+                finally:
+                    self._自研adb缓存.clear()
+                    self._自研adb_usb缓存.clear()
+        _th.Thread(target=_close_and_clear, daemon=True).start()
 
     def _cmd_str(self, cmd_list):
         """把命令列表拼成 shell 字符串（含空格的路径自动加引号）。"""
@@ -923,7 +929,8 @@ class AdbHelper:
                         devices = [_d for _d in devices if _d.get('serial') not in AdbHelper._最近断开的设备]
                 except Exception:
                     pass
-                # 对所有已连接的设备，主动获取设备名和系统版本（如果缓存里没有的话）
+                # 对所有设备，主动获取设备名和系统版本（如果缓存里没有的话）
+                # 扫描发现的设备只是验证了端口，没有完整 AUTH 连接，需要主动连上去拿型号
                 for d in devices:
                     serial = d.get('serial', '')
                     if not serial:
@@ -934,6 +941,12 @@ class AdbHelper:
                         continue
                     # 从自研adb缓存里找client
                     client = self._自研adb缓存.get(serial)
+                    # 扫描到的新设备没有 client，主动建立连接（单客户端盒子会占用槽位，正好就是"自动连接"）
+                    if client is None:
+                        try:
+                            client = self._获取自研adb(serial)
+                        except Exception:
+                            client = None
                     if client is not None:
                         try:
                             model = client.执行shell('getprop ro.product.model', timeout=3).strip()
@@ -1899,8 +1912,13 @@ echo "___END___"'''
         return self.执行shell(serial, 'settings get global http_proxy', timeout=5).strip()
 
     def 重启设备(self, serial):
-        self.执行shell(serial, 'reboot', timeout=5)
-        return '已发送重启命令'
+        """发送重启命令。reboot 会立即断开连接，属正常现象，忽略连接断开类异常。"""
+        try:
+            self.执行shell(serial, 'reboot', timeout=2)
+        except Exception:
+            # reboot 命令发送后设备立即重启断开连接，这是预期行为，不算失败
+            pass
+        return '已发送重启命令，设备正在重启…'
 
     def 获取root权限(self, serial):
         """获取 root 权限（兼容自研 adb / 官方 adb），成功后自动重连。

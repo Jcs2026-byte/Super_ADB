@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 ADB Logcat 日志查看器 —— 内嵌子页面
 =====================================
@@ -188,6 +188,8 @@ class 日志查看器页(QWidget):
     device_disconnected = Signal()
     # 自研 ADB 模式：后台 shell 流线程收到数据时发出，bytes → 主线程处理
     _shell_data = Signal(bytes)
+    # 自研 ADB 模式：后台 shell 流线程退出时发出（意外断开时通知 UI）
+    _shell_exited = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -229,6 +231,7 @@ class 日志查看器页(QWidget):
         self._shell_stop_event = None
         self._shell_thread = None
         self._shell_data.connect(self._on_shell_data)
+        self._shell_exited.connect(self._on_shell_unexpected_exit)
 
         self._pool = QThreadPool()
         self._pool.setMaxThreadCount(3)
@@ -550,9 +553,14 @@ class 日志查看器页(QWidget):
                 if not stop_evt.is_set():
                     self._shell_data.emit(data)
 
+            def _on_shell_exit():
+                # 后台线程调用 → 用信号切到主线程
+                self._shell_exited.emit()
+
             self._shell_thread = threading.Thread(
                 target=client.shell流,
                 args=('logcat -v threadtime', _on_raw, stop_evt),
+                kwargs={'on_exit': _on_shell_exit},
                 daemon=True,
             )
             self._shell_thread.start()
@@ -826,6 +834,15 @@ class 日志查看器页(QWidget):
     def _on_error(self, err):
         if self._capturing:
             self.status_label.setText(f'logcat 出错: {err}')
+
+    def _on_shell_unexpected_exit(self):
+        """自研 ADB shell 流意外退出（设备掉线/连接断开）时触发。"""
+        if not self._capturing:
+            return  # 用户已主动停止，不处理
+        # 意外断开：复位抓取状态并提示
+        self._stop_capture()
+        self.status_label.setText('日志流已断开（设备可能已离线/重启）')
+        self.device_disconnected.emit()
 
     # ------------------------------------------------------------------
     # 视图渲染

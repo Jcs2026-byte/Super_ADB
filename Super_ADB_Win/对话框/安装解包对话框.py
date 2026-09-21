@@ -729,7 +729,8 @@ class 安装解包对话框(对话框基类):
         children = sorted(node['children'].values(), key=lambda n: n['name'])
         item._lazy_children = children
         item._lazy_index = 0
-        self._expand_batch(item)
+        # 用 QTimer 延迟执行第一批，避免阻塞主线程
+        QTimer.singleShot(0, lambda: self._expand_batch(item))
 
     def _expand_batch(self, item):
         children = getattr(item, '_lazy_children', None)

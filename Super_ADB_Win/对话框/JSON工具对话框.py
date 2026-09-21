@@ -265,10 +265,60 @@ class 圆角树控件(QTreeWidget):
     def __init__(self, border_color, parent=None):
         super().__init__(parent)
         # 关键：去掉 QFrame 默认直角 frame，避免其覆盖 QSS border-radius 的圆角弧线
-        # （与右栏 代码文本编辑框.setFrameShape(NoFrame) 同款修复）
         self.setFrameShape(QTreeWidget.Shape.NoFrame)
         self._border_color = QColor(border_color)
         self._radius = 8
+        # +/- 折叠指示器尺寸
+        self._toggle_size = 14
+        self._toggle_margin = 3
+
+    def drawBranches(self, painter, rect, index):
+        """重写 branch 绘制：用带 +/- 符号的圆角方块代替默认三角箭头。"""
+        model = self.model()
+        if not model.hasChildren(index):
+            return
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # 计算 +/- 按钮位置：垂直居中，左对齐
+        btn_w = self._toggle_size
+        btn_h = self._toggle_size
+        x = rect.left() + self._toggle_margin
+        y = rect.center().y() - btn_h // 2
+        btn_rect = QRect(x, y, btn_w, btn_h)
+
+        expanded = self.isExpanded(index)
+
+        # 画圆角方块背景
+        bg_color = QColor(45, 48, 55) if not expanded else QColor(55, 58, 65)
+        border_c = QColor(90, 93, 100)
+        painter.setBrush(bg_color)
+        painter.setPen(QPen(border_c, 1))
+        painter.drawRoundedRect(btn_rect, 3, 3)
+
+        # 画 +/- 符号
+        painter.setPen(QColor(200, 203, 210))
+        font = QFont('Consolas', 9, QFont.Weight.Bold)
+        painter.setFont(font)
+        text = '−' if expanded else '+'
+        painter.drawText(btn_rect, Qt.AlignmentFlag.AlignCenter, text)
+
+        painter.restore()
+
+    def mousePressEvent(self, event):
+        """重写鼠标按下事件：点击第一列有子节点的 item 时，单击即切换展开/折叠。"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            index = self.indexAt(event.position().toPoint())
+            if index.isValid() and index.column() == 0:
+                item = self.itemFromIndex(index)
+                if item and item.childCount() > 0:
+                    # 选中当前项 + 切换展开状态
+                    self.setCurrentIndex(index)
+                    self.setExpanded(index, not self.isExpanded(index))
+                    return
+        # 其他情况（点击第二列、无子女节点等）走默认逻辑
+        super().mousePressEvent(event)
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -1795,6 +1845,24 @@ class Json工具对话框(对话框基类):
             lay.addWidget(w)
             return pane
 
+        # 顶部工具栏：全部展开 / 全部折叠
+        tree_toolbar = QWidget()
+        tree_toolbar.setStyleSheet('background: transparent; border: none;')
+        tree_tb_lay = QHBoxLayout(tree_toolbar)
+        tree_tb_lay.setContentsMargins(2, 0, 2, 2)
+        tree_tb_lay.setSpacing(6)
+        btn_expand_all = QPushButton('全部展开')
+        btn_collapse_all = QPushButton('全部折叠')
+        for btn in (btn_expand_all, btn_collapse_all):
+            btn.setFixedHeight(24)
+            btn.setStyleSheet(
+                'QPushButton { padding: 2px 10px; font-size: 11px; '
+                'border: 1px solid #444; border-radius: 4px; background: #2a2d33; color: #ccc; }'
+                'QPushButton:hover { background: #3a3d43; border-color: #666; }')
+        tree_tb_lay.addWidget(btn_expand_all)
+        tree_tb_lay.addWidget(btn_collapse_all)
+        tree_tb_lay.addStretch(1)
+
         tree_w = 圆角树控件(self._accent)
         tree_w.setColumnCount(2)
         tree_w.setHeaderLabels(['字段 / 路径', '值（类型）'])
@@ -1878,7 +1946,22 @@ class Json工具对话框(对话框基类):
                 border-top-right-radius: 5px;
             }}
         ''')
-        splitter.addWidget(_make_pane(tree_w))
+        # 左侧 pane = 顶部工具栏 + 树控件
+        left_pane = QWidget()
+        left_pane.setObjectName('treePane')
+        left_pane.setStyleSheet(f'''
+            #treePane {{
+                border: 1px solid {self._accent};
+                border-radius: 8px;
+                background: #1b1d22;
+            }}
+        ''')
+        left_lay = QVBoxLayout(left_pane)
+        left_lay.setContentsMargins(3, 3, 3, 3)
+        left_lay.setSpacing(0)
+        left_lay.addWidget(tree_toolbar)
+        left_lay.addWidget(tree_w)
+        splitter.addWidget(left_pane)
 
         tree_text = 代码文本编辑框()
         tree_text.setStyleSheet(f'''
@@ -1961,7 +2044,10 @@ class Json工具对话框(对话框基类):
             # value 为标量时：其徽标与值标签已在父层循环里设置，无需建子节点
 
         _add_items(tree_w.invisibleRootItem(), obj, ())
-        tree_w.expandAll()
+        # 默认只展开第一层，避免大 JSON 一进来全展开太长
+        root_item = tree_w.invisibleRootItem()
+        for i in range(root_item.childCount()):
+            root_item.child(i).setExpanded(True)
 
         # 树选中文本高亮（正向定位）
         def _on_select():
@@ -1979,6 +2065,10 @@ class Json工具对话框(对话框基类):
                     self._select_lines(tree_text, rng[0], rng[1], QColor(29, 233, 182))
                 finally:
                     tree_text.blockSignals(False)
+
+        # 全部展开 / 全部折叠按钮
+        btn_expand_all.clicked.connect(tree_w.expandAll)
+        btn_collapse_all.clicked.connect(lambda: self._collapse_all(tree_w))
 
         tree_w.itemSelectionChanged.connect(_on_select)
 
@@ -2084,6 +2174,13 @@ class Json工具对话框(对话框基类):
                     return True
             return False
         _search(tree_w.invisibleRootItem())
+
+    @staticmethod
+    def _collapse_all(tree_w):
+        """折叠所有树节点。"""
+        root = tree_w.invisibleRootItem()
+        for i in range(root.childCount()):
+            root.child(i).setExpanded(False)
 
     # ─────────────── 功能：YAML 互转 ───────────────
     def _json_to_yaml(self):

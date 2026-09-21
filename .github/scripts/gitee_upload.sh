@@ -72,7 +72,7 @@ fi
 # ── 4. 动态超时与速度底线 ────────────────────────────────────────────────────
 timeout=$(( SIZE / 5120 + 600 ))
 [ "${timeout}" -lt 900 ] && timeout=900
-[ "${timeout}" -gt 9000 ] && timeout=9000
+[ "${timeout}" -gt 18000 ] && timeout=18000
 speed_limit=$(( SIZE / timeout ))
 [ "${speed_limit}" -lt 5120 ] && speed_limit=5120
 echo "==> 上传 ${BASE} ($(du -h "${FILE}" | cut -f1)) -> release ${RID}（timeout=${timeout}s, 底线=${speed_limit}B/s）"

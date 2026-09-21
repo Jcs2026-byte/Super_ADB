@@ -85,7 +85,7 @@ echo "    上传 URL: ${UPLOAD_URL:0:80}..."
 # ── 5. 动态超时 ───────────────────────────────────────────────────────────────
 timeout=$(( SIZE / 5120 + 600 ))
 [ "${timeout}" -lt 900 ] && timeout=900
-[ "${timeout}" -gt 9000 ] && timeout=9000
+[ "${timeout}" -gt 18000 ] && timeout=18000
 echo "==> 上传 ${BASE} ($(du -h "${FILE}" | cut -f1)) -> GitCode（timeout=${timeout}s）"
 
 # ── 6. 用 Python 执行 PUT 上传到对象存储 ─────────────────────────────────────
@@ -228,7 +228,7 @@ for k, v in headers.items():
 # ── 5. 动态超时 ───────────────────────────────────────────────────────────────
 timeout=$(( SIZE / 5120 + 600 ))
 [ "${timeout}" -lt 900 ] && timeout=900
-[ "${timeout}" -gt 9000 ] && timeout=9000
+[ "${timeout}" -gt 18000 ] && timeout=18000
 echo "==> 上传 ${BASE} ($(du -h "${FILE}" | cut -f1)) -> GitCode（timeout=${timeout}s）"
 
 # ── 6. PUT 上传到对象存储 ────────────────────────────────────────────────────

@@ -157,6 +157,21 @@ QCheckBox::indicator:checked{{background: {accent}; border: 1px solid {accent};}
 # ----------------------------------------------------------------------
 # 后台任务线程
 # ----------------------------------------------------------------------
+class 预览线程(QThread):
+    """后台加载文件预览，避免大文件读取卡住 UI。"""
+    done = Signal(str)
+    def __init__(self, fn, *args):
+        super().__init__()
+        self._fn = fn
+        self._args = args
+    def run(self):
+        try:
+            text = self._fn(*self._args)
+            self.done.emit(text)
+        except Exception as e:
+            self.done.emit(f'读取失败: {e}')
+
+
 class 任务线程(QThread):
     """在子线程执行 install / extract，避免卡 UI。"""
     progress = Signal(str)
@@ -903,26 +918,29 @@ class 安装解包对话框(对话框基类):
             self.preview.setPlainText('文件夹，点击左侧箭头可展开/折叠子目录。')
             return
 
+        # 后台加载预览，避免大文件读取卡住 UI
+        self.preview.setPlainText('正在加载预览…')
+        self._preview_thread = 预览线程(self._load_preview, entry)
+        self._preview_thread.done.connect(lambda text: self.preview.setPlainText(text))
+        self._preview_thread.start()
+
+    def _load_preview(self, entry):
+        """在后台线程读取文件并生成预览文本。"""
         MAX_PREVIEW_BYTES = 200_000
         ext = os.path.splitext(entry)[1].lower()
-        try:
-            info = self._zf.getinfo(entry)
-            # 非 XML 大文本只读前 200KB，避免大文件解码卡死；
-            # XML（AXML）需要完整文件结构，通常也不大，直接读完整。
-            if info.file_size > MAX_PREVIEW_BYTES and ext != '.xml':
-                with self._zf.open(entry) as f:
-                    data = f.read(MAX_PREVIEW_BYTES)
-                truncated = True
-            else:
-                data = self._zf.read(entry)
-                truncated = False
-        except Exception as e:
-            self.preview.setPlainText(f'读取失败: {e}')
-            return
+        info = self._zf.getinfo(entry)
+        # 非 XML 大文本只读前 200KB，避免大文件解码卡死；
+        # XML（AXML）需要完整文件结构，通常也不大，直接读完整。
+        if info.file_size > MAX_PREVIEW_BYTES and ext != '.xml':
+            with self._zf.open(entry) as f:
+                data = f.read(MAX_PREVIEW_BYTES)
+            truncated = True
+        else:
+            data = self._zf.read(entry)
+            truncated = False
 
         if ext in _BIN_EXT:
-            self._show_binary(entry, data)
-            return
+            return self._binary_preview(entry, data)
         # APK 里的 .xml（如 AndroidManifest.xml、res/*.xml）是 Android Binary XML，
         # 用 is_axml 识别后解码成可读文本；解码失败时在二进制预览上方附加错误信息。
         if ext == '.xml' and is_axml(data):
@@ -930,27 +948,23 @@ class 安装解包对话框(对话框基类):
                 text = decode_axml(data)
                 if not text.strip():
                     raise ValueError('AXML 解码结果为空')
-                self.preview.setPlainText(text)
+                return text
             except Exception as e:
                 binary = self._binary_preview(entry, data)
-                self.preview.setPlainText(
-                    f'Android Binary XML 解码失败: {e}\n'
-                    f'已回退到二进制预览:\n\n{binary}')
-            return
+                return (f'Android Binary XML 解码失败: {e}\n'
+                        f'已回退到二进制预览:\n\n{binary}')
         if self._looks_text(data, ext):
             try:
                 text = self._decode(data)
             except Exception:
-                self._show_binary(entry, data)
-                return
+                return self._binary_preview(entry, data)
             if len(text) > 200_000:
                 text = text[:200_000] + '\n\n…（内容过大，仅显示前 200000 字符）'
             if truncated:
                 text += (f'\n\n[文件总大小 {self._fmt_size(info.file_size)}，'
                          f'仅预览前 {MAX_PREVIEW_BYTES} 字节]')
-            self.preview.setPlainText(text)
-        else:
-            self._show_binary(entry, data)
+            return text
+        return self._binary_preview(entry, data)
 
     @staticmethod
     def _looks_text(data: bytes, ext: str) -> bool:

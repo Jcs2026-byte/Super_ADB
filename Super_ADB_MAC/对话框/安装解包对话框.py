@@ -469,6 +469,7 @@ class 安装解包对话框(对话框基类):
         self.meta_label.setWordWrap(True)
         self.meta_label.setTextFormat(Qt.RichText)       # 支持 <b> 等富文本
         self.meta_label.setOpenExternalLinks(False)
+        self.meta_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.TextSelectableByKeyboard)
         self.meta_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
         self.meta_label.setMinimumHeight(80)              # 至少能容纳 4 行内容不被裁切
         self.meta_label.setStyleSheet(

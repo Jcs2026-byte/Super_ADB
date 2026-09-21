@@ -513,6 +513,45 @@ class AdbHelper:
                     self._自研adb_usb缓存.clear()
         _th.Thread(target=_close_and_clear, daemon=True).start()
 
+    def 异步获取设备型号(self, serial):
+        """后台线程：建立连接获取设备型号，存到 _设备名缓存。供 UI 层异步调用。"""
+        import threading as _th
+        def _do():
+            try:
+                if serial in self._设备名缓存:
+                    return  # 已有缓存
+                client = self._获取自研adb(serial)
+                if client is None:
+                    return
+                model = client.执行shell('getprop ro.product.model', timeout=3).strip()
+                android_version = client.执行shell('getprop ro.build.version.release', timeout=3).strip()
+                if model:
+                    self._设备名缓存[serial] = model
+                # 更新历史记录
+                if model or android_version:
+                    try:
+                        ip, port = serial.rsplit(':', 1)
+                        history = 加载json配置('历史连接设备.json')
+                        if isinstance(history, list):
+                            for hd in history:
+                                if hd.get('ip') == ip:
+                                    if model:
+                                        hd['model'] = model
+                                    if android_version:
+                                        hd['system_version'] = android_version
+                                    break
+                            保存json配置('历史连接设备.json', history)
+                    except Exception:
+                        pass
+                if self.log_callback:
+                    try:
+                        self.log_callback(f'[自研adb] 获取到设备 {serial} 型号: {model}')
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        _th.Thread(target=_do, daemon=True).start()
+
     def _cmd_str(self, cmd_list):
         """把命令列表拼成 shell 字符串（含空格的路径自动加引号）。"""
         parts = []
@@ -829,13 +868,15 @@ class AdbHelper:
                         import concurrent.futures as _cf
                         def _验证(d):
                             try:
-                                return d, 验证ADB设备(d['ip'], d['port'], timeout=1.5)
+                                is_adb, is_authorized = 验证ADB设备(d['ip'], d['port'], timeout=1.5)
+                                return d, is_adb, is_authorized
                             except Exception:
-                                return d, False
+                                return d, False, False
                         verified = []
                         with _cf.ThreadPoolExecutor(max_workers=16) as _ex:
-                            for d, ok in _ex.map(_验证, found):
-                                if ok:
+                            for d, is_adb, is_authorized in _ex.map(_验证, found):
+                                if is_adb:
+                                    d['_已授权'] = is_authorized
                                     verified.append(d)
                         for d in verified:
                             serial = f'{d["ip"]}:{d["port"]}'
@@ -843,6 +884,9 @@ class AdbHelper:
                                 seen.add(serial)
                                 model = self._设备名缓存.get(serial, '')
                                 devices.append({'serial': serial, 'model': model, 'state': 'device'})
+                                # 未授权的设备标记：后续异步获取型号时跳过，避免干等 60 秒授权超时
+                                if not d.get('_已授权'):
+                                    devices[-1]['_需授权'] = True
                     except Exception:
                         pass
 
@@ -929,49 +973,11 @@ class AdbHelper:
                         devices = [_d for _d in devices if _d.get('serial') not in AdbHelper._最近断开的设备]
                 except Exception:
                     pass
-                # 对所有设备，主动获取设备名和系统版本（如果缓存里没有的话）
-                # 扫描发现的设备只是验证了端口，没有完整 AUTH 连接，需要主动连上去拿型号
+                # 型号从缓存取，有就显示，没有就空着（异步获取在 UI 层做，避免阻塞设备列表返回）
                 for d in devices:
                     serial = d.get('serial', '')
-                    if not serial:
-                        continue
-                    # 缓存里有设备名就不用再获取了
-                    if serial in self._设备名缓存:
+                    if serial and serial in self._设备名缓存:
                         d['model'] = self._设备名缓存[serial]
-                        continue
-                    # 从自研adb缓存里找client
-                    client = self._自研adb缓存.get(serial)
-                    # 扫描到的新设备没有 client，主动建立连接（单客户端盒子会占用槽位，正好就是"自动连接"）
-                    if client is None:
-                        try:
-                            client = self._获取自研adb(serial)
-                        except Exception:
-                            client = None
-                    if client is not None:
-                        try:
-                            model = client.执行shell('getprop ro.product.model', timeout=3).strip()
-                            android_version = client.执行shell('getprop ro.build.version.release', timeout=3).strip()
-                            if model:
-                                self._设备名缓存[serial] = model
-                                d['model'] = model
-                            # 更新历史记录里的设备信息
-                            if model or android_version:
-                                try:
-                                    ip, port = serial.rsplit(':', 1)
-                                    history = 加载json配置('历史连接设备.json')
-                                    if isinstance(history, list):
-                                        for hd in history:
-                                            if hd.get('ip') == ip:
-                                                if model:
-                                                    hd['model'] = model
-                                                if android_version:
-                                                    hd['system_version'] = android_version
-                                                break
-                                        保存json配置('历史连接设备.json', history)
-                                except Exception:
-                                    pass
-                        except Exception:
-                            pass
                 return devices
             except Exception as e:
                 if self.log_callback:

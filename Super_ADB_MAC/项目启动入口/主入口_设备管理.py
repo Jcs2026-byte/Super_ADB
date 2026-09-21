@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 主入口 Mixin：设备管理
 ====================
@@ -40,6 +40,7 @@ class 设备管理Mixin:
         if not isinstance(devices, (list, tuple)):
             devices = []
         online = [d for d in devices if isinstance(d, dict) and d.get('state') == 'device']
+        self._last_online_devs = online
         # 选中优先级：刚连上的设备 > 原选中设备
         select = self._pending_select_serial
         self._pending_select_serial = None
@@ -77,6 +78,58 @@ class 设备管理Mixin:
         # 同步 ADB 终端弹窗（自研模式专属，弹窗可能已打开）
         if getattr(self, '_adb_终端_dialog', None) is not None and self._adb_终端_dialog.isVisible():
             self._adb_终端_dialog.sync_devices(online, select)
+        # 型号为空的设备：后台异步获取型号，获取到后通过 QTimer 轮询更新下拉框
+        # 注意：标记了 _需授权 的设备（自动扫描时对方回 AUTH）跳过，避免自动连接阶段干等 60 秒授权超时
+        #       这种设备等用户手动点"连接"按钮时再走完整授权流程
+        self._待获取型号的设备 = [
+            d.get('serial') for d in online
+            if not d.get('model') and d.get('serial') and not d.get('_需授权')
+        ]
+        if self._待获取型号的设备:
+            for serial in self._待获取型号的设备:
+                self.adb.异步获取设备型号(serial)
+            # 启动轮询定时器，每 0.8 秒检查一次型号是否拿到
+            if not hasattr(self, '_model_poll_timer'):
+                from PySide6.QtCore import QTimer
+                self._model_poll_timer = QTimer(self)
+                self._model_poll_timer.setInterval(800)
+                self._model_poll_timer.timeout.connect(self._check_model_update)
+            self._model_poll_timer.start()
+            self._model_poll_rounds = 0  # 最多轮询 15 次（约 12 秒），防止设备连不上一直转
+
+    def _check_model_update(self):
+        """轮询：检查设备型号是否已获取到，拿到就更新下拉框。"""
+        self._model_poll_rounds += 1
+        updated = False
+        # 遍历下拉框每个 item，看缓存里有没有新型号
+        for i in range(self.deviceCombo.count()):
+            serial = self.deviceCombo.itemData(i)
+            if not serial:
+                continue
+            model = self.adb._设备名缓存.get(serial)
+            if model:
+                old_text = self.deviceCombo.itemText(i)
+                new_text = f'{model}  [{serial}]'
+                if old_text != new_text:
+                    self.deviceCombo.setItemText(i, new_text)
+                    updated = True
+                    # 从待获取列表中移除
+                    if serial in self._待获取型号的设备:
+                        self._待获取型号的设备.remove(serial)
+        # 待获取列表空了，或者轮询次数到上限了，停止定时器
+        if not self._待获取型号的设备 or self._model_poll_rounds >= 15:
+            self._model_poll_timer.stop()
+            self._待获取型号的设备 = []
+            # 如果还有其他面板的下拉框需要同步，也触发一次
+            if updated:
+                try:
+                    cur_serial = self.当前序列号()
+                    if self.file_mgr:
+                        self.file_mgr.sync_devices(self._last_online_devs or [], cur_serial)
+                    if self.log_viewer:
+                        self.log_viewer.sync_devices(self._last_online_devs or [], cur_serial)
+                except Exception:
+                    pass
 
     def 连接设备(self):
         from 项目启动入口.Super_ADB_主入口 import 命令工作器

@@ -219,7 +219,7 @@ class DeskCatWidget(QWidget):
         """每60秒彻底刷新一次，消除Windows DWM透明控件累积的残影。
         不做hide/show，直接重新加载pixmap，避免隐藏后再显示的重绘问题。"""
         try:
-            # 重新加载pixmap（会重新做杂色清理）
+            # 重新加载pixmap，刷新画面消除残影
             self._pixmap = self._load_pixmap(self._image_path)
             self._scaled_pixmap = self._pixmap.scaled(
                 self._cat_display_size.width(), self._cat_display_size.height(),

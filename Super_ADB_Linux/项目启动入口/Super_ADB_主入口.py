@@ -2238,14 +2238,13 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
                 # 之前没加载过，现在动态创建
                 self._初始化桌面小猫()
             else:
-                self._desk_cat._hidden_by_user = False
-                self._desk_cat.show()
-                self._desk_cat.raise_()
+                # 调用 show_cat 重启所有后台定时器
+                self._desk_cat.show_cat()
                 self._更新桌面小猫边界()
         else:
             if self._desk_cat is not None:
-                self._desk_cat.hide()
-                self._desk_cat._hidden_by_user = True
+                # 调用 hide_cat 停止所有后台定时器
+                self._desk_cat.hide_cat()
 
     def _更新桌面小猫边界(self):
         """把主窗口客户区映射为小猫的活动边界。

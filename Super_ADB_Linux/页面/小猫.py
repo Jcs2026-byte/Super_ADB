@@ -353,10 +353,10 @@ class DeskCatWidget(QWidget):
         # 关闭前说点话
         import random
         bye_words = ['去吃饭了~', '去找女朋友了~', '去捣乱了~', '溜了溜了~', '下次再玩~']
-        self.say(random.choice(bye_words), 800)
-        # 延迟一下再隐藏，让气泡能看到
+        self.say(random.choice(bye_words), 3000)
+        # 延迟3秒再隐藏，让气泡能完整看完
         from PySide6.QtCore import QTimer
-        QTimer.singleShot(900, self._do_hide)
+        QTimer.singleShot(3000, self._do_hide)
 
     def _do_hide(self):
         """真正隐藏小猫并停止定时器。"""

@@ -57,7 +57,8 @@ class DeskCatWidget(QWidget):
         super().__init__(parent)
         self._parent = parent
         self._image_path = image_path  # 保存图片路径，供 60 秒残影刷新时重新加载
-        self._cat_size = QSize(int(size * 2.2), int(size * 2.0))  # 加大四周余量，摇摆/倾斜/呼吸缩放时耳朵尾巴不被 widget 边界裁掉
+        self._cat_size = QSize(int(size * 1.8), int(size * 1.6))  # widget 贴近小猫图片，透明区域小，DWM 残影不明显
+        self._cat_display_size = QSize(int(size * 1.6), int(size * 1.4))  # 小猫图片实际显示大小
         self._placed = False  # 是否已完成首次随机落位
         self._state = self.STATE_IDLE
         self._facing_right = True
@@ -99,7 +100,7 @@ class DeskCatWidget(QWidget):
         # 加载图片
         self._pixmap = self._load_pixmap(image_path)
         self._scaled_pixmap = self._pixmap.scaled(
-            self._cat_size.width(), self._cat_size.height(),
+            self._cat_display_size.width(), self._cat_display_size.height(),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation
         )
@@ -185,8 +186,6 @@ class DeskCatWidget(QWidget):
             if is_resource or os.path.isfile(image_path):
                 pm = QPixmap(image_path)
                 if not pm.isNull():
-                    # 不再清理深色杂色（会把小猫眼睛/鼻子误清）
-                    # 残影问题靠60秒定时刷新重新加载pixmap解决
                     return pm
 
         # 默认占位：画一只圆滚滚的橘猫
@@ -223,7 +222,7 @@ class DeskCatWidget(QWidget):
             # 重新加载pixmap（会重新做杂色清理）
             self._pixmap = self._load_pixmap(self._image_path)
             self._scaled_pixmap = self._pixmap.scaled(
-                self._cat_size.width(), self._cat_size.height(),
+                self._cat_display_size.width(), self._cat_display_size.height(),
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
@@ -443,12 +442,12 @@ class DeskCatWidget(QWidget):
 
         # 走路摇摆
         if self._state == self.STATE_WALK:
-            rot = math.sin(self._bob_phase) * 3.0
+            rot = math.sin(self._bob_phase) * 2.0
             transform.rotate(rot)
 
         # 逃跑时身体前倾
         if self._state == self.STATE_RUN:
-            lean = 12.0 if self._facing_right else -12.0
+            lean = 8.0 if self._facing_right else -8.0
             transform.rotate(lean)
 
         # 玩耍时原地转圈 + 弹跳

@@ -125,6 +125,13 @@ class DeskCatWidget(QWidget):
         self._anim_timer.timeout.connect(self._tick)
         self._anim_timer.start(40)
 
+        # ★ 定时彻底刷新：Windows DWM 下透明子控件长时间运行后
+        #   会累积残影，每 60 秒隐藏→重新加载→显示一次，彻底清理残影。
+        #   用 QTimer 不阻塞主线程，切换是瞬时的用户几乎感觉不到。
+        self._refresh_timer = QTimer(self)
+        self._refresh_timer.timeout.connect(self._彻底刷新)
+        self._refresh_timer.start(60000)  # 60 秒
+
         # 泡泡文字隐藏定时器
         self._bubble_timer = QTimer(self)
         self._bubble_timer.setSingleShot(True)
@@ -240,6 +247,23 @@ class DeskCatWidget(QWidget):
         p.drawEllipse(40, 80, 40, 50)
         p.end()
         return pm
+
+    def _彻底刷新(self):
+        """每60秒彻底刷新一次，消除Windows DWM透明控件累积的残影。"""
+        try:
+            self.hide()
+            # 重新加载pixmap（会重新做杂色清理）
+            self._pixmap = self._load_pixmap(self._image_path)
+            self._scaled_pixmap = self._pixmap.scaled(
+                self._cat_size.width(), self._cat_size.height(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            self._update_mask()
+            self.show()
+            self.update()
+        except Exception:
+            pass  # 刷新失败不影响使用
 
     def _update_mask(self):
         """根据小猫 pixmap 的 alpha 通道生成精确裁剪 mask。

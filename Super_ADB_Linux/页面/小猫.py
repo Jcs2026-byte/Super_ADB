@@ -390,15 +390,29 @@ class DeskCatWidget(QWidget):
         self._paused = False
 
     def hide_cat(self):
-        """用户主动隐藏小猫。"""
+        """用户主动隐藏小猫（停止所有后台定时器，不消耗资源）。"""
         self._hidden_by_user = True
         self.hide()
+        # 停止所有后台定时器，隐藏时不运行不耗资源
+        try:
+            self._think_timer.stop()
+            self._anim_timer.stop()
+            self._refresh_timer.stop()
+        except Exception:
+            pass
 
     def show_cat(self):
-        """重新显示被隐藏的小猫。"""
+        """重新显示被隐藏的小猫（重启所有后台定时器）。"""
         self._hidden_by_user = False
         self.show()
         self.raise_()
+        # 重启所有后台定时器
+        try:
+            self._think_timer.start(1800)
+            self._anim_timer.start(40)
+            self._refresh_timer.start(60000)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # 事件处理

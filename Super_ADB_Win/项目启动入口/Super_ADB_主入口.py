@@ -2245,12 +2245,20 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             self._初始化桌面小猫()
         else:
             if self._desk_cat is not None:
-                # 彻底销毁小猫，不是只隐藏
-                try:
-                    self._desk_cat.close()
-                    self._desk_cat.deleteLater()
-                except Exception:
-                    pass
+                # 标记不自动回来
+                self._desk_cat._should_come_back = False
+                # 先说话再关闭
+                self._desk_cat.hide_cat()
+                # 延迟3秒后真正销毁（等说完再见）
+                from PySide6.QtCore import QTimer
+                cat_ref = self._desk_cat
+                def _真正销毁():
+                    try:
+                        cat_ref.close()
+                        cat_ref.deleteLater()
+                    except Exception:
+                        pass
+                QTimer.singleShot(3000, _真正销毁)
                 self._desk_cat = None
 
     def _更新桌面小猫边界(self):

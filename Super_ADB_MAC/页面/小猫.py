@@ -369,13 +369,16 @@ class DeskCatWidget(QWidget):
             self._refresh_timer.stop()
         except Exception:
             pass
-        # 延迟20秒后自动重新展示出来
+        # 延迟20秒后自动重新展示出来（用户取消勾选时不要自动回来）
         from PySide6.QtCore import QTimer
         import random
+        self._should_come_back = True  # 默认自动回来
         def _自动回来():
             try:
                 if not self._hidden_by_user:
                     return  # 用户已经手动显示了
+                if not self._should_come_back:
+                    return  # 用户取消勾选了，不自动回来
                 self.show()
                 self.raise_()
                 self.update()

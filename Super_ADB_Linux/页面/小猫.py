@@ -359,7 +359,7 @@ class DeskCatWidget(QWidget):
         QTimer.singleShot(3000, self._do_hide)
 
     def _do_hide(self):
-        """真正隐藏小猫并停止定时器。"""
+        """真正隐藏小猫并停止定时器，20秒后自动回来。"""
         self.hide()
         self._bubble.hide()
         # 停止所有后台定时器，隐藏时不运行不耗资源
@@ -369,6 +369,26 @@ class DeskCatWidget(QWidget):
             self._refresh_timer.stop()
         except Exception:
             pass
+        # 延迟20秒后自动重新展示出来
+        from PySide6.QtCore import QTimer
+        import random
+        def _自动回来():
+            try:
+                if not self._hidden_by_user:
+                    return  # 用户已经手动显示了
+                self.show()
+                self.raise_()
+                self.update()
+                # 重启所有定时器
+                self._think_timer.start(1800)
+                self._anim_timer.start(40)
+                self._refresh_timer.start(60000)
+                # 说点什么
+                welcome_words = ['我又回来啦~', '想我了没~', '我胡汉三又回来了~', '还是这里好玩~']
+                self.say(random.choice(welcome_words), 2500)
+            except Exception:
+                pass
+        QTimer.singleShot(20000, _自动回来)
 
     def show_cat(self):
         """重新显示被隐藏的小猫（重启所有后台定时器）。"""

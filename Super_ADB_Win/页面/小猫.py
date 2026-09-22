@@ -351,7 +351,18 @@ class DeskCatWidget(QWidget):
     def hide_cat(self):
         """用户主动隐藏小猫（停止所有后台定时器，不消耗资源）。"""
         self._hidden_by_user = True
+        # 关闭前说点话
+        import random
+        bye_words = ['去吃饭了~', '去找女朋友了~', '去捣乱了~', '溜了溜了~', '下次再玩~']
+        self._show_bubble(random.choice(bye_words))
+        # 延迟一下再隐藏，让气泡能看到
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(800, self._do_hide)
+
+    def _do_hide(self):
+        """真正隐藏小猫并停止定时器。"""
         self.hide()
+        self._bubble.hide()
         # 停止所有后台定时器，隐藏时不运行不耗资源
         try:
             self._think_timer.stop()
@@ -366,20 +377,23 @@ class DeskCatWidget(QWidget):
         self.show()
         self.raise_()
         self.update()
-        # 延迟一帧让事件循环处理完show事件，再触发父窗口重绘
+        # 强制主窗口重绘：用 setUpdatesEnabled 开关触发全窗口重绘
         # 直接update()不够，因为主窗口是无边框半透明窗口，
         # 子控件透明显示需要父窗口完全重绘背景才能露出来
         from PySide6.QtCore import QTimer
-        def _刷新主窗口():
+        def _强制重绘主窗口():
             try:
-                if self.parent() is not None:
-                    # 让主窗口的内容区域完全重绘
-                    self.parent().update()
-                    # 再让小猫自己重绘一次
+                parent = self.parent()
+                if parent is not None:
+                    # 关闭再开启更新，强制所有子控件重绘
+                    parent.setUpdatesEnabled(False)
+                    parent.setUpdatesEnabled(True)
+                    parent.update()
+                    self.raise_()
                     self.update()
             except Exception:
                 pass
-        QTimer.singleShot(50, _刷新主窗口)
+        QTimer.singleShot(100, _强制重绘主窗口)
         # 重启所有后台定时器
         try:
             self._think_timer.start(1800)

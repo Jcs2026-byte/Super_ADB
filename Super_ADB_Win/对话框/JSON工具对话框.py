@@ -2177,10 +2177,14 @@ class Json工具对话框(对话框基类):
 
     @staticmethod
     def _collapse_all(tree_w):
-        """折叠所有树节点。"""
+        """折叠所有树节点（递归折叠所有层级）。"""
+        def _recursive_collapse(item):
+            item.setExpanded(False)
+            for i in range(item.childCount()):
+                _recursive_collapse(item.child(i))
         root = tree_w.invisibleRootItem()
         for i in range(root.childCount()):
-            root.child(i).setExpanded(False)
+            _recursive_collapse(root.child(i))
 
     # ─────────────── 功能：YAML 互转 ───────────────
     def _json_to_yaml(self):

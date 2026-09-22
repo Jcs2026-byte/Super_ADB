@@ -89,6 +89,13 @@ class 自研adb客户端:
         self._单客户端设备 = False
         # 兼容旧代码：保留 _conn 引用（指向最近使用的连接），但不作为唯一连接
         self._conn: Optional[AdbConnection] = None
+        # ★ 主连接后台心跳：定期探活，发现半开连接主动关闭重建
+        # 官方 adb server 有后台监控线程，自研模式之前没有，空闲时 TCP 半开感知不到
+        self._心跳停止 = threading.Event()
+        self._心跳线程: Optional[threading.Thread] = None
+        self._最后活跃 = time.time()      # 最近一次成功操作的时间
+        self._心跳间隔 = 15.0             # 每 15 秒发一次心跳
+        self._空闲重建秒 = 300.0          # 空闲超过 5 分钟主动重建主连接
 
     def _日志(self, msg: str):
         """安全调用日志回调（log_callback 可能为 None）。"""
@@ -165,6 +172,7 @@ class 自研adb客户端:
                 with self._负缓存锁:
                     self._负缓存.pop(key, None)  # 成功后清除负缓存
                 self._日志(f'[自研adb] 连接成功 {self.host}:{self.port}')
+                self._启动心跳()
                 return True
             except Exception as e:
                 self.最后错误 = str(e)
@@ -231,6 +239,7 @@ class 自研adb客户端:
 
     def 关闭(self):
         """关闭该设备的所有连接（含已剥离的主连接）。"""
+        self._停止心跳()
         _池关闭设备(self.host, self.port)
         with self._主连接锁:
             old = self._主连接
@@ -262,6 +271,7 @@ class 自研adb客户端:
         conn = _池借用(self.host, self.port, timeout, self.key_path)
         self._主连接 = conn
         self._conn = conn
+        self._标记活跃()
         return conn
 
     def _主连接可用(self) -> bool:
@@ -306,6 +316,7 @@ class 自研adb客户端:
         try:
             result = func(conn)
             成功 = True
+            self._标记活跃()
             return result
         except Exception:
             # 执行失败后探活：连接还能用就归还（可能只是命令本身失败），连接损坏才关闭
@@ -343,7 +354,9 @@ class 自研adb客户端:
         with self._主连接锁:
             conn = self._获取主连接(timeout)
             try:
-                return func(conn)
+                result = func(conn)
+                self._标记活跃()
+                return result
             except Exception:
                 try:
                     old = conn.sock.gettimeout()
@@ -369,6 +382,80 @@ class 自研adb客户端:
                     self._主连接 = None
                 raise
 
+    # ── 后台心跳与空闲重建 ──
+
+    def _标记活跃(self):
+        """标记主连接最近一次成功操作的时间。"""
+        self._最后活跃 = time.time()
+
+    def _启动心跳(self):
+        """启动主连接后台心跳线程。"""
+        self._心跳停止.clear()
+        if self._心跳线程 and self._心跳线程.is_alive():
+            return  # 已在运行
+        self._心跳线程 = threading.Thread(
+            target=self._心跳循环,
+            name=f'心跳-{self.host}:{self.port}',
+            daemon=True,
+        )
+        self._心跳线程.start()
+
+    def _停止心跳(self):
+        """停止后台心跳线程。"""
+        self._心跳停止.set()
+        # 不 join：心跳线程最多阻塞 _心跳间隔 秒就会退出
+        self._心跳线程 = None
+
+    def _心跳循环(self):
+        """后台心跳：定期探活主连接，发现半开或空闲过久则关闭重建。
+
+        官方 adb server 有后台监控线程做这件事，自研模式之前没有。
+        空闲时 TCP 半开（WiFi 省电/路由器重启）只能靠下一次操作才发现，
+        用户体验就是"经常自己掉线"。心跳线程提前发现并主动重建。
+        """
+        while not self._心跳停止.wait(self._心跳间隔):
+            try:
+                with self._主连接锁:
+                    conn = self._主连接
+                    if conn is None or conn.state != STATE_DEVICE:
+                        continue  # 主连接已被关闭或未建立，等下次操作重建
+
+                    空闲秒 = time.time() - self._最后活跃
+                    # 空闲过久：主动重建，避免半开连接长期挂着
+                    if 空闲秒 > self._空闲重建秒:
+                        self._日志(
+                            f'[自研adb] 主连接空闲 {int(空闲秒)}s，主动重建防止半开: '
+                            f'{self.host}:{self.port}')
+                        try:
+                            conn.关闭()
+                        except Exception:
+                            pass
+                        self._主连接 = None
+                        continue
+
+                    # 快速探活：发一个 echo，超时 3 秒
+                    old_timeout = conn.sock.gettimeout() if conn.sock else self._心跳间隔
+                    try:
+                        conn.sock.settimeout(3.0)
+                        conn.执行shell('echo __hb__', timeout=3)
+                        self._标记活跃()  # 心跳成功也算活跃
+                    except Exception:
+                        # 探活失败：主连接已损坏，关闭并置空，下次操作重建
+                        self._日志(f'[自研adb] 心跳探活失败，主连接已断开，等待重建: '
+                                   f'{self.host}:{self.port}')
+                        try:
+                            conn.关闭()
+                        except Exception:
+                            pass
+                        self._主连接 = None
+                    finally:
+                        try:
+                            conn.sock.settimeout(old_timeout)
+                        except Exception:
+                            pass
+            except Exception as e:
+                # 心跳线程自身不能崩
+                self._日志(f'[自研adb] 心跳循环异常: {e}')
 
     def 探测单通道(self) -> bool:
         """主动探测本设备是否为单客户端设备（adbd 只接受 1 条 TCP 连接）。
@@ -427,7 +514,9 @@ class 自研adb客户端:
         with self._主连接锁:
             conn = self._获取主连接(timeout)
             try:
-                return conn.执行shell(command, timeout)
+                result = conn.执行shell(command, timeout)
+                self._标记活跃()
+                return result
             except Exception:
                 # 执行失败，探活后主连接还能用就保留，损坏就关闭
                 try:

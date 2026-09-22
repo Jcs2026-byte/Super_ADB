@@ -22,6 +22,7 @@ import os
 import queue
 import threading
 import concurrent.futures
+import select
 from typing import Optional, Tuple, Callable, Set, Dict, List
 
 # ADB 协议版本
@@ -480,7 +481,37 @@ class _连接池:
 
     @staticmethod
     def _连接可用(c: _池化连接) -> bool:
-        return c.conn.state == STATE_DEVICE and c.conn.sock is not None
+        """轻量级真实探活：不只看 state 标志，还检查 TCP 层是否已断开。
+
+        之前只检查 state == STATE_DEVICE and sock is not None，
+        对端静默关闭（WiFi 省电/路由器重启/设备休眠）时本地 state 不变，
+        池就把死连接当活连接分发出去，上层一操作就炸。
+
+        这里用 select + MSG_PEEK 做零开销探活：
+          - select 超时 0 检查是否可读（对端 FIN/RST 时会立即可读）
+          - 若可读，MSG_PEEK 读 1 字节：recv 返回空 = 对端已关闭
+          - 若不可读 = 连接上没有待处理数据，视为活连接
+        MSG_PEEK 不消费数据，不影响后续正常读取。
+        """
+        conn = c.conn
+        if conn.state != STATE_DEVICE or conn.sock is None:
+            return False
+        try:
+            sock = conn.sock
+            # select 超时 0：只检查当前状态，不阻塞
+            r, _, _ = select.select([sock], [], [], 0)
+            if r:
+                # 有数据可读（或对端已关闭）
+                # MSG_PEEK：偷看 1 字节，不消费
+                data = sock.recv(1, socket.MSG_PEEK)
+                if not data:
+                    # recv 返回空 = 对端已正常关闭（FIN）
+                    return False
+                # 有真实数据：连接是活的，数据留在缓冲区下次读
+        except (OSError, socket.error):
+            # recv 报错 = 连接已断（RST 等）
+            return False
+        return True
 
     def _新建(self, host: str, port: int, timeout: float, key_path: str,
              log_callback=None, burst: Optional[bool] = None) -> 'AdbConnection':
@@ -825,18 +856,58 @@ class AdbConnection:
 
     def _设置保活(self):
         try:
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
             if os.name == 'nt':
-                vals = struct.pack('III', 1, 10000, 3000)
-                try:
-                    self.sock.ioctl(0x98000004, vals)
-                except AttributeError:
-                    pass
+                self._设置Windows保活()
             else:
                 self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 10)
                 self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 3)
                 self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 5)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f'[自研adb] 设置 TCP keepalive 失败: {e}（应用层心跳兜底）')
+
+    def _设置Windows保活(self):
+        """Windows 下通过 WSAIoctl 设置 TCP keepalive 参数。
+
+        Python socket 对象没有 ioctl() 方法，之前直接调 sock.ioctl(0x98000004)
+        必抛 AttributeError 并被静默吞掉，导致 SO_KEEPALIVE 虽开但用系统默认值
+        （2 小时），WiFi 环境等于没保活。这里用 ctypes 调 WSAIoctl 正确设置：
+        10s 无活动开始探测，每 3s 一次。
+        """
+        import ctypes
+        from ctypes import wintypes
+
+        SIO_KEEPALIVE_VALS = 0x98000004  # _WSAIOW(IOC_VENDOR, 4)
+
+        class tcp_keepalive(ctypes.Structure):
+            _fields_ = [
+                ("onoff", wintypes.ULONG),
+                ("keepalivetime", wintypes.ULONG),
+                ("keepaliveinterval", wintypes.ULONG),
+            ]
+
+        ka = tcp_keepalive()
+        ka.onoff = 1
+        ka.keepalivetime = 10000      # 10s 无活动开始发 keepalive 探测
+        ka.keepaliveinterval = 3000   # 每 3s 重发一次探测
+
+        out_len = wintypes.ULONG(0)
+        sock_fd = int(self.sock.fileno())
+
+        ret = ctypes.windll.ws2_32.WSAIoctl(
+            sock_fd,
+            SIO_KEEPALIVE_VALS,
+            ctypes.byref(ka),
+            ctypes.sizeof(ka),
+            None,
+            0,
+            ctypes.byref(out_len),
+            None,
+            None,
+        )
+        if ret != 0:
+            err = ctypes.windll.kernel32.GetLastError()
+            print(f'[自研adb] WSAIoctl(SIO_KEEPALIVE_VALS) 失败, WSAError={err}')
 
     def 连接(self) -> bool:
         self.sock = socket.create_connection((self.host, self.port), timeout=self.timeout)

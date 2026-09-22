@@ -24,7 +24,8 @@ from PySide6.QtCore import (
     Qt, QTimer, QPoint, QRect, QSize
 )
 from PySide6.QtGui import (
-    QPixmap, QPainter, QColor, QCursor, QTransform, QFont, QBitmap, QRegion
+    QPixmap, QPainter, QColor, QCursor, QTransform, QFont, QBitmap, QRegion,
+    qAlpha, qRgba,
 )
 from PySide6.QtWidgets import (
     QWidget, QLabel
@@ -221,7 +222,20 @@ class DeskCatWidget(QWidget):
             return
 
         # 从 pixmap 的 alpha 通道生成 mask bitmap
-        mask_bitmap = pm.mask()
+        # ★ 先做阈值过滤：很多 PNG 边缘有半透明杂色（比如截图时带了主窗口 UI），
+        #   pm.mask() 会把 alpha > 0 的半透明像素也算进去，导致渲染时出现残影。
+        #   这里把 alpha < 阈值的像素全部清成全透明，只保留真正不透明的部分。
+        img = pm.toImage()
+        w, h = img.width(), img.height()
+        threshold = 64  # alpha < 64 的全部清成透明（0-255）
+        for y in range(h):
+            for x in range(w):
+                alpha = qAlpha(img.pixel(x, y))
+                if alpha < threshold:
+                    img.setPixel(x, y, qRgba(0, 0, 0, 0))
+        # 用处理后的图片生成 mask
+        cleaned_pm = QPixmap.fromImage(img)
+        mask_bitmap = cleaned_pm.mask()
         if mask_bitmap.isNull():
             return
 

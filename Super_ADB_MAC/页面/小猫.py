@@ -18,15 +18,14 @@
 
 import math
 import random
-
-from 项目UI.界面样式 import FONT_FAMILY
 import os
 
 from PySide6.QtCore import (
     Qt, QTimer, QPoint, QRect, QSize
 )
 from PySide6.QtGui import (
-    QPixmap, QPainter, QColor, QCursor, QTransform, QFont, QBitmap, QRegion
+    QPixmap, QPainter, QColor, QCursor, QTransform, QFont, QBitmap, QRegion,
+    qAlpha, qRgba,
 )
 from PySide6.QtWidgets import (
     QWidget, QLabel
@@ -106,7 +105,7 @@ class DeskCatWidget(QWidget):
 
         # 关键：根据小猫图片的 alpha 通道生成精确裁剪 mask
         # 这样只有小猫形状的区域参与渲染，其他区域完全透明，
-        # 从根本上消除透明子控件移动时的「残影拖尾」问题。
+        # 从根本上消除 Windows DWM 下透明子控件移动时的「残影拖尾」问题。
         self._update_mask()
 
         # 装饰标签（展示气泡文字）
@@ -205,7 +204,7 @@ class DeskCatWidget(QWidget):
         为什么需要 mask？
         ----------------
         小猫是主窗口的透明子控件（WA_TranslucentBackground）。
-        在部分合成器下，矩形透明子控件频繁移动时，
+        在 Windows DWM 合成模式下，矩形透明子控件频繁移动时，
         即使父窗口整窗重绘，旧位置的像素仍可能被错误地「粘」到新位置，
         表现为小猫拖着一块主界面 UI 到处跑。
 
@@ -223,7 +222,20 @@ class DeskCatWidget(QWidget):
             return
 
         # 从 pixmap 的 alpha 通道生成 mask bitmap
-        mask_bitmap = pm.mask()
+        # ★ 先做阈值过滤：很多 PNG 边缘有半透明杂色（比如截图时带了主窗口 UI），
+        #   pm.mask() 会把 alpha > 0 的半透明像素也算进去，导致渲染时出现残影。
+        #   这里把 alpha < 阈值的像素全部清成全透明，只保留真正不透明的部分。
+        img = pm.toImage()
+        w, h = img.width(), img.height()
+        threshold = 64  # alpha < 64 的全部清成透明（0-255）
+        for y in range(h):
+            for x in range(w):
+                alpha = qAlpha(img.pixel(x, y))
+                if alpha < threshold:
+                    img.setPixel(x, y, qRgba(0, 0, 0, 0))
+        # 用处理后的图片生成 mask
+        cleaned_pm = QPixmap.fromImage(img)
+        mask_bitmap = cleaned_pm.mask()
         if mask_bitmap.isNull():
             return
 
@@ -391,11 +403,11 @@ class DeskCatWidget(QWidget):
         if self._state == self.STATE_SLEEP:
             painter.resetTransform()
             painter.setPen(QColor('#fff'))
-            painter.setFont(QFont(FONT_FAMILY, 10))
+            painter.setFont(QFont('Microsoft YaHei', 10))
             painter.drawText(self.width() - 28, 24, 'Z')
-            painter.setFont(QFont(FONT_FAMILY, 8))
+            painter.setFont(QFont('Microsoft YaHei', 8))
             painter.drawText(self.width() - 18, 16, 'z')
-            painter.setFont(QFont(FONT_FAMILY, 6))
+            painter.setFont(QFont('Microsoft YaHei', 6))
             painter.drawText(self.width() - 10, 10, 'z')
 
         painter.end()
@@ -593,13 +605,13 @@ class DeskCatWidget(QWidget):
     def _move_to_position(self):
         """把自身控件移动到 _pos（父窗口局部坐标），并通知父窗口重绘消除残影。
 
-        在 DWM / 合成器模式下，update() 只是异步投递重绘消息，
-        合成器可能在父窗口实际重绘之前就已经合成了新帧——旧位置的像素
+        在 Windows DWM 合成模式下，update() 只是异步投递重绘消息，
+        DWM 可能在父窗口实际重绘之前就已经合成了新帧——旧位置的像素
         还没被擦掉就被「定格」进合成画面，长时间运行后累积成残影。
 
         解决方案：
         1. move() 之后对旧位置调用 repaint()（同步重绘），阻塞直到父窗口
-           真正把旧位置的像素覆盖掉，合成器下一帧才不会残留旧猫的影子。
+           真正把旧位置的像素覆盖掉，DWM 下一帧才不会残留旧猫的影子。
         2. 新位置用 update() 异步即可（新位置本来就需要小猫自己绘制）。
         """
         old_rect = self.geometry()
@@ -610,7 +622,7 @@ class DeskCatWidget(QWidget):
             pad = 16
             old_padded = old_rect.adjusted(-pad, -pad, pad, pad)
             new_padded = new_rect.adjusted(-pad, -pad, pad, pad)
-            # 关键：同步重绘旧位置，确保合成器下一帧前旧像素已被父窗口覆盖
+            # 关键：同步重绘旧位置，确保 DWM 合成前旧像素已被父窗口覆盖
             self._parent.repaint(old_padded)
             # 新位置异步重绘即可
             self._parent.update(new_padded)

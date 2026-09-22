@@ -365,6 +365,7 @@ class DeskCatWidget(QWidget):
         self._hidden_by_user = False
         self.show()
         self.raise_()
+        self.update()  # 强制重绘，避免显示后不刷新
         # 重启所有后台定时器
         try:
             self._think_timer.start(1800)

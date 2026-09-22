@@ -32,6 +32,11 @@ ADB_VERSION = 0x01000001  # 官方adb使用0x01000001（skip checksum）
 A_VERSION_SKIP_CHECKSUM = 0x01000001
 ADB_MAX_PAYLOAD = 1048576  # 1MB
 INITIAL_DELAYED_ACK_BYTES = 32 * 1024 * 1024  # delayed_ack 初始发送窗口(32MB, 对齐官方 adb.h)
+
+# ── 连接池常量 ──
+连接池默认最大空闲秒 = 300       # 空闲连接保留时间（秒）
+连接池借用超时秒 = 15.0           # 等待建连锁的超时时间
+连接池探活缓存秒 = 2.0            # 探活结果缓存时间，避免频繁探活
 # 设备端 sync 服务单个 DATA 块上限固定 64KB（adb-master/file_sync_service.h 的
 # SYNC_DATA_MAX，官方 adb 客户端也按它分块）；超过会被设备端
 # 以 "oversize data message" 拒绝并中止推送。

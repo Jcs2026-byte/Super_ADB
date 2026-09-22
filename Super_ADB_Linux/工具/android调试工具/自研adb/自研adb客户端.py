@@ -46,6 +46,12 @@ def _归还后(conn: Optional[AdbConnection]):
             pass
 
 
+# ── 常量 ──
+心跳默认间隔秒 = 15.0           # 心跳探活间隔
+心跳空闲重建秒 = 300.0          # 空闲超过此时间主动重建
+心跳探活超时秒 = 3.0            # 单次 echo 探活超时
+
+
 class 自研adb客户端:
     """自研 ADB 客户端（连接池化）。
 
@@ -94,8 +100,8 @@ class 自研adb客户端:
         self._心跳停止 = threading.Event()
         self._心跳线程: Optional[threading.Thread] = None
         self._最后活跃 = time.time()      # 最近一次成功操作的时间
-        self._心跳间隔 = 15.0             # 每 15 秒发一次心跳
-        self._空闲重建秒 = 300.0          # 空闲超过 5 分钟主动重建主连接
+        self._心跳间隔 = 心跳默认间隔秒             # 每 15 秒发一次心跳
+        self._空闲重建秒 = 心跳空闲重建秒          # 空闲超过 5 分钟主动重建主连接
 
     def _日志(self, msg: str):
         """安全调用日志回调（log_callback 可能为 None）。"""

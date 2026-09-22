@@ -113,61 +113,23 @@ class 弹窗打开Mixin:
         dlg = 快捷键配置对话框(parent=self)
         dlg.exec()
 
-    def 打开命令行(self):
-        """打开命令行。
-        - 自研 ADB 模式：打开 ADB 交互式终端弹窗
-        - 其他模式：打开系统 PowerShell（Windows）/ Terminal（macOS, Linux）
+    def 打开adbShell命令行(self):
+        """打开 ADB shell 命令行。
+        所有模式统一打开 ADB 交互式终端弹窗（自研 ADB 客户端）。
         任何异常都打到输出框 + 状态栏, 不弹窗骚扰。"""
-        # 自研 ADB 模式：打开交互式终端弹窗
-        if getattr(self.adb, '_用自研adb', False):
-            try:
-                if (self._adb_终端_dialog is not None
-                        and self._adb_终端_dialog.isVisible()):
-                    self._adb_终端_dialog.raise_()
-                    self._adb_终端_dialog.activateWindow()
-                    return
-                from 对话框.ADB终端对话框 import ADB终端对话框
-                self._adb_终端_dialog = ADB终端对话框(self)
-                # 弹窗内设备切换 → 同步主窗口三个设备选择栏
-                self._adb_终端_dialog.设备已切换.connect(self._终端弹窗设备切换)
-                self._adb_终端_dialog.show()
-                return
-            except Exception as e:
-                err = f'打开 ADB 终端失败：{e}'
-                self.设置状态(err, ok=False)
-                self.日志(f'错误: {err}')
-                return
-
-        # 非自研模式：原功能，打开系统命令行
-        import subprocess
-        import shutil as _shutil
         try:
-            if sys.platform.startswith('win'):
-                CREATE_NEW_CONSOLE = getattr(subprocess, 'CREATE_NEW_CONSOLE', 0)
-                subprocess.Popen(
-                    ['powershell', '-NoExit'],
-                    creationflags=CREATE_NEW_CONSOLE,
-                )
-                msg = '已打开 PowerShell'
-            elif sys.platform == 'darwin':
-                subprocess.Popen(['open', '-a', 'Terminal'])
-                msg = '已打开 Terminal'
-            else:
-                terminal = next(
-                    (t for t in ('gnome-terminal', 'konsole',
-                                 'xfce4-terminal', 'xterm')
-                     if _shutil.which(t)),
-                    None,
-                )
-                if not terminal:
-                    raise OSError('未找到可用的终端模拟器'
-                                  '（gnome-terminal / konsole / xfce4-terminal / xterm）')
-                subprocess.Popen([terminal])
-                msg = f'已打开 {terminal}'
-            self.设置状态(msg, ok=True)
-            self.日志(msg)
+            if (self._adb_终端_dialog is not None
+                    and self._adb_终端_dialog.isVisible()):
+                self._adb_终端_dialog.raise_()
+                self._adb_终端_dialog.activateWindow()
+                return
+            from 对话框.ADB终端对话框 import ADB终端对话框
+            self._adb_终端_dialog = ADB终端对话框(self)
+            # 弹窗内设备切换 → 同步主窗口三个设备选择栏
+            self._adb_终端_dialog.设备已切换.connect(self._终端弹窗设备切换)
+            self._adb_终端_dialog.show()
         except Exception as e:
-            err = f'启动命令行失败：{e}'
+            err = f'打开 ADB 终端失败：{e}'
             self.设置状态(err, ok=False)
             self.日志(f'错误: {err}')
 
@@ -473,15 +435,5 @@ class 弹窗打开Mixin:
                     page._mgr.刷新设置()
                 except Exception:
                     pass
-        self._更新命令行按钮文字()
         self.刷新设备()
 
-    def _更新命令行按钮文字(self):
-        """根据当前 ADB 模式更新便捷工具中「命令行」按钮文字。
-        自研 ADB 模式 → ADB命令行；其它模式 → 命令行。"""
-        try:
-            用自研 = getattr(self.adb, '_用自研adb', False)
-            if hasattr(self, 'cmdBtn'):
-                self.cmdBtn.setText('ADB命令行' if 用自研 else '命令行')
-        except Exception:
-            pass

@@ -441,7 +441,6 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self._恢复默认页()  # 从配置读，否则保持 .ui 默认（左侧=工具[1]）
         self.tabWidget.currentChanged.connect(self._防抖保存默认页)
         self.tabWidget_2.currentChanged.connect(self._防抖保存默认页)
-        self._更新命令行按钮文字()
         # 启用半透明背景以支持圆角窗口
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setStyleSheet(self._主样式表(self._current_theme))
@@ -596,7 +595,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         cmd_index = self.horizontalLayout_2.indexOf(self.cmdBtn)
         self.horizontalLayout_2.insertWidget(cmd_index, self.btnHistoryDevices)
         self.btnHistoryDevices.clicked.connect(self.打开历史连接设备)
-        self.cmdBtn.clicked.connect(self.打开命令行)
+        self.cmdBtn.clicked.connect(self.打开adbShell命令行)
         self.jsonToolBtn.clicked.connect(self.打开json工具)
         self.md5Btn.clicked.connect(self.打开md5校验)
         self.timestampBtn.clicked.connect(self.打开时间戳)

@@ -277,10 +277,10 @@
                   <item>
                    <widget class="QPushButton" name="cmdBtn">
                     <property name="toolTip">
-                     <string>打开系统 PowerShell（Windows）/ 终端（macOS, Linux）</string>
+                     <string>打开 ADB shell 交互式终端</string>
                     </property>
                     <property name="text">
-                     <string>命令行</string>
+                     <string>adb shell 命令行</string>
                     </property>
                    </widget>
                   </item>

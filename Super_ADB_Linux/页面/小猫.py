@@ -169,41 +169,48 @@ class DeskCatWidget(QWidget):
             if is_resource or os.path.isfile(image_path):
                 pm = QPixmap(image_path)
                 if not pm.isNull():
-                    # ★ 清理右下角深色残影：原图截图时带了主窗口 UI 的深色矩形，
-                    #   alpha 完全不透明，普通 alpha 阈值过滤没用。
-                    #   从右下角多个点做 flood fill，把连通的深色杂色区域清成透明。
+                    # ★ 彻底清理PNG自带的深色UI杂色：
+                    #   原图截图时带了主窗口UI的深色矩形，位置在小猫身体中间偏右，
+                    #   从角落flood fill清不到。改为遍历全图，把所有深色杂色区域都清掉。
+                    #   小猫的眼睛/鼻子面积很小，不会被误清。
                     img = pm.toImage()
                     w, h = img.width(), img.height()
-                    # 多起点 flood fill（右下角多个角点，避免缝隙导致不连通）
-                    start_points = [
-                        (w - 1, h - 1), (w - 1, h // 2), (w // 2, h - 1),
-                        (w - 1, 0), (0, h - 1), (w - 1, h // 4), (w - 1, h * 3 // 4),
-                    ]
                     visited = set()
-                    for start_x, start_y in start_points:
-                        if (start_x, start_y) in visited:
-                            continue
-                        stack = [(start_x, start_y)]
-                        while stack:
-                            x, y = stack.pop()
-                            if (x, y) in visited or x < 0 or y < 0 or x >= w or y >= h:
+                    for y in range(h):
+                        for x in range(w):
+                            if (x, y) in visited:
                                 continue
-                            visited.add((x, y))
                             pixel = img.pixel(x, y)
                             alpha = qAlpha(pixel)
                             if alpha < 128:
-                                continue  # 已经透明
-                            # 判断是否是深色杂色（R/G/B 都很低）
+                                visited.add((x, y))
+                                continue
                             r = (pixel >> 16) & 0xff
                             g = (pixel >> 8) & 0xff
                             b = pixel & 0xff
                             brightness = (0.299 * r + 0.587 * g + 0.114 * b)
-                            if brightness < 120:  # 深色杂色（提高阈值，清干净一点）
-                                img.setPixel(x, y, qRgba(0, 0, 0, 0))
-                                stack.append((x + 1, y))
-                                stack.append((x - 1, y))
-                                stack.append((x, y + 1))
-                                stack.append((x, y - 1))
+                            if brightness < 100:  # 深色杂色
+                                # flood fill 把连通的深色区域全清掉
+                                stack = [(x, y)]
+                                while stack:
+                                    cx, cy = stack.pop()
+                                    if (cx, cy) in visited or cx < 0 or cy < 0 or cx >= w or cy >= h:
+                                        continue
+                                    visited.add((cx, cy))
+                                    p = img.pixel(cx, cy)
+                                    a = qAlpha(p)
+                                    if a < 128:
+                                        continue
+                                    pr = (p >> 16) & 0xff
+                                    pg = (p >> 8) & 0xff
+                                    pb = p & 0xff
+                                    br = (0.299 * pr + 0.587 * pg + 0.114 * pb)
+                                    if br < 100:
+                                        img.setPixel(cx, cy, qRgba(0, 0, 0, 0))
+                                        stack.append((cx + 1, cy))
+                                        stack.append((cx - 1, cy))
+                                        stack.append((cx, cy + 1))
+                                        stack.append((cx, cy - 1))
                     pm = QPixmap.fromImage(img)
                     return pm
 

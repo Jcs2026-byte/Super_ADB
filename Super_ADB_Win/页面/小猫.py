@@ -56,6 +56,7 @@ class DeskCatWidget(QWidget):
     def __init__(self, parent=None, image_path=None, size=85):
         super().__init__(parent)
         self._parent = parent
+        self._image_path = image_path  # 保存图片路径，供 60 秒残影刷新时重新加载
         self._cat_size = QSize(int(size * 1.8), int(size * 1.5))  # 宽>高，给翘起的尾巴/身体左右留足横向余量，避免尾巴尖被 widget 边界裁掉
         self._placed = False  # 是否已完成首次随机落位
         self._state = self.STATE_IDLE
@@ -109,7 +110,9 @@ class DeskCatWidget(QWidget):
         self._update_mask()
 
         # 装饰标签（展示气泡文字）
-        self._bubble = QLabel(self)
+        # ★ parent 必须是父窗口而不是 self：self 设置了 setMask（只显示小猫形状），
+        #   气泡在小猫上方（负坐标）会被 mask 直接裁掉，导致所有气泡都不显示。
+        self._bubble = QLabel(self._parent if self._parent is not None else self)
         self._bubble.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._theme_id = get_current_theme_id(self)
         self._apply_bubble_style()
@@ -136,6 +139,18 @@ class DeskCatWidget(QWidget):
         self._bubble_timer = QTimer(self)
         self._bubble_timer.setSingleShot(True)
         self._bubble_timer.timeout.connect(self._bubble.hide)
+
+        # ★ 生命周期定时器：55 秒说告别话，60 秒自动销毁
+        # 单触发，从小猫出现开始计时，到点依次执行告别 → 销毁
+        self._farewell_timer = QTimer(self)
+        self._farewell_timer.setSingleShot(True)
+        self._farewell_timer.timeout.connect(self._告别说话)
+        self._farewell_timer.start(55000)  # 55 秒
+
+        self._self_destruct_timer = QTimer(self)
+        self._self_destruct_timer.setSingleShot(True)
+        self._self_destruct_timer.timeout.connect(self._自动销毁)
+        self._self_destruct_timer.start(60000)  # 60 秒
 
     # ------------------------------------------------------------------
     # 主题切换
@@ -222,6 +237,66 @@ class DeskCatWidget(QWidget):
             self.update()
         except Exception:
             pass  # 刷新失败不影响使用
+
+    def _告别说话(self):
+        """55 秒时随机说一句告别话，为 60 秒销毁做铺垫。"""
+        try:
+            words = [
+                '我要去吃饭了~', '下次再陪你玩~', '溜了溜了~',
+                '再见啦~', '我困了要睡觉~', '我去找别的猫玩了~',
+            ]
+            self.say(random.choice(words), 3500)
+        except Exception:
+            pass
+
+    def _自动销毁(self):
+        """60 秒时自动销毁小猫，再等 10 秒后由父窗口重启一只新猫。"""
+        # 先把父窗口引用存下来——self 马上要 deleteLater，
+        # 重建回调只能靠 parent，不能依赖即将被回收的 self。
+        parent = self._parent
+        try:
+            # 停掉所有后台定时器，防止销毁后仍有信号触发
+            for t in (
+                self._think_timer, self._anim_timer, self._refresh_timer,
+                self._bubble_timer, self._farewell_timer, self._self_destruct_timer,
+            ):
+                try:
+                    t.stop()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            self._bubble.hide()
+            self._bubble.deleteLater()
+        except Exception:
+            pass
+        # ★ 关键：清空 parent._desk_cat 的旧引用，
+        #   否则 10 秒后 _切换小猫显示(True) 会尝试 close 一个已 deleteLater 的 C++ 对象，
+        #   异常被吞导致重建路径走偏。
+        try:
+            if parent is not None:
+                parent._desk_cat = None
+        except Exception:
+            pass
+        # 安排 10 秒后走「重新勾选小猫」的完整路径重建
+        # 完全复现 _切换小猫显示(True) 的逻辑，和手动勾选行为一致
+        try:
+            def _重启新猫():
+                try:
+                    if parent is not None and hasattr(parent, '_切换小猫显示'):
+                        parent._切换小猫显示(True)
+                except Exception:
+                    pass
+            QTimer.singleShot(10000, _重启新猫)
+        except Exception:
+            pass
+        try:
+            self.hide()
+            self.close()
+            self.deleteLater()
+        except Exception:
+            pass
 
     def _update_mask(self):
         """根据小猫 pixmap 的 alpha 通道生成精确裁剪 mask。
@@ -329,11 +404,13 @@ class DeskCatWidget(QWidget):
         """头顶冒出一句话。"""
         self._bubble.setText(text)
         self._bubble.adjustSize()
-        self._bubble.move(
-            (self.width() - self._bubble.width()) // 2,
-            -self._bubble.height() - 4
-        )
+        # 气泡用父窗口坐标定位在小猫头顶上方
+        cx = self._pos.x() + self.width() // 2
+        bx = cx - self._bubble.width() // 2
+        by = self._pos.y() - self._bubble.height() - 4
+        self._bubble.move(bx, by)
         self._bubble.show()
+        self._bubble.raise_()
         self._bubble_timer.start(ms)
 
     def pause(self):
@@ -386,9 +463,10 @@ class DeskCatWidget(QWidget):
                 self._think_timer.start(1800)
                 self._anim_timer.start(40)
                 self._refresh_timer.start(60000)
-                # 说点什么
+                # 延迟3秒再说话（等小猫位置和重绘就绪），展示3秒
                 welcome_words = ['我又回来啦~', '想我了没~', '我胡汉三又回来了~', '还是这里好玩~']
-                self.say(random.choice(welcome_words), 2500)
+                word = random.choice(welcome_words)
+                QTimer.singleShot(3000, lambda: self.say(word, 3000))
             except Exception:
                 pass
         QTimer.singleShot(20000, _自动回来)

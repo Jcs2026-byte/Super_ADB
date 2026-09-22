@@ -572,28 +572,31 @@ class WirelessPairingClient:
         ctx.verify_mode = ssl.CERT_NONE
 
         # 写入临时证书文件 (load_cert_chain 需要文件路径)
-        cert_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pem')
-        key_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pem')
+        # ★ 用 with + delete=True 确保无论成功失败都自动删除，
+        #   避免程序崩溃时临时证书文件残留系统临时目录。
+        cert_path = None
+        key_path = None
         try:
-            cert_file.write(self.cert_pem)
-            cert_file.close()
-            key_file.write(self.priv_key_pem)
-            key_file.close()
-            ctx.load_cert_chain(cert_file.name, key_file.name)
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.pem') as cert_f:
+                cert_f.write(self.cert_pem)
+                cert_path = cert_f.name
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.pem') as key_f:
+                key_f.write(self.priv_key_pem)
+                key_path = key_f.name
+            ctx.load_cert_chain(cert_path, key_path)
             self._sock = ctx.wrap_socket(self._raw_sock, server_hostname=None)
             # ★ wrap_socket() 在不同 Python/OpenSSL 版本上对 timeout 的继承行为不一致，
             #   显式再设一次，确保 PeerInfo 阶段的 recv 不会永久阻塞。
             self._sock.settimeout(self.timeout)
             self._日志(f"TLS 握手成功, 版本: {self._sock.version()}, timeout={self.timeout}s")
         finally:
-            try:
-                os.unlink(cert_file.name)
-            except Exception:
-                pass
-            try:
-                os.unlink(key_file.name)
-            except Exception:
-                pass
+            # 确保临时文件被删除（即使 load_cert_chain 抛异常）
+            for _p in (cert_path, key_path):
+                if _p:
+                    try:
+                        os.unlink(_p)
+                    except Exception:
+                        pass
 
     def _清理(self):
         """清理资源。"""

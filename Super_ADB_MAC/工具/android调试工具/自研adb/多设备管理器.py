@@ -15,11 +15,15 @@
 
 import threading
 from typing import Dict, List, Optional
-from .adb协议 import AdbConnection, 扫描局域网设备
+from .adb协议 import AdbConnection, 扫描局域网设备, 关闭设备连接, 关闭全部连接 as 池关闭全部
 
 
 class 多设备管理器:
-    """多设备 ADB 连接管理器。"""
+    """多设备 ADB 连接管理器。
+
+    ★ 与连接池同步：断开设备/关闭所有时，同时通知连接池关闭对应连接，
+      避免多设备管理器关了连接、连接池里还残留死连接。
+    """
 
     def __init__(self, timeout: float = 10.0):
         self.timeout = timeout
@@ -50,6 +54,15 @@ class 多设备管理器:
             conn = self._连接.pop(key, None)
             if conn:
                 conn.关闭()
+        # ★ 同时通知连接池关闭对应连接，避免池里残留死连接
+        try:
+            # key 格式是 "host:port"
+            if ':' in key:
+                host, port_str = key.rsplit(':', 1)
+                port = int(port_str)
+                关闭设备连接(host, port)
+        except Exception:
+            pass
 
     def 获取连接(self, key: str) -> Optional[AdbConnection]:
         """获取指定设备的连接。"""
@@ -114,6 +127,11 @@ class 多设备管理器:
                 except Exception:
                     pass
             self._连接.clear()
+        # ★ 同时清空连接池，避免池里残留死连接
+        try:
+            池关闭全部()
+        except Exception:
+            pass
 
     def __enter__(self):
         return self

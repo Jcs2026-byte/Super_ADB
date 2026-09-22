@@ -308,7 +308,7 @@ class _连接池:
     - 清理: 空闲超过 最大空闲秒 的连接自动关闭。
     """
     最大连接数 = 8
-    最大空闲秒 = 90
+    最大空闲秒 = 300  # 5分钟：频繁操作时避免反复建连+认证
     借用超时秒 = 20
 
     def __init__(self):
@@ -1156,6 +1156,8 @@ class AdbConnection:
                     format=serialization.PrivateFormat.PKCS8,
                     encryption_algorithm=serialization.NoEncryption()))
             print(f'[自研adb] 密钥对生成成功: {self._key_path}')
+            # ★ 私钥重新生成后，旧的公钥缓存必须清空
+            self._公钥缓存 = None
             return private_key
         except Exception as e:
             print(f'[自研adb] 生成密钥失败: {e}')
@@ -1209,7 +1211,15 @@ class AdbConnection:
         若 .pub 是旧私钥生成的（如私钥被重新生成过），设备端保存的公钥与
         签名私钥不匹配，签名验证永远失败，设备每次连接都会弹授权框。
         官方 adb 的做法是生成私钥的同时成对写出 .pub，这里发现不配对即重写。
+
+        ★ 实例级缓存：同一连接认证流程中会多次调用，缓存后避免重复读盘+推导。
+          私钥重新生成时（_生成密钥对）会清空缓存。
         """
+        # 缓存命中直接返回
+        _cached = getattr(self, '_公钥缓存', None)
+        if _cached is not None:
+            return _cached
+
         import base64
         private_key = self._加载私钥()
         if not private_key:
@@ -1225,6 +1235,7 @@ class AdbConnection:
                         content = f.read().strip()
                     if 从公钥串提取模数(content) == local_n:
                         print(f'[自研adb] 从.pub文件读取公钥: {pub_path}, 长度={len(content)}')
+                        self._公钥缓存 = content
                         return content
                     print(f'[自研adb] ⚠ .pub 与当前私钥不配对（模数不一致），重新生成: {pub_path}')
                 except Exception as e:
@@ -1241,6 +1252,7 @@ class AdbConnection:
             except Exception as e:
                 print(f'[自研adb] 写回.pub失败(不影响本次认证): {e}')
             print(f'[自研adb] 公钥生成(从私钥推导): 总长={len(key_data)}, base64前32={b64[:32]}...')
+            self._公钥缓存 = result
             return result
         except Exception as ex:
             print(f'[自研adb] 公钥编码失败: {ex}')

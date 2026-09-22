@@ -365,13 +365,21 @@ class DeskCatWidget(QWidget):
         self._hidden_by_user = False
         self.show()
         self.raise_()
-        self.update()  # 强制重绘，避免显示后不刷新
-        # 让父窗口（主窗口）也刷新一下，否则界面不重绘小猫显示不出来
-        try:
-            if self.parent() is not None:
-                self.parent().update()
-        except Exception:
-            pass
+        self.update()
+        # 延迟一帧让事件循环处理完show事件，再触发父窗口重绘
+        # 直接update()不够，因为主窗口是无边框半透明窗口，
+        # 子控件透明显示需要父窗口完全重绘背景才能露出来
+        from PySide6.QtCore import QTimer
+        def _刷新主窗口():
+            try:
+                if self.parent() is not None:
+                    # 让主窗口的内容区域完全重绘
+                    self.parent().update()
+                    # 再让小猫自己重绘一次
+                    self.update()
+            except Exception:
+                pass
+        QTimer.singleShot(50, _刷新主窗口)
         # 重启所有后台定时器
         try:
             self._think_timer.start(1800)

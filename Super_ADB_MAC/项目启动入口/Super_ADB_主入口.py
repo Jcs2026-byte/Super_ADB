@@ -2234,17 +2234,24 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
     def _切换小猫显示(self, enabled: bool):
         """环境配置对话框中小猫开关变更时调用：即时显示或隐藏小猫。"""
         if enabled:
-            if self._desk_cat is None:
-                # 之前没加载过，现在动态创建
-                self._初始化桌面小猫()
-            else:
-                # 调用 show_cat 重启所有后台定时器
-                self._desk_cat.show_cat()
-                self._更新桌面小猫边界()
+            # 每次都新建小猫，避免隐藏后再显示的缓存/重绘问题
+            if self._desk_cat is not None:
+                try:
+                    self._desk_cat.close()
+                    self._desk_cat.deleteLater()
+                except Exception:
+                    pass
+                self._desk_cat = None
+            self._初始化桌面小猫()
         else:
             if self._desk_cat is not None:
-                # 调用 hide_cat 停止所有后台定时器
-                self._desk_cat.hide_cat()
+                # 彻底销毁小猫，不是只隐藏
+                try:
+                    self._desk_cat.close()
+                    self._desk_cat.deleteLater()
+                except Exception:
+                    pass
+                self._desk_cat = None
 
     def _更新桌面小猫边界(self):
         """把主窗口客户区映射为小猫的活动边界。

@@ -412,10 +412,17 @@ class 自研adb客户端:
         官方 adb server 有后台监控线程做这件事，自研模式之前没有。
         空闲时 TCP 半开（WiFi 省电/路由器重启）只能靠下一次操作才发现，
         用户体验就是"经常自己掉线"。心跳线程提前发现并主动重建。
+
+        ★ 非阻塞抢锁：如果主连接正被长操作（push/pull/安装）占用，
+          心跳本轮跳过——正在用的连接肯定是活的，没必要再探。
+          避免心跳阻塞在锁上导致探活间隔被拉长到几分钟。
         """
         while not self._心跳停止.wait(self._心跳间隔):
             try:
-                with self._主连接锁:
+                # 非阻塞抢锁：抢不到说明主连接正被使用，本轮跳过
+                if not self._主连接锁.acquire(blocking=False):
+                    continue
+                try:
                     conn = self._主连接
                     if conn is None or conn.state != STATE_DEVICE:
                         continue  # 主连接已被关闭或未建立，等下次操作重建
@@ -453,6 +460,8 @@ class 自研adb客户端:
                             conn.sock.settimeout(old_timeout)
                         except Exception:
                             pass
+                finally:
+                    self._主连接锁.release()
             except Exception as e:
                 # 心跳线程自身不能崩
                 self._日志(f'[自研adb] 心跳循环异常: {e}')

@@ -167,17 +167,30 @@ def _获取libssl():
 def _获取ssl指针(sslsock) -> Optional[int]:
     """
     从 ssl.SSLSocket 获取内部 OpenSSL SSL* 指针。
-    在 64 位 CPython 3.13 中, _ssl._SSLSocket 的 SSL* 成员偏移为 24。
+
+    ★ 不同 Python/OpenSSL 版本下 _ssl._SSLSocket 的 SSL* 成员偏移不同，
+      硬编码单个偏移量会在其他版本上取错指针 → 导出错误密钥材料 →
+      AES-GCM 解密 InvalidTag → 配对失败。
+      这里尝试所有已知偏移量，并打印诊断信息便于定位。
     """
     try:
         sslobj = sslsock._sslobj
-        # Python 3.13: 偏移 24; 旧版本可能是 16
-        for offset in [24, 16, 32, 40]:
-            ptr = ctypes.c_void_p.from_address(id(sslobj) + offset).value
-            if ptr and ptr > 0x10000:
-                return ptr
-    except Exception:
-        pass
+        py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        # 已知偏移量（按可能性从高到低排序）
+        # Python 3.13: 24; 3.10-3.12: 16; 其他可能: 32, 40, 8, 48
+        offsets = [24, 16, 32, 40, 8, 48, 56]
+        for offset in offsets:
+            try:
+                ptr = ctypes.c_void_p.from_address(id(sslobj) + offset).value
+                if ptr and ptr > 0x10000:
+                    print(f'[配对客户端] SSL* 指针偏移量={offset} (Python {py_ver})')
+                    return ptr
+            except Exception:
+                continue
+        print(f'[配对客户端] 警告: 所有已知偏移量都未找到有效 SSL* 指针 '
+              f'(Python {py_ver}, _sslobj类型={type(sslobj).__name__})')
+    except Exception as e:
+        print(f'[配对客户端] 获取 SSL* 指针异常: {e}')
     return None
 
 

@@ -327,10 +327,17 @@ class _连接池:
         while True:
             with self._锁:
                 # 1. 当前线程已绑定且可用 → 直接复用
+                # ★ 修复线程绑定泄漏：Python tid 会被新线程复用，旧线程结束后
+                #   绑定关系不会自动清理。若绑定的连接已损坏/不匹配 burst，
+                #   必须主动清理绑定，否则新线程一上来就用死连接。
                 bound = self._线程绑定.get(tid)
-                if bound and self._连接可用(bound):
-                    if burst is None or (bound.conn._delayed_ack if burst else not bound.conn._delayed_ack):
+                if bound is not None:
+                    burst_ok = (burst is None or
+                                (bound.conn._delayed_ack if burst else not bound.conn._delayed_ack))
+                    if self._连接可用(bound) and burst_ok:
                         return bound.conn
+                    # 绑定连接已坏或 burst 不匹配：清理残留绑定
+                    self._线程绑定.pop(tid, None)
 
                 # 2. 有空闲连接 → 取一个
                 pool = self._空闲.get(key, [])

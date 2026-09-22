@@ -1,9 +1,9 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 ADB Shell 整合工具 —— 主入口
 ==============================
 整合常用 ADB 快捷命令、文件管理器、日志查看器于一体。
-UI 布局由 Super_ADB悦.ui 定义，通过 Ui_MainWindow 驱动。
+UI 布局由 Super_ADB.ui 定义，通过 Ui_MainWindow 驱动。
 Super_ADB
 # -*- coding: UTF-8 -*-
 @author:JCS
@@ -734,14 +734,14 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             _c_warn = '#9a5a00'     # 警告（深棕橙）
             _c_ts = '#6b7280'       # 时间戳（中灰）
         else:
-            _c_cmd = '#f0f0f0'      # 命令行（近白，最清晰）
-            _c_kw = '#f0f0f0'       # 命令关键字（与命令同色，靠加粗区分）
-            _c_out = '#ececec'      # 普通输出（浅灰白）
-            _c_label = '#b0bec5'    # 键名标签（浅灰蓝）
+            _c_cmd = '#ffffff'      # 命令行（纯白，最清晰）
+            _c_kw = '#ffffff'       # 命令关键字（与命令同色，靠加粗区分）
+            _c_out = '#f5f5f5'      # 普通输出（近白，确保清晰）
+            _c_label = '#e0e0e0'    # 键名标签（亮灰，避免太暗看不清）
             _c_err = '#ff6b6b'      # 错误（红）
             _c_ok = '#69f0ae'       # 成功（绿）
             _c_warn = '#ffd54f'     # 警告（黄）
-            _c_ts = '#bdbdbd'       # 时间戳（中亮灰）
+            _c_ts = '#e0e0e0'       # 时间戳（亮灰，避免太暗看不清）
 
         lines = str(text).splitlines()
         body_parts = []

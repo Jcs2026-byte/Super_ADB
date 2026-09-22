@@ -366,6 +366,12 @@ class DeskCatWidget(QWidget):
         self.show()
         self.raise_()
         self.update()  # 强制重绘，避免显示后不刷新
+        # 让父窗口（主窗口）也刷新一下，否则界面不重绘小猫显示不出来
+        try:
+            if self.parent() is not None:
+                self.parent().update()
+        except Exception:
+            pass
         # 重启所有后台定时器
         try:
             self._think_timer.start(1800)

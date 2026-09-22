@@ -208,9 +208,9 @@ class DeskCatWidget(QWidget):
         return pm
 
     def _彻底刷新(self):
-        """每60秒彻底刷新一次，消除Windows DWM透明控件累积的残影。"""
+        """每60秒彻底刷新一次，消除Windows DWM透明控件累积的残影。
+        不做hide/show，直接重新加载pixmap，避免隐藏后再显示的重绘问题。"""
         try:
-            self.hide()
             # 重新加载pixmap（会重新做杂色清理）
             self._pixmap = self._load_pixmap(self._image_path)
             self._scaled_pixmap = self._pixmap.scaled(
@@ -219,7 +219,6 @@ class DeskCatWidget(QWidget):
                 Qt.TransformationMode.SmoothTransformation
             )
             self._update_mask()
-            self.show()
             self.update()
         except Exception:
             pass  # 刷新失败不影响使用
@@ -354,10 +353,10 @@ class DeskCatWidget(QWidget):
         # 关闭前说点话
         import random
         bye_words = ['去吃饭了~', '去找女朋友了~', '去捣乱了~', '溜了溜了~', '下次再玩~']
-        self._show_bubble(random.choice(bye_words))
+        self.say(random.choice(bye_words), 800)
         # 延迟一下再隐藏，让气泡能看到
         from PySide6.QtCore import QTimer
-        QTimer.singleShot(800, self._do_hide)
+        QTimer.singleShot(900, self._do_hide)
 
     def _do_hide(self):
         """真正隐藏小猫并停止定时器。"""

@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 Super_ADB 环境配置弹窗
 ======================
@@ -111,11 +111,11 @@ def 读取启动自动连接设置() -> bool:
 
 
 def 读取小猫开关设置() -> bool:
-    """读取是否显示桌面宠物小猫（默认开启）。"""
+    """读取是否显示桌面宠物小猫（默认关闭）。"""
     cfg = 加载json配置(CONFIG_NAME)
     if not isinstance(cfg, dict):
-        return True
-    return bool(cfg.get('desk_cat_enabled', True))
+        return False
+    return bool(cfg.get('desk_cat_enabled', False))
 
 
 def 保存小猫开关设置(enabled: bool):
@@ -275,7 +275,7 @@ class 环境配置对话框(QDialog):
         self.auto_connect_chk.stateChanged.connect(self._on_auto_connect_toggle)
         content.addWidget(self.auto_connect_chk)
 
-        # 桌面宠物小猫开关（默认开启）
+        # 桌面宠物小猫开关（默认关闭）
         self.cat_chk = QCheckBox('显示桌面宠物小猫')
         self.cat_chk.setObjectName('socketChk')
         self.cat_chk.setChecked(读取小猫开关设置())

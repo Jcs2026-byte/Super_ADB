@@ -21,7 +21,7 @@
 [![Made with Python](https://img.shields.io/badge/Made%20with-Python-blue?logo=python)](#-快速开始)
 [![Gitee Stars](https://gitee.com/Jcs2026/Super_ADB/badge/star.svg)](https://gitee.com/Jcs2026/Super_ADB/stargazers)
 [![Gitee Forks](https://gitee.com/Jcs2026/Super_ADB/badge/fork.svg)](https://gitee.com/Jcs2026/Super_ADB/forks)
-[![GitCode 镜像](https://img.shields.io/badge/mirror-GitCode-2f6feb?logo=coding&logoColor=white)](https://gitcode.com/Jcs2026/Super_ADB)
+[![GitCode Stars](https://gitcode.com/Jcs2026/Super_ADB/star/new_badge.svg)](https://gitcode.com/Jcs2026/Super_ADB/stargazers)
 
 ---
 

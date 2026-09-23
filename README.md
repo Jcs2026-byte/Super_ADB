@@ -2,10 +2,23 @@
 
 > 跨平台 ADB 集成调试工具，集设备连接、应用管理、文件传输、日志抓取、性能监控、网络抓包、投屏控制、ADB 命令速查等功能于一体。
 
-[![平台](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)](#-支持平台)
+[![平台](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)](#️-支持平台)
 [![Python](https://img.shields.io/badge/python-3.12%2B-yellow)](#-快速开始)
+[![PySide6](https://img.shields.io/badge/GUI-PySide6%20%7C%20Qt6-blueviolet?logo=qt)](#-功能特性)
 [![License](https://img.shields.io/badge/license-MIT-green)](#-许可证)
 [![CI](https://img.shields.io/badge/CI-GitHub%20Actions-brightgreen)](#-下载安装)
+[![Release](https://img.shields.io/github/v/release/Jcs2026-byte/Super_ADB?include_prereleases)](https://github.com/Jcs2026-byte/Super_ADB/releases)
+[![Downloads](https://img.shields.io/github/downloads/Jcs2026-byte/Super_ADB/total)](https://github.com/Jcs2026-byte/Super_ADB/releases)
+[![Stars](https://img.shields.io/github/stars/Jcs2026-byte/Super_ADB?style=social)](https://github.com/Jcs2026-byte/Super_ADB/stargazers)
+[![Last Commit](https://img.shields.io/github/last-commit/Jcs2026-byte/Super_ADB)](https://github.com/Jcs2026-byte/Super_ADB/commits)
+
+[![Ruff](https://img.shields.io/badge/lint-ruff-red?logo=ruff)](pyproject.toml)
+[![Build](https://img.shields.io/badge/build-PyInstaller-orange)](#-下载安装)
+[![Android](https://img.shields.io/badge/Android-ADB%20%2F%20scrcpy-brightgreen?logo=android)](#-功能特性)
+[![Themes](https://img.shields.io/badge/themes-17%20套-purple)](#-多主题切换)
+[![Commands](https://img.shields.io/badge/commands-150%2B%20%E6%8C%87%E4%BB%A4-blue)](#-adb-命令集合)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-贡献)
+[![Made with Python](https://img.shields.io/badge/Made%20with-Python-blue?logo=python)](#-快速开始)
 
 ---
 

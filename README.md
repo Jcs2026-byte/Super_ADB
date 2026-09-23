@@ -19,6 +19,8 @@
 [![Commands](https://img.shields.io/badge/commands-150%2B%20%E6%8C%87%E4%BB%A4-blue)](#-adb-命令集合)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-贡献)
 [![Made with Python](https://img.shields.io/badge/Made%20with-Python-blue?logo=python)](#-快速开始)
+[![Gitee 镜像](https://img.shields.io/badge/mirror-Gitee-c71d23?logo=gitee&logoColor=white)](https://gitee.com/Jcs2026/Super_ADB)
+[![GitCode 镜像](https://img.shields.io/badge/mirror-GitCode-2f6feb?logo=coding&logoColor=white)](https://gitcode.com/Jcs2026/Super_ADB)
 
 ---
 

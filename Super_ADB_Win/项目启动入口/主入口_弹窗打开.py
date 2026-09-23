@@ -240,6 +240,12 @@ class 弹窗打开Mixin:
             # 配对成功后刷新设备列表，并把当前 IP:端口 填到主窗口输入框方便下一步 connect
             if ip:
                 self.ipInput.setText(f'{ip}:{port}')
+            # 标记待写入历史记录（扫码/配对路径此前漏写历史，与主窗口「连接」按钮一致）
+            try:
+                _port = int(str(port).strip()) if str(port).strip().isdigit() else 5555
+                self._pending_history_dev = (str(ip).strip(), _port)
+            except Exception:
+                self._pending_history_dev = None
             self.刷新设备()
 
         def _设备连接时(serial):

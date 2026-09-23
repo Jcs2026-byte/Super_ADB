@@ -513,20 +513,80 @@ class AdbHelper:
                     self._自研adb_usb缓存.clear()
         _th.Thread(target=_close_and_clear, daemon=True).start()
 
+    def _回填设备信息(self, serial, client, shell超时=3):
+        """getprop 取型号/系统版本，写 _设备名缓存 并回写历史连接记录。
+
+        首次连接的异步线程（_获取自研adb 内闭包）与型号补偿重试共用本方法，
+        避免两处重复维护同一段 getprop + 历史回写逻辑。
+        """
+        try:
+            # 执行 getprop 获取设备名和系统版本
+            model = client.执行shell(
+                'getprop ro.product.model', timeout=shell超时).strip()
+            android_version = client.执行shell(
+                'getprop ro.build.version.release', timeout=shell超时).strip()
+            if model:
+                self._设备名缓存[serial] = model
+            # 更新历史连接记录里的设备信息
+            try:
+                ip, port = serial.rsplit(':', 1)
+                history = 加载json配置('历史连接设备.json')
+                if isinstance(history, list):
+                    for d in history:
+                        if d.get('ip') == ip:
+                            if model:
+                                d['model'] = model
+                            if android_version:
+                                d['system_version'] = android_version
+                            break
+                    保存json配置('历史连接设备.json', history)
+            except Exception:
+                pass
+            if self.log_callback:
+                self.log_callback(
+                    f'[自研adb] 获取到设备 {serial} 型号: {model}, Android {android_version}')
+        except Exception:
+            pass
+
     def 异步获取设备型号(self, serial):
         """后台线程：触发设备连接，_获取自研adb 内部会异步获取型号并存入缓存。
-        QTimer 轮询会自动发现新型号并更新下拉框。这里只负责触发连接，不重复 getprop。"""
+        QTimer 轮询会自动发现新型号并更新下拉框。这里只负责触发连接，不重复 getprop。
+
+        补偿：_获取自研adb 走缓存快速路径时不会重新 getprop；若首次 getprop 因
+        单通道设备被官方连接抢占通道而失败、型号始终为空，则错峰用已缓存 client
+        重试（最多 2 次），避免下拉框永远只显示 serial。重试不新建连接、不触发授权。
+        """
         import threading as _th
+        # 防重入：同一 serial 短时间内多次刷新设备列表时，只起一个补取线程
+        补取中 = getattr(self, '_型号补取中', None)
+        if 补取中 is None:
+            补取中 = set()
+            self._型号补取中 = 补取中
+        if serial in 补取中:
+            return
+        补取中.add(serial)
+
         def _do():
             try:
                 if serial in self._设备名缓存:
                     return  # 已有缓存，不用再连
-                # _获取自研adb 内部连接成功后会自动后台获取型号 + Android版本 + 更新历史记录 + 打印日志
-                # 这里调用它只是为了触发连接，型号获取交给它内部的 _异步获取设备信息 去做
-                # 避免重复执行 getprop 导致两遍日志
-                self._获取自研adb(serial)
+                client = self._获取自研adb(serial)
+                # 错峰重试：首次 getprop 可能因单通道/官方连接抢占而返回空
+                for 尝试 in range(2):
+                    if serial in self._设备名缓存:
+                        return
+                    # 第 1 次等首连接的异步 getprop 跑完；第 2 次再等久一点
+                    time.sleep(2.0 * (尝试 + 1))
+                    if client is None:
+                        client = self._获取自研adb(serial)
+                    if client is None:
+                        continue
+                    # 重试放宽 shell 超时，给被抢占后重连的通道留足时间
+                    self._回填设备信息(serial, client, shell超时=4)
             except Exception:
                 pass
+            finally:
+                补取中.discard(serial)
         _th.Thread(target=_do, daemon=True).start()
 
     def _cmd_str(self, cmd_list):
@@ -621,31 +681,7 @@ class AdbHelper:
                             pass
                         # 后台异步获取设备名和系统版本，存到缓存里
                         def _异步获取设备信息(serial=serial, client=client):
-                            try:
-                                # 执行 getprop 获取设备名和系统版本
-                                model = client.执行shell('getprop ro.product.model', timeout=3).strip()
-                                android_version = client.执行shell('getprop ro.build.version.release', timeout=3).strip()
-                                if model:
-                                    self._设备名缓存[serial] = model
-                                # 更新历史连接记录里的设备信息
-                                try:
-                                    ip, port = serial.rsplit(':', 1)
-                                    history = 加载json配置('历史连接设备.json')
-                                    if isinstance(history, list):
-                                        for d in history:
-                                            if d.get('ip') == ip:
-                                                if model:
-                                                    d['model'] = model
-                                                if android_version:
-                                                    d['system_version'] = android_version
-                                                break
-                                        保存json配置('历史连接设备.json', history)
-                                except Exception:
-                                    pass
-                                if self.log_callback:
-                                    self.log_callback(f'[自研adb] 获取到设备 {serial} 型号: {model}, Android {android_version}')
-                            except Exception:
-                                pass
+                            self._回填设备信息(serial, client, shell超时=3)
                         import threading as _th
                         _th.Thread(target=_异步获取设备信息, daemon=True).start()
                         return client

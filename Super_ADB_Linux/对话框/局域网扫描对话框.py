@@ -15,6 +15,7 @@ import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import shiboken6
 from PySide6.QtCore import Qt, QThread, Signal, QObject
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
@@ -31,6 +32,15 @@ ADB_PORT = 5555
 DEFAULT_TIMEOUT = 0.8       # 每个IP的socket超时（秒），WiFi环境建议0.8-1.0
 MAX_WORKERS = 100          # 并发扫描线程数
 SCAN_BATCH_SIZE = 20       # 每批信号汇报的条目数（避免频繁UI刷新）
+
+
+def _is_valid(obj):
+    """安全检查 Qt/C++ 对象是否仍未被销毁。
+
+    后台线程回调执行时，对话框/按钮可能已因重新扫描、排序重建或窗口关闭而被删除；
+    直接访问会抛出 RuntimeError: libshiboken: Internal C++ object already deleted。
+    """
+    return obj is not None and shiboken6.isValid(obj)
 
 
 class _ScanWorker(QObject):
@@ -330,6 +340,12 @@ class 局域网扫描对话框(QDialog):
         self._found_ips = []
         self._build_ui()
         self._auto_detect_network()
+        # 打开对话框即启动 mDNS(_adb-tls-connect) 浏览，扫描前/中后台累积随机端口设备
+        try:
+            from 工具.android调试工具.自研adb.mdns发现 import ensure_running as _mdns_run
+            _mdns_run()
+        except Exception:
+            pass
 
     # ── 主题切换 ──
 
@@ -574,7 +590,8 @@ class 局域网扫描对话框(QDialog):
                                  "• 单个: 192.168.1.100")
             return
 
-        # 清空旧结果
+        # 清空旧结果前先中止所有进行中的连接，否则回调会访问已销毁的按钮
+        self._abort_all_connects()
         self.table.setRowCount(0)
         self._found_ips = []  # 保留发现列表供"一键连接"
 
@@ -614,11 +631,16 @@ class 局域网扫描对话框(QDialog):
 
     # ── 回调信号 ──
 
-    def _on_device_found(self, ip, latency_ms, _extra):
+    def _on_device_found(self, ip, latency_ms, _extra=None, port=None):
+        if not _is_valid(self) or getattr(self, '_closing', False):
+            return
+        # 5555 扫描用默认端口；mDNS 补充时传入真实随机端口。行 key 统一为 "ip:port"。
+        实际端口 = self._port if port is None else int(port)
         row = self.table.rowCount()
         self.table.insertRow(row)
+        addr = f"{ip}:{实际端口}"
 
-        item_ip = QTableWidgetItem(ip)
+        item_ip = QTableWidgetItem(addr)
         item_ip.setTextAlignment(Qt.AlignCenter)
         self.table.setItem(row, 0, item_ip)
 
@@ -631,19 +653,21 @@ class 局域网扫描对话框(QDialog):
         lat_item.setTextAlignment(Qt.AlignCenter)
         self.table.setItem(row, 2, lat_item)
 
-        btn_conn = self._make_connect_btn(ip)
+        btn_conn = self._make_connect_btn(addr)
         self.table.setCellWidget(row, 3, btn_conn)
 
-        self._found_ips.append(ip)
+        self._found_ips.append(addr)
         self.lbl_status.setText(f"已发现 {len(self._found_ips)} 台设备...")
 
     def _on_progress(self, current, total):
+        if not _is_valid(self) or getattr(self, '_closing', False):
+            return
         self.progress.setValue(current)
         pct = current * 100 // total if total else 0
         self.lbl_status.setText(f"扫描中... {current}/{total} ({pct}%)")
 
     def _on_scan_finished(self, results):
-        if getattr(self, '_closing', False):
+        if not _is_valid(self) or getattr(self, '_closing', False):
             return
         self._cleanup_thread()
         total_scanned = self.progress.maximum()
@@ -663,7 +687,9 @@ class 局域网扫描对话框(QDialog):
             self._resort_by_latency()
             # 扫描完成后**不自动连接**获取机型名，避免抢占单客户设备的连接槽位。
             # 只有用户手动点击「连接」按钮后，才在连接成功的回调里回填机型名。
-        elif total_scanned > 0:
+        # 无论 5555 扫到几台，都合并一次 mDNS(_adb-tls-connect) 发现的随机端口设备
+        self._补充_mdns设备()
+        if total_scanned > 0 and self.table.rowCount() == 0:
             # 全部离线时也加一行提示
             self.table.insertRow(0)
             tip = QTableWidgetItem(f"  未在当前网段发现 ADB 设备（端口 {self._port}）")
@@ -672,8 +698,60 @@ class 局域网扫描对话框(QDialog):
             self.table.setItem(0, 0, tip)
             self.table.setSpan(0, 0, 1, 4)
 
+    def _快速探活(self, ip, port, timeout=0.4):
+        """单 IP 单端口快速 TCP 探活，返回延迟(ms) 或 None（端口已关/不可达）。"""
+        try:
+            t0 = time.monotonic()
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(timeout)
+                s.connect((ip, port))
+            return (time.monotonic() - t0) * 1000
+        except Exception:
+            return None
+
+    def _补充_mdns设备(self):
+        """合并 mDNS(_adb-tls-connect) 发现的随机端口设备。
+
+        这类设备开着无线调试，端口是随机的（非 5555），5555 扫描扫不到。
+        直接读单例缓存的 (ip, 端口)，不做全网段探测；仅对每个候选做一次
+        快速探活，过滤 mDNS 缓存里已关闭的设备。
+        """
+        if not _is_valid(self) or getattr(self, '_closing', False):
+            return
+        try:
+            from 工具.android调试工具.自研adb.mdns发现 import get_connect_services
+            services = get_connect_services() or {}
+        except Exception:
+            services = {}
+        if not services:
+            return
+        已有 = set(self._found_ips)
+        新增 = 0
+        for _name, pair in services.items():
+            try:
+                ip, port = pair[0], pair[1]
+            except Exception:
+                continue
+            if not ip or not port:
+                continue
+            addr = f"{ip}:{port}"
+            if addr in 已有:
+                continue
+            # 快速探活：mDNS 缓存可能残留已关闭无线调试的设备
+            lat = self._快速探活(ip, int(port))
+            if lat is None:
+                continue
+            已有.add(addr)
+            self._on_device_found(ip, lat, None, port=int(port))
+            新增 += 1
+        if 新增:
+            self._resort_by_latency()
+            self.lbl_status.setText(
+                f"✅ 扫描完成：5555 扫描 {self.progress.maximum()} 个地址，"
+                f"另通过 mDNS 发现 {新增} 台随机端口设备")
+
     def _on_scan_stopped(self):
-        if getattr(self, '_closing', False):
+        if not _is_valid(self) or getattr(self, '_closing', False):
             return
         self._cleanup_thread()
         self.progress.setValue(self.progress.maximum())
@@ -726,7 +804,14 @@ class 局域网扫描对话框(QDialog):
         """
         if getattr(self, '_closing', False):
             return
-        # 标记忙碌（防止同一 IP 重复点击）
+        # ip 参数实为 "ip:port"（5555 或 mDNS 随机端口），解出实际地址与端口
+        host, _, port_str = ip.rpartition(':')
+        host = host or ip
+        try:
+            实际端口 = int(port_str) if port_str else self._port
+        except ValueError:
+            实际端口 = self._port
+        # 标记忙碌（防止同一地址重复点击）
         if ip in self._busy_buttons:
             return
         btn = self._find_btn_for_ip(ip)
@@ -735,9 +820,10 @@ class 局域网扫描对话框(QDialog):
             btn.setEnabled(False)
             self._busy_buttons[ip] = btn
         self._set_status_for_ip(ip, "⏳ 连接中...", TIP_GRAY)
-        self.lbl_status.setText(f"正在连接 {ip}:{self._port} ...")
+        self.lbl_status.setText(f"正在连接 {ip} ...")
 
-        worker = _ConnectWorker(ip, port=self._port, timeout=8)
+        worker = _ConnectWorker(host, port=实际端口, timeout=8)
+        worker._addr = ip  # 完整 "ip:port"，供 _on_connect_done 做 UI 关联
         thread = QThread(self)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
@@ -757,22 +843,26 @@ class 局域网扫描对话框(QDialog):
         if sender is not None:
             for i, (t, w) in enumerate(self._connect_threads):
                 if w is sender:
-                    ip = w._ip
+                    ip = getattr(w, '_addr', None) or w._ip
                     break
-        if ip is None or getattr(self, '_closing', False):
+        if ip is None or getattr(self, '_closing', False) or not _is_valid(self):
             return
-        # 恢复按钮
+        # 恢复按钮（按钮可能因重新扫描/排序重建/窗口关闭而被销毁）
         btn = self._busy_buttons.pop(ip, None)
-        if btn is not None:
+        if _is_valid(btn):
             btn.setText("连接")
             btn.setEnabled(True)
         # 更新状态列 & 弹窗
-        if ok:
-            self._set_status_for_ip(ip, f"🟢 在线", ACCENT_COLOR_GREEN)
-            self.lbl_status.setText(f"✅ 已连接 {ip}:{self._port}")
-        else:
-            self._set_status_for_ip(ip, "❌ 离线/失败", TIP_GRAY)
-            self.lbl_status.setText(f"❌ {ip}:{self._port} {msg}")
+        if _is_valid(self.table):
+            if ok:
+                self._set_status_for_ip(ip, f"🟢 在线", ACCENT_COLOR_GREEN)
+            else:
+                self._set_status_for_ip(ip, "❌ 离线/失败", TIP_GRAY)
+        if _is_valid(self.lbl_status):
+            if ok:
+                self.lbl_status.setText(f"✅ 已连接 {ip}")
+            else:
+                self.lbl_status.setText(f"❌ {ip} {msg}")
         # 不论成功失败都清理对应 worker (成功的话再异步回填机型)
         self._cleanup_worker_list(self._connect_threads, ip)
         if ok:
@@ -780,21 +870,27 @@ class 局域网扫描对话框(QDialog):
             # 连接成功，添加到历史连接记录
             try:
                 from 对话框.历史连接设备对话框 import 添加历史设备
-                添加历史设备(ip, self._port, '')
+                _h, _, _p = ip.rpartition(':')
+                _h = _h or ip
+                try:
+                    _p = int(_p) if _p else self._port
+                except ValueError:
+                    _p = self._port
+                添加历史设备(_h, _p, '')
             except Exception:
                 pass
             # 通知主窗口：刚连上一台新设备，刷新设备下拉框并自动选中它
             if callable(self._on_device_connected):
                 try:
-                    self._on_device_connected(f"{ip}:{self._port}")
+                    self._on_device_connected(ip)
                 except Exception:
                     pass
 
     def _cleanup_worker_list(self, lst, ip):
-        """从 (QThread, worker) 列表移除并清理对应 ip 的条目。"""
+        """从 (QThread, worker) 列表移除并清理对应条目（兼容 addr/host）。"""
         kept = []
         for t, w in lst:
-            if getattr(w, '_ip', None) == ip:
+            if getattr(w, '_addr', None) == ip or getattr(w, '_ip', None) == ip:
                 try:
                     if t.isRunning():
                         t.quit()
@@ -807,6 +903,30 @@ class 局域网扫描对话框(QDialog):
                 kept.append((t, w))
         lst.clear()
         lst.extend(kept)
+
+    def _abort_all_connects(self):
+        """中止所有进行中的连接 worker，断开信号并清空按钮引用。
+
+        在重新扫描/排序重建等会销毁表格行（及其中按钮）的操作前必须调用，
+        否则后台回调会访问已删除的 QPushButton 导致 RuntimeError。
+        """
+        for t, w in list(self._connect_threads):
+            try:
+                # 先断开 done 信号，防止已排队的信号在 wait 后触发回调
+                try:
+                    w.done.disconnect()
+                except Exception:
+                    pass
+                w.cancel()
+                if t.isRunning():
+                    t.quit()
+                    t.wait(2000)
+                w.deleteLater()
+                t.deleteLater()
+            except Exception:
+                pass
+        self._connect_threads.clear()
+        self._busy_buttons.clear()
 
     def _connect_all_found(self):
         """一键连接所有发现的设备（异步串行：避免一次性起 N 个 adb 进程卡死）。"""
@@ -864,34 +984,42 @@ class 局域网扫描对话框(QDialog):
         if getattr(self, '_closing', False):
             callback(False, "窗口已关闭")
             return
+        host, _, port_str = ip.rpartition(':')
+        host = host or ip
+        try:
+            实际端口 = int(port_str) if port_str else self._port
+        except ValueError:
+            实际端口 = self._port
         btn = self._find_btn_for_ip(ip)
         if btn is not None:
             btn.setText("连接中...")
             btn.setEnabled(False)
             self._busy_buttons[ip] = btn
         self._set_status_for_ip(ip, "⏳ 连接中...", TIP_GRAY)
-        worker = _ConnectWorker(ip, port=self._port, timeout=8)
+        worker = _ConnectWorker(host, port=实际端口, timeout=8)
+        worker._addr = ip
         thread = QThread(self)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
 
         def _done(ok, msg):
-            if getattr(self, '_closing', False):
+            if getattr(self, '_closing', False) or not _is_valid(self):
                 return
             btn = self._busy_buttons.pop(ip, None)
-            if btn is not None:
+            if _is_valid(btn):
                 btn.setText("连接")
                 btn.setEnabled(True)
             color = ACCENT_COLOR_GREEN if ok else TIP_GRAY
             text = "🟢 在线" if ok else "❌ 离线/失败"
-            self._set_status_for_ip(ip, text, color)
+            if _is_valid(self.table):
+                self._set_status_for_ip(ip, text, color)
             self._cleanup_worker_list(self._connect_threads, ip)
             if ok:
                 self._enrich_after_connect(ip)
                 # 通知主窗口：刚连上一台新设备，刷新设备下拉框并自动选中它
                 if callable(self._on_device_connected):
                     try:
-                        self._on_device_connected(f"{ip}:{self._port}")
+                        self._on_device_connected(ip)
                     except Exception:
                         pass
             try:
@@ -908,7 +1036,7 @@ class 局域网扫描对话框(QDialog):
         """复制所有发现的 IP 到剪贴板。"""
         if not hasattr(self, '_found_ips') or not self._found_ips:
             return
-        text = "\n".join(f"{ip}:{self._port}" for ip in self._found_ips)
+        text = "\n".join(self._found_ips)
         QApplication.clipboard().setText(text)
         self.lbl_status.setText(f"已复制 {len(self._found_ips)} 个地址到剪贴板")
 
@@ -955,6 +1083,8 @@ class 局域网扫描对话框(QDialog):
             st_fg = st_item.foreground().color()
             lat_text = self.table.item(r, 2).text()
             snapshot.append((ip, st_text, st_fg, lat_text))
+        # 重建会销毁所有旧按钮，先中止进行中的连接避免回调访问失效对象
+        self._abort_all_connects()
         self.table.setRowCount(0)
         for ip, st_text, st_fg, lat_text in snapshot:
             row = self.table.rowCount()
@@ -986,18 +1116,24 @@ class 局域网扫描对话框(QDialog):
         使用 QObject + moveToThread 模式（旧版 threading.Thread + QTimer 跨线程投递
         在某些 PySide6 下不安全）。失败一律静默（不动 UI）。
         """
-        if getattr(self, '_closing', False):
+        if getattr(self, '_closing', False) or not _is_valid(self):
             return
         # 同一个 ip 短时间内多次触发（比如批量连接后再 enrich）→ 合并到一个 worker
         for t, w in self._enrich_threads:
             if getattr(w, '_ip', None) == ip:
                 return
-        worker = _EnrichWorker(ip, port=self._port, timeout=5, adb=self._adb)
+        host, _, port_str = ip.rpartition(':')
+        host = host or ip
+        try:
+            enrich_port = int(port_str) if port_str else ADB_PORT
+        except ValueError:
+            enrich_port = ADB_PORT
+        worker = _EnrichWorker(host, port=enrich_port, timeout=5, adb=self._adb)
         thread = QThread(self)
 
         def _on_done(_ip, name, _t=thread, _w=worker):
             # 先回填 UI
-            if name and not getattr(self, '_closing', False):
+            if name and not getattr(self, '_closing', False) and _is_valid(self) and _is_valid(self.table):
                 # 先尝试匹配「🟢 在线」/「🟢 在线 · XXX」行,加名称后缀
                 target_row = None
                 for r in range(self.table.rowCount()):
@@ -1031,14 +1167,26 @@ class 局域网扫描对话框(QDialog):
         # 扫描线程
         if self._scan_thread and self._scan_thread.isRunning():
             if self._worker:
+                # 先断开信号，防止已排队的信号在窗口销毁后触发回调
+                try:
+                    self._worker.found.disconnect()
+                    self._worker.progress.disconnect()
+                    self._worker.finished.disconnect()
+                    self._worker.stopped.disconnect()
+                except Exception:
+                    pass
                 self._worker.cancel()
             self._scan_thread.quit()
             self._scan_thread.wait(2000)
             self._scan_thread = None
             self._worker = None
-        # 连接 worker 线程：cancel 后再 quit+wait(短超时),不会持续阻塞 UI
+        # 连接 worker 线程：先断开信号 → cancel → quit+wait(短超时)
         for t, w in list(self._connect_threads):
             try:
+                try:
+                    w.done.disconnect()
+                except Exception:
+                    pass
                 w.cancel()
                 if t.isRunning():
                     t.quit()
@@ -1048,9 +1196,14 @@ class 局域网扫描对话框(QDialog):
             except Exception:
                 pass
         self._connect_threads.clear()
+        self._busy_buttons.clear()
         # 机型回填 worker 线程
         for t, w in list(self._enrich_threads):
             try:
+                try:
+                    w.done.disconnect()
+                except Exception:
+                    pass
                 w.cancel()
                 if t.isRunning():
                     t.quit()

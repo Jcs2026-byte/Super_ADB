@@ -55,13 +55,13 @@ from PySide6.QtCore import (
     Qt, QProcess, QTimer, QThreadPool, Signal, QObject, QRunnable, QUrl, QEvent,
 )
 from PySide6.QtGui import (QColor, QFont,
-                           QDesktopServices)
+                           QDesktopServices, QKeySequence, QShortcut)
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QPushButton,
     QLabel, QLineEdit, QCheckBox, QListWidget, QListWidgetItem,
     QAbstractItemView,
     QMenu, QFileDialog, QSizePolicy,
-    QApplication,
+    QApplication, QDialog, QDialogButtonBox, QPlainTextEdit,
 )
 
 from 工具.android调试工具.ADB工具 import AdbHelper, 格式化设备标签, 加载json配置, 保存json配置
@@ -848,17 +848,48 @@ class 日志查看器页(QWidget):
     # 视图渲染
     # ------------------------------------------------------------------
     def _beautify_view(self):
-        """日志视图美化：等宽字体 + 右键菜单（复制/打开保存目录/清空）。"""
+        """日志视图美化：等宽字体 + 右键菜单（复制/打开保存目录/清空）+ 快捷键。"""
         font = QFont('Consolas', 9)
         font.setStyleHint(QFont.Monospace)
         self.text_edit.setFont(font)
         self.text_edit.setContextMenuPolicy(Qt.CustomContextMenu)
         self.text_edit.customContextMenuRequested.connect(self._on_context_menu)
 
+        # Ctrl+C 复制选中行（QListWidget 整行选择）
+        self._copy_sc = QShortcut(QKeySequence(QKeySequence.StandardKey.Copy), self.text_edit)
+        self._copy_sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self._copy_sc.activated.connect(self._copy_selected)
+
+        # 双击复制光标所在行（无需先选中，快速复制单行）
+        self.text_edit.itemDoubleClicked.connect(self._on_item_double_clicked)
+
+    def _on_item_double_clicked(self, item):
+        """双击某行：把该行原文写入剪贴板，并在状态栏短暂提示。"""
+        if item is None:
+            return
+        text = item.text()
+        QApplication.clipboard().setText(text)
+        self.status_label.setText(f'已复制 1 行: {text[:80]}…' if len(text) > 80 else f'已复制: {text}')
+
     def _on_context_menu(self, pos):
         menu = QMenu(self)
-        copy_act = menu.addAction('复制选中行')
-        copy_act.triggered.connect(self._copy_selected)
+        # 没选中任何行时，右键目标是哪行就复制哪行；有选中行时复制全部选中行
+        item_under = self.text_edit.itemAt(pos)
+        has_sel = bool(self.text_edit.selectedItems())
+        if has_sel:
+            copy_text = f'复制选中行（{len(self.text_edit.selectedItems())} 行）  Ctrl+C'
+        elif item_under is not None:
+            copy_text = '复制此行  Ctrl+C'
+        else:
+            copy_text = '复制选中行  Ctrl+C'
+        copy_act = menu.addAction(copy_text)
+        copy_act.triggered.connect(lambda: self._copy_selected(item_under))
+
+        # 查看/复制此行片段：弹出只读文本框，可自由拖选任意一段文字复制
+        if item_under is not None:
+            inspect_act = menu.addAction('查看/复制此行片段…')
+            inspect_act.triggered.connect(lambda: self._查看并复制行(item_under))
+
         menu.addSeparator()
         save_act = menu.addAction('打开保存目录')
         save_act.triggered.connect(self._open_folder)
@@ -866,11 +897,53 @@ class 日志查看器页(QWidget):
         clear_act.triggered.connect(self._clear_view)
         menu.exec(self.text_edit.viewport().mapToGlobal(pos))
 
-    def _copy_selected(self):
-        """复制选中的整行日志（QListWidget 为整行选择，不支持自由框选）。"""
+    def _copy_selected(self, item_under=None):
+        """复制选中的整行日志；无选中行时复制 item_under（右键/双击兜底）。"""
         items = self.text_edit.selectedItems()
         if items:
             QApplication.clipboard().setText('\n'.join(it.text() for it in items))
+            self.status_label.setText(f'已复制 {len(items)} 行日志')
+        elif item_under is not None:
+            QApplication.clipboard().setText(item_under.text())
+            self.status_label.setText('已复制 1 行日志')
+
+    def _查看并复制行(self, item):
+        """弹出只读对话框显示该行完整文本，支持自由拖选片段后 Ctrl+C 复制。
+
+        QListWidget 是整行选择，不支持在日志列表上直接框选一行中的一部分；
+        需要只复制某个字段（tag / PID / 消息片段）时用此窗口。
+        弹窗走项目统一卡片样式（主题色边框 + 外发光）。
+        """
+        from 项目UI.弹窗样式 import _create_popup_card
+        from 项目UI.界面样式 import get_current_theme_id
+
+        text = item.text() if item is not None else ''
+        theme_id = self._当前主题id()
+        dlg = QDialog(self)
+        dlg.setWindowTitle('日志行详情（拖选片段后 Ctrl+C 复制）')
+        dlg.resize(900, 260)
+
+        # 统一卡片容器：主题色 4px 边框 + 圆角 + 外发光
+        card, _outer = _create_popup_card(dlg, theme_id, margins=(10, 10, 10, 10))
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(12, 12, 12, 12)
+
+        te = QPlainTextEdit(card)
+        te.setReadOnly(True)
+        te.setPlainText(text)
+        font = QFont('Consolas', 10)
+        font.setStyleHint(QFont.Monospace)
+        te.setFont(font)
+        lay.addWidget(te, 1)
+
+        btns = QDialogButtonBox(Qt.Horizontal, card)
+        copy_all = btns.addButton('复制全部', QDialogButtonBox.ButtonRole.ActionRole)
+        close_btn = btns.addButton(QDialogButtonBox.StandardButton.Close)
+        copy_all.clicked.connect(lambda: (QApplication.clipboard().setText(text),
+                                          self.status_label.setText('已复制整行日志')))
+        close_btn.clicked.connect(dlg.close)
+        lay.addWidget(btns)
+        dlg.exec()
 
     def _open_folder(self):
         path = self._log_path or os.path.join(self._save_dir, 'x.log')

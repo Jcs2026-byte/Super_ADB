@@ -496,6 +496,14 @@ def get_stylesheet(theme_id=DEFAULT_THEME):
     QListWidget#logViewer_textEdit::item {{
         background-color: transparent;
     }}
+    /* 日志行选中/悬停高亮：ID 选择器优先级必须高于上面的 transparent 才能生效。
+       只改背景不改文字色，保留日志级别自带的蓝/黄/红配色。 */
+    QListWidget#logViewer_textEdit::item:selected {{
+        background-color: {rgba(90)};
+    }}
+    QListWidget#logViewer_textEdit::item:hover {{
+        background-color: {rgba(40)};
+    }}
     QComboBox QAbstractItemView {{
         background-color: transparent;
     }}

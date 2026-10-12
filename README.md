@@ -245,6 +245,8 @@ xattr -dr com.apple.quarantine /Applications/Super_ADB_MAC.app
 | Linux x86_64 | `Super_ADB_Linux/` | ✅ 完整支持 | `Super_ADB-linux-x86_64.tar.gz` |
 
 > **仅支持 64 位系统**：安装包均为 64 位构建（Windows 10/11 64 位），32 位系统无法运行。核心依赖 PySide6/Qt6 与 Python 3.12+ 已不再提供 32 位 Windows 版本。
+>
+> **Windows 系统版本要求**：需 **Windows 10 1809（2018 年 10 月更新）及以上**。Qt6 官方最低支持 Windows 10 1809，更老的系统（如 Windows 10 LTSB 2015 / 1507）无法启动，双击无反应属正常现象，请升级系统后使用。
 
 ---
 

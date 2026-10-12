@@ -244,6 +244,8 @@ xattr -dr com.apple.quarantine /Applications/Super_ADB_MAC.app
 | macOS arm64 | `Super_ADB_MAC/` | ✅ 完整支持 | `Super_ADB-macos-arm64.zip` |
 | Linux x86_64 | `Super_ADB_Linux/` | ✅ 完整支持 | `Super_ADB-linux-x86_64.tar.gz` |
 
+> **仅支持 64 位系统**：安装包均为 64 位构建（Windows 10/11 64 位），32 位系统无法运行。核心依赖 PySide6/Qt6 与 Python 3.12+ 已不再提供 32 位 Windows 版本。
+
 ---
 
 ## 📁 项目结构

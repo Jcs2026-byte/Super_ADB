@@ -919,8 +919,20 @@ class 日志查看器页(QWidget):
 
         text = item.text() if item is not None else ''
         theme_id = self._当前主题id()
-        dlg = QDialog(self)
+
+        # 全局只保留一个片段弹窗：新开前关掉旧的
+        old = getattr(self, '_片段弹窗', None)
+        if old is not None:
+            try:
+                old.close()
+                old.deleteLater()
+            except RuntimeError:
+                pass
+            self._片段弹窗 = None
+
+        dlg = QDialog(self, Qt.WindowType.Window)
         dlg.setWindowTitle('日志行详情（拖选片段后 Ctrl+C 复制）')
+        dlg.setModal(False)          # 非模态：弹窗出来仍可操作主界面
         dlg.resize(900, 260)
 
         # 统一卡片容器：主题色 4px 边框 + 圆角 + 外发光
@@ -943,7 +955,10 @@ class 日志查看器页(QWidget):
                                           self.status_label.setText('已复制整行日志')))
         close_btn.clicked.connect(dlg.close)
         lay.addWidget(btns)
-        dlg.exec()
+
+        self._片段弹窗 = dlg
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        dlg.show()
 
     def _open_folder(self):
         path = self._log_path or os.path.join(self._save_dir, 'x.log')

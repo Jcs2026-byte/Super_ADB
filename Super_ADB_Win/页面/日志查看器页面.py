@@ -1014,11 +1014,15 @@ class 日志查看器页(QWidget):
         self._trim_list()
 
     def _trim_list(self):
-        """QListWidget 无内建行数上限：超出时从头部整批删除（维持滚动窗口）。"""
+        """QListWidget 无内建行数上限：超出时从头部整批删除（维持滚动窗口）。
+
+        用 model().removeRows() 一次性删 N 行（O(n) 批量），替代逐行
+        takeItem(0) 的 O(n²) 循环——后者在 1 万行规模下每批日志插入后
+        都要几百 ms，窗口隐藏/切换标签时直接卡死主线程。
+        """
         n = self.text_edit.count()
         if n > VIEW_MAX_BLOCKS:
-            for _ in range(n - VIEW_MAX_BLOCKS):
-                self.text_edit.takeItem(0)
+            self.text_edit.model().removeRows(0, n - VIEW_MAX_BLOCKS)
 
     def _flush_view(self):
         t0 = time.perf_counter()
@@ -1031,6 +1035,12 @@ class 日志查看器页(QWidget):
             self._write_buf.clear()
 
         if not self._pending_view:
+            return
+
+        # 窗口隐藏（托盘/最小化/切到别的 tab）时跳过渲染：日志数据仍在后台
+        # 采集并写盘，但不做 addItem/重绘/滚底，避免后台空转堵主线程导致
+        # Windows 报"未响应"。pending_view 留着，窗口恢复可见后下一轮 flush 继续。
+        if not self.text_edit.isVisible():
             return
 
         # 拖动窗口期间：降频渲染（小批量 + 跟随滚动），日志继续流动但不抢主线程。

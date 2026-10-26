@@ -1995,23 +1995,27 @@ echo "___END___"'''
         if cached_root is not True:
             try:
                 build_type = (self.执行shell(serial, 'getprop ro.build.type', timeout=5) or '').strip().lower()
-                if build_type == 'user':
-                    # 写入设备能力缓存
-                    if model and android_ver:
-                        try:
-                            设置root支持(model, android_ver, False)
-                        except Exception:
-                            pass
-                    lines.append('✗ 设备固件为 user 版本，不支持 root，无法挂载 system 分区。')
-                    lines.append('  如需挂载 system，请使用 userdebug 或 eng 版本固件的设备。')
-                    return '\n'.join(lines)
-                elif build_type in ('userdebug', 'eng'):
+                if build_type in ('userdebug', 'eng'):
                     if model and android_ver:
                         try:
                             设置root支持(model, android_ver, True)
                         except Exception:
                             pass
                     lines.append(f'✓ 固件类型: {build_type}（支持 root）')
+                elif build_type == 'user':
+                    # user 固件不一定不能 root：
+                    # 1) ro.debuggable=1 的 user 固件（常见于模拟器/工程机）adb root 可用
+                    # 2) emulator-* 序列号的设备，即使 user 类型也常支持 adb root（用户在模拟器设置里开了 root）
+                    # 3) 已 root 的真机（Magisk 等）build.type 仍为 user，但 su 可用
+                    # 因此不再因 build_type==user 直接 return，而是继续走 adb root 实际探测
+                    debuggable = (self.执行shell(serial, 'getprop ro.debuggable', timeout=3) or '').strip()
+                    is_emulator = bool(serial and serial.startswith('emulator-'))
+                    if debuggable == '1' or is_emulator:
+                        原因 = 'debuggable 固件' if debuggable == '1' else '模拟器设备'
+                        lines.append(f'○ 固件类型: {build_type}，检测到{原因}，继续尝试 adb root…')
+                    else:
+                        # 非 debuggable 的纯 user 真机：大概率不支持，但仍尝试一次 adb root 确认
+                        lines.append(f'○ 固件类型: {build_type}（非 debuggable），尝试 adb root 确认…')
             except Exception:
                 pass  # 查不到就继续走原流程
 
@@ -2039,10 +2043,21 @@ echo "___END___"'''
                 r = self._run([self.adb_path, '-s', serial, 'root'], timeout=10)
                 if r.returncode == 0:
                     lines.append('① adb root：成功')
+                    # adb root 实际成功，更新设备能力缓存为支持
+                    if model and android_ver:
+                        try:
+                            设置root支持(model, android_ver, True)
+                        except Exception:
+                            pass
                 else:
                     err = (r.stderr or r.stdout or '').strip() or f'返回码 {r.returncode}'
                     lines.append(f'① adb root：失败（{err}）')
-                    # 可能不是 userdebug 镜像, 继续尝试也行, 但毫无意义, 直接告知用户
+                    # adb root 失败，记录为不支持（除非后续 su 能拿到 root）
+                    if model and android_ver:
+                        try:
+                            设置root支持(model, android_ver, False)
+                        except Exception:
+                            pass
                     return '\n'.join(lines)
         except AdbError as e:
             lines.append(f'① adb root：异常（{e}）')

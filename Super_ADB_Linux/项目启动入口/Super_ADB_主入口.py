@@ -57,7 +57,7 @@ from 工具.android调试工具.ADB工具 import Adb设备操作, 加载json配�
 from 项目UI.界面样式 import get_stylesheet, DEFAULT_THEME, THEMES, FONT_FAMILY
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style
 
-# 注册 png_rc 资源（含应用图标 :/Super_ADB.png 与公众号二维码），import 即执行 qInitResources()
+# 注册 png_rc 资源（含应用图标 :/Super_ADB.png），import 即执行 qInitResources()
 from 项目UI import png_rc  # noqa: F401
 
 # 包式导入：所有子模块通过 包名.模块名 引用，配合上方 sys.path 注入 Super_ADB_Win/ 根目录

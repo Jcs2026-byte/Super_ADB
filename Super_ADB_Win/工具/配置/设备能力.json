@@ -25,5 +25,14 @@
         "支持root": false
       }
     }
+  },
+  "PEUM00": {
+    "model": "PEUM00",
+    "versions": {
+      "14": {
+        "支持root": false,
+        "is_single_channel": false
+      }
+    }
   }
 }

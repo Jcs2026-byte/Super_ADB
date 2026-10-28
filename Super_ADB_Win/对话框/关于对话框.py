@@ -2,7 +2,7 @@
 """
 Super_ADB 关于弹窗
 ==================
-展示公众号二维码、版本号与反馈引导，**支持运行时切换主题**。
+展示版本号、下载地址与开源仓库链接，**支持运行时切换主题**。
 
 设计要点：
 - 弹窗内所有颜色（卡片背景、标题/副标题/链接、外发光等）都从当前主题
@@ -18,9 +18,9 @@ Super_ADB 关于弹窗
 import os
 import sys
 
-from 项目UI import png_rc  # noqa: F401   # 注册 :/Super_ADB.png 与 :/qrcode.jpg 资源
+from 项目UI import png_rc  # noqa: F401   # 注册 :/Super_ADB.png 应用图标资源
 from PySide6.QtCore import Qt, QPoint
-from PySide6.QtGui import QFont, QPixmap, QPainter, QColor, QIcon, QPen, QBrush, QPainterPath
+from PySide6.QtGui import QPainter, QColor, QIcon, QPen, QBrush, QPainterPath
 from PySide6.QtWidgets import (QDialog, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
                                QWidget, QSizePolicy)
 
@@ -113,7 +113,6 @@ QPushButton#okBtn {{ font: 700 10pt '{font}'; color: {accent}; background-color:
 QPushButton#okBtn:hover {{ background-color: {accent}; color: {text_pressed}; }}
 QPushButton#okBtn:pressed {{ background-color: rgba({r},{g},{b},180); color: {text_pressed}; }}
 QLabel#aboutTitle {{ color: {accent}; font: 700 11pt '{font}'; }}
-QLabel#aboutQr {{ background-color: #ffffff; border: 2px solid {accent}; border-radius: 10px; padding: 6px; }}
 QLabel#aboutRepo {{ color: {accent}; font: 9pt '{font}'; background: transparent; }}
 QLabel#aboutRepo a {{ color: {accent}; text-decoration: none; }}
 QLabel#aboutRepo a:hover {{ text-decoration: underline; }}
@@ -131,8 +130,8 @@ class 关于对话框(QDialog, 无边框缩放Mixin):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setObjectName('aboutDialog')  # QSS 选择器稳定锚点（与 无线调试对话框 同款）
-        self.setMinimumSize(360, 560)
-        self.resize(440, 720)
+        self.setMinimumSize(360, 400)
+        self.resize(440, 480)
         self.setWindowTitle('关于 Super_ADB')
         self.setWindowIcon(QIcon(':/Super_ADB.png'))
 
@@ -148,7 +147,7 @@ class 关于对话框(QDialog, 无边框缩放Mixin):
         # 样式 cache 不失效的陷阱。
         self.card = QWidget(self)
         self.card.setObjectName('aboutCard')
-        self.card.setGeometry(10, 10, 420, 600)
+        self.card.setGeometry(10, 10, 420, 460)
 
         layout = QVBoxLayout(self.card)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -191,28 +190,6 @@ class 关于对话框(QDialog, 无边框缩放Mixin):
         content.addWidget(self.sub_title)
 
         content.addSpacing(6)
-
-        # 二维码（保持白底，跟主题无关——保证扫码识别率）
-        qr = self._load_qr_pixmap()
-        self.qr_lbl = QLabel()
-        self.qr_lbl.setObjectName('aboutQr')
-        self.qr_lbl.setAlignment(Qt.AlignCenter)
-        self.qr_lbl.setFixedSize(220, 220)
-        self.qr_lbl.setPixmap(qr)
-        content.addWidget(self.qr_lbl, alignment=Qt.AlignCenter)
-
-        content.addSpacing(20)
-
-        # 提示文字
-        self.hint = QLabel(
-            '使用过程中遇到 Bug，或有好的改进提议\n'
-            '欢迎扫码前往公众号留言反馈\n\n'
-            '详细使用说明请前往公众号查看\n'
-            '公众号搜索：Super_ADB'
-        )
-        self.hint.setAlignment(Qt.AlignCenter)
-        self.hint.setWordWrap(True)
-        content.addWidget(self.hint)
 
         # 版本号（次要文字，从配置文件读取打包时间）
         self.version_lbl = QLabel(f'版本号：{_获取版本号()}')
@@ -317,7 +294,6 @@ class 关于对话框(QDialog, 无边框缩放Mixin):
         # 单独覆盖文字类 QLabel（保留各自 QSS 的优先级）
         self.app_title.setStyleSheet(f"color: {text_primary}; font: 700 18pt '{FONT_FAMILY}';")
         self.sub_title.setStyleSheet(f"color: {text_disabled}; font: 10pt '{FONT_FAMILY}';")
-        self.hint.setStyleSheet(f"color: {text_primary}; font: 9pt '{FONT_FAMILY}';")
         self.version_lbl.setStyleSheet(f"color: {text_disabled}; font: 9pt '{FONT_FAMILY}';")
 
         # 同步重绘（paintEvent 直接绘制发光+背景+边框，无离屏缓冲区缓存问题）
@@ -378,29 +354,6 @@ class 关于对话框(QDialog, 无边框缩放Mixin):
         # 简单亮度公式（W3C 调整后亮度）
         lum = (0.299 * rr + 0.587 * gg + 0.114 * bb) / 255.0
         return lum < 0.55
-
-    # ------------------------------------------------------------------
-    # 二维码加载
-    # ------------------------------------------------------------------
-    def _load_qr_pixmap(self):
-        """加载公众号二维码（不透明版本），从 qrc 资源读取（打包后也能用），失败回退到占位图。
-
-        资源 alias = qrcode.jpg，源文件 ui/公众号.jpg，由 ui/png.qrc 编译进 png_rc.py。
-        用 qrc 而非磁盘读取，是为了打包进 PyInstaller 后仍能正常显示（--add-data 经常漏配）。
-        """
-        pm = QPixmap(':/qrcode.jpg')
-        if not pm.isNull():
-            return pm.scaled(200, 200, Qt.AspectRatioMode.KeepAspectRatio,
-                             Qt.TransformationMode.SmoothTransformation)
-        # 兜底：绘制占位图（理论上不会到这里，qrc 里有就一定能加载）
-        pm = QPixmap(200, 200)
-        pm.fill(QColor('#ffffff'))
-        p = QPainter(pm)
-        p.setPen(QColor('#333333'))
-        p.setFont(QFont(FONT_FAMILY, 12))
-        p.drawText(pm.rect(), Qt.AlignCenter, '二维码加载失败')
-        p.end()
-        return pm
 
     # ------------------------------------------------------------------
     # 鼠标拖拽 + 边缘缩放

@@ -2,6 +2,6 @@
   <qresource>
     <file alias="Super_ADB.png">Super_ADB.png</file>
     <file alias="qrcode.jpg">wechat_qrcode.jpg</file>
-    <file alias="desk_cat.png">../Super_ADB_Win/resources/desk_cat.png</file>
+    <file alias="desk_cat.png">../Super_ADB_Win/资源/desk_cat.png</file>
   </qresource>
 </RCC>

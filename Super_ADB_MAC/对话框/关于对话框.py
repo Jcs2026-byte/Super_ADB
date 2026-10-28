@@ -119,6 +119,9 @@ QLabel#aboutRepo a:hover {{ text-decoration: underline; }}
 QLabel#aboutDownload {{ color: {text_disabled}; font: 9pt '{font}'; background: transparent; }}
 QLabel#aboutDownload a {{ color: {text_disabled}; text-decoration: none; }}
 QLabel#aboutDownload a:hover {{ text-decoration: underline; }}
+QLabel#aboutInvite {{ color: {accent}; font: 9pt '{font}'; background: transparent; }}
+QLabel#aboutInvite a {{ color: {accent}; text-decoration: none; }}
+QLabel#aboutInvite a:hover {{ text-decoration: underline; }}
 """
 
 
@@ -130,8 +133,8 @@ class 关于对话框(QDialog, 无边框缩放Mixin):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setObjectName('aboutDialog')  # QSS 选择器稳定锚点（与 无线调试对话框 同款）
-        self.setMinimumSize(360, 400)
-        self.resize(440, 480)
+        self.setMinimumSize(400, 500)
+        self.resize(480, 560)
         self.setWindowTitle('关于 Super_ADB')
         self.setWindowIcon(QIcon(':/Super_ADB.png'))
 
@@ -176,8 +179,8 @@ class 关于对话框(QDialog, 无边框缩放Mixin):
 
         # ── 内容区 ────────────────────────────────────────────────
         content = QVBoxLayout()
-        content.setContentsMargins(24, 10, 24, 22)
-        content.setSpacing(14)
+        content.setContentsMargins(20, 12, 20, 20)
+        content.setSpacing(8)
 
         # 大标题（中央）
         self.app_title = QLabel('Super_ADB')
@@ -189,12 +192,14 @@ class 关于对话框(QDialog, 无边框缩放Mixin):
         self.sub_title.setAlignment(Qt.AlignCenter)
         content.addWidget(self.sub_title)
 
-        content.addSpacing(6)
+        content.addSpacing(10)
 
         # 版本号（次要文字，从配置文件读取打包时间）
         self.version_lbl = QLabel(f'版本号：{_获取版本号()}')
         self.version_lbl.setAlignment(Qt.AlignCenter)
         content.addWidget(self.version_lbl)
+
+        content.addSpacing(18)
 
         # 新版下载地址（从配置文件读取，样式同版本号）
         _dl_url = _获取下载地址()
@@ -204,9 +209,40 @@ class 关于对话框(QDialog, 无边框缩放Mixin):
             self.download_lbl.setAlignment(Qt.AlignCenter)
             self.download_lbl.setOpenExternalLinks(True)
             self.download_lbl.setWordWrap(True)
+            self.download_lbl.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.MinimumExpanding)
             content.addWidget(self.download_lbl)
         else:
             self.download_lbl = None
+
+        content.addSpacing(22)
+
+        # ── 项目邀请区块（与上下内容用间距分组） ──────────────────
+        # 邀请人（小字说明）
+        self.invite_from_lbl = QLabel('邀请人：jcs@Jcs2026')
+        self.invite_from_lbl.setAlignment(Qt.AlignCenter)
+        content.addWidget(self.invite_from_lbl)
+
+        # 邀请目的（小字说明）
+        self.invite_title_lbl = QLabel('邀请您成为 AtomGit Super_ADB 项目参与者')
+        self.invite_title_lbl.setAlignment(Qt.AlignCenter)
+        self.invite_title_lbl.setWordWrap(True)
+        self.invite_title_lbl.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.MinimumExpanding)
+        content.addWidget(self.invite_title_lbl)
+
+        # 邀请链接（主题色可点击）
+        _invite_url = 'https://gitcode.com/invite/link/280b6f269fdb468e909c'
+        self.invite_link_lbl = QLabel(f'<a href="{_invite_url}">邀请链接：{_invite_url}</a>')
+        self.invite_link_lbl.setObjectName('aboutInvite')
+        self.invite_link_lbl.setAlignment(Qt.AlignCenter)
+        self.invite_link_lbl.setOpenExternalLinks(True)
+        self.invite_link_lbl.setWordWrap(True)
+        self.invite_link_lbl.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.MinimumExpanding)
+        content.addWidget(self.invite_link_lbl)
+
+        # 邀请提示小字
+        self.invite_hint_lbl = QLabel('报告问题，提供反馈，参与项目讨论')
+        self.invite_hint_lbl.setAlignment(Qt.AlignCenter)
+        content.addWidget(self.invite_hint_lbl)
 
         content.addStretch()
 
@@ -217,7 +253,10 @@ class 关于对话框(QDialog, 无边框缩放Mixin):
         self.github_lbl.setAlignment(Qt.AlignCenter)
         self.github_lbl.setOpenExternalLinks(True)
         self.github_lbl.setWordWrap(True)
+        self.github_lbl.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.MinimumExpanding)
         content.addWidget(self.github_lbl)
+
+        content.addSpacing(14)
 
         # 底部按钮
         self.ok_btn = QPushButton('知道了')
@@ -295,6 +334,9 @@ class 关于对话框(QDialog, 无边框缩放Mixin):
         self.app_title.setStyleSheet(f"color: {text_primary}; font: 700 18pt '{FONT_FAMILY}';")
         self.sub_title.setStyleSheet(f"color: {text_disabled}; font: 10pt '{FONT_FAMILY}';")
         self.version_lbl.setStyleSheet(f"color: {text_disabled}; font: 9pt '{FONT_FAMILY}';")
+        self.invite_from_lbl.setStyleSheet(f"color: {text_disabled}; font: 9pt '{FONT_FAMILY}';")
+        self.invite_title_lbl.setStyleSheet(f"color: {text_disabled}; font: 9pt '{FONT_FAMILY}';")
+        self.invite_hint_lbl.setStyleSheet(f"color: {text_disabled}; font: 8pt '{FONT_FAMILY}';")
 
         # 同步重绘（paintEvent 直接绘制发光+背景+边框，无离屏缓冲区缓存问题）
         self.update()

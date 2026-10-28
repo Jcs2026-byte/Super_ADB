@@ -402,6 +402,31 @@ class 弹窗打开Mixin:
         self._adbcmd_dialog = dlg
         dlg.show()
 
+    def 打开apifox提取(self):
+        """打开 Apifox 共享文档提取弹窗（复用窗口，重复点击 raise）。"""
+        dlg = self._apifox_dialog
+        if dlg is not None:
+            try:
+                if dlg.isVisible():
+                    dlg.raise_()
+                    dlg.activateWindow()
+                    return
+            except RuntimeError:
+                self._apifox_dialog = None
+                dlg = None
+        from 对话框.Apifox提取对话框 import Apifox提取对话框
+        dlg = Apifox提取对话框()  # 独立窗口，不绑定 parent，点击主界面时可正常前置
+        dlg.destroyed.connect(
+            lambda _obj=None, _self=self: _self._清空_apifox引用(_obj))
+        dlg.finished.connect(lambda *_: QTimer.singleShot(0, self._激活主窗口到前台))
+        self._apifox_dialog = dlg
+        dlg.show()
+
+    def _清空_apifox引用(self, obj):
+        """Apifox 提取弹窗引用清空（带对象身份判断，同上）。"""
+        if self._apifox_dialog is obj:
+            self._apifox_dialog = None
+
     def _清空_adbcmd引用(self, obj):
         """ADB 命令集合弹窗引用清空（带对象身份判断，同上）。"""
         if self._adbcmd_dialog is obj:

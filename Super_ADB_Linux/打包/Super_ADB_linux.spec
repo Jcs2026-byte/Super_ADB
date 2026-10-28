@@ -63,6 +63,11 @@ a = Analysis(
     runtime_hooks=[
         os.path.join(_SPEC_DIR, 'hooks', 'runtime_pkg_alias.py'),
         os.path.join(_SPEC_DIR, 'hooks', 'runtime_pyzbar.py'),
+        # ★ 拒绝 numpy 导入：spec 已排除 numpy，但若与旧构建共享运行目录，
+        #   残留的 numpy 二进制目录会以命名空间包被 import 命中，导致 openpyxl
+        #   访问 numpy.short 抛 AttributeError；此钩子直接让 import numpy 失败，
+        #   让 openpyxl 等可选分支正常回退（与 Win 打包一致）。
+        os.path.join(_SPEC_DIR, 'hooks', 'runtime_block_numpy.py'),
     ],
     excludes=['numpy', 'cv2', 'pyzbar.tests', 'PIL._avif', 'PIL._webp',
               'PIL._imagingtk', 'zstandard', '_zstd', '_decimal',

@@ -131,6 +131,11 @@ a = Analysis(
         #   等，冻结后这些目录非物理存在，故在此把裸名映射到已收集的包限定模块）
         os.path.join(_SPEC_DIR, 'hooks', 'runtime_pkg_alias.py'),
         os.path.join(_SPEC_DIR, 'hooks', 'runtime_pyzbar.py'),
+        # ★ 拒绝 numpy 导入：spec 已排除 numpy，但若与旧构建共享运行目录，
+        #   残留的 numpy 二进制目录会以命名空间包被 import 命中，导致 openpyxl
+        #   访问 numpy.short 抛 AttributeError；此钩子直接让 import numpy 失败，
+        #   让 openpyxl 等可选分支正常回退（与 Win 打包一致）。
+        os.path.join(_SPEC_DIR, 'hooks', 'runtime_block_numpy.py'),
         # ★ USB 直连随包：pyusb 的 libusb 后端离线加载（目标机无需装 libusb）
         os.path.join(_SPEC_DIR, 'hooks', 'runtime_libusb.py'),
     ],

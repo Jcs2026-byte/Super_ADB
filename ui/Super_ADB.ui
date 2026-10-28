@@ -1337,6 +1337,16 @@
                     </property>
                    </widget>
                   </item>
+                  <item row="0" column="3">
+                   <widget class="QPushButton" name="apifoxBtn">
+                    <property name="toolTip">
+                     <string>Apifox 共享文档接口一键提取为 Excel（保存到桌面 Super_ADB 文件夹）</string>
+                    </property>
+                    <property name="text">
+                     <string>Apifox共享提取</string>
+                    </property>
+                   </widget>
+                  </item>
                  </layout>
                 </widget>
                </widget>

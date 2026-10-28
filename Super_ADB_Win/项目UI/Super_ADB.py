@@ -777,6 +777,11 @@ class Ui_MainWindow(object):
 
         self.gridLayout_4.addWidget(self.ipScanBtn, 0, 1, 1, 1)
 
+        self.apifoxBtn = QPushButton(self.toolsScrollContent)
+        self.apifoxBtn.setObjectName(u"apifoxBtn")
+
+        self.gridLayout_4.addWidget(self.apifoxBtn, 0, 3, 1, 1)
+
         self.toolsScrollArea.setWidget(self.toolsScrollContent)
 
         self.gridLayout_3.addWidget(self.toolsScrollArea, 0, 0, 1, 1)
@@ -1017,6 +1022,10 @@ class Ui_MainWindow(object):
         self.ipScanBtn.setToolTip(QCoreApplication.translate("MainWindow", u"\u626b\u63cf\u5f53\u524d\u5c40\u57df\u7f51\u5185\u6240\u6709\u5728\u7ebf IP \u8bbe\u5907", None))
 #endif // QT_CONFIG(tooltip)
         self.ipScanBtn.setText(QCoreApplication.translate("MainWindow", u"IP\u626b\u63cf", None))
+#if QT_CONFIG(tooltip)
+        self.apifoxBtn.setToolTip(QCoreApplication.translate("MainWindow", u"Apifox \u5171\u4eab\u6587\u6863\u63a5\u53e3\u4e00\u952e\u63d0\u53d6\u4e3a Excel\uff08\u4fdd\u5b58\u5230\u684c\u9762 Super_ADB \u6587\u4ef6\u5939\uff09", None))
+#endif // QT_CONFIG(tooltip)
+        self.apifoxBtn.setText(QCoreApplication.translate("MainWindow", u"Apifox\u5171\u4eab\u63d0\u53d6", None))
         self.toolsGroup_2.setTitle(QCoreApplication.translate("MainWindow", u"\u6821\u9a8c\u5de5\u5177", None))
 #if QT_CONFIG(tooltip)
         self.jsonToolBtn.setToolTip(QCoreApplication.translate("MainWindow", u"JSON \u683c\u5f0f\u5316/\u538b\u7f29 + \u5dee\u5f02\u5bf9\u6bd4", None))

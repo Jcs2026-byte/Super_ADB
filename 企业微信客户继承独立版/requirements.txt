@@ -1,0 +1,5 @@
+# 企业微信客户继承独立版 · Win7 兼容依赖
+# 安装前提：Python 3.8.10 amd64（最后支持 Win7 的 Python）
+# HTTP 请求走本目录自带的 fetch.py（纯标准库，零三方依赖）
+PySide6==6.4.3
+pyinstaller==5.13.2

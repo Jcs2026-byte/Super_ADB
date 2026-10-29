@@ -422,6 +422,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self._ip_scan_dialog = None
         self._adbcmd_dialog = None  # ADB 命令集合弹窗（复用同一窗口实例）
         self._apifox_dialog = None  # Apifox 共享提取弹窗（复用同一窗口实例）
+        self._wework_继承_dialog = None  # 企业微信客户继承弹窗（复用同一窗口实例）
         self._about_dialog = None
         self._env_config_dialog = None  # 环境配置弹窗（复用同一窗口实例）
         self._desk_cat = None  # 桌面宠物小猫
@@ -609,6 +610,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         # 由 setupUi 创建，此处仅连接信号
         self.ipScanBtn.clicked.connect(self.打开ip扫描)
         self.apifoxBtn.clicked.connect(self.打开apifox提取)
+        self.wework继承Btn.clicked.connect(self.打开企业微信客户继承)
         self.btnAdbCmdDocs.clicked.connect(self.打开ADB命令集合)
         # 输出
         self.btnClear.clicked.connect(self.output.clear)

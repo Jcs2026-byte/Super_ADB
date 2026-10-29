@@ -246,3 +246,47 @@ jobs:
           name: Super_ADB-macos-arm64
           path: Super_ADB_MAC/打包/dist/Super_ADB-macos-arm64.zip
           if-no-files-found: error
+
+  windows-x86:
+    name: Windows x86 (企业微信客户继承独立版)
+    runs-on: windows-latest
+    env:
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v7
+
+      # Python 3.8 32 位：Win7 / Win10 32 位机器兼容
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.8'
+          architecture: x86
+
+      - name: Verify architecture
+        shell: pwsh
+        run: |
+          python -c "import struct; print('bits:', struct.calcsize('P')*8)"
+          python -c "import sys; assert sys.maxsize < 2**32; print('32-bit OK')"
+
+      - name: Install dependencies
+        working-directory: 企业微信客户继承独立版
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build
+        working-directory: 企业微信客户继承独立版
+        shell: pwsh
+        run: pyinstaller --noconfirm --clean --distpath dist --workpath build 企业微信客户继承.spec
+
+      - name: Zip bundle
+        working-directory: 企业微信客户继承独立版/dist
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 企业微信客户继承 -DestinationPath 企业微信客户继承-windows-x86.zip
+          Get-ChildItem 企业微信客户继承-windows-x86.zip
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: 企业微信客户继承-windows-x86
+          path: 企业微信客户继承独立版/dist/企业微信客户继承-windows-x86.zip
+          if-no-files-found: error

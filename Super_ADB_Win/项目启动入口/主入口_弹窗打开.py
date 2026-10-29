@@ -437,6 +437,31 @@ class 弹窗打开Mixin:
         if self._pcap_parser_dialog is obj:
             self._pcap_parser_dialog = None
 
+    def 打开企业微信客户继承(self):
+        """打开企业微信客户继承弹窗（复用窗口，重复点击 raise）。"""
+        dlg = getattr(self, '_wework_继承_dialog', None)
+        if dlg is not None:
+            try:
+                if dlg.isVisible():
+                    dlg.raise_()
+                    dlg.activateWindow()
+                    return
+            except RuntimeError:
+                self._wework_继承_dialog = None
+                dlg = None
+        from 对话框.企业微信客户继承对话框 import C企业微信客户继承对话框
+        dlg = C企业微信客户继承对话框()
+        dlg.destroyed.connect(
+            lambda _obj=None, _self=self: _self._清空_wework继承引用(_obj))
+        dlg.finished.connect(lambda *_: QTimer.singleShot(0, self._激活主窗口到前台))
+        self._wework_继承_dialog = dlg
+        dlg.show()
+
+    def _清空_wework继承引用(self, obj):
+        """企业微信客户继承弹窗引用清空（带对象身份判断）。"""
+        if getattr(self, '_wework_继承_dialog', None) is obj:
+            self._wework_继承_dialog = None
+
     def _on_adb_settings_changed(self):
         """环境配置对话框中 ADB 设置（socket_direct / self_built）变更时触发。"""
         # 模式切换前：自动停掉正在运行的文件管理 / 日志抓取，

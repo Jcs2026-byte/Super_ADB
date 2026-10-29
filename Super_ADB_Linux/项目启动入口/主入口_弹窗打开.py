@@ -467,3 +467,28 @@ class 弹窗打开Mixin:
                 except Exception:
                     pass
         self.刷新设备()
+
+    def 打开企业微信客户继承(self):
+        """打开企业微信客户继承弹窗（复用窗口，重复点击 raise）。"""
+        dlg = getattr(self, '_wework_继承_dialog', None)
+        if dlg is not None:
+            try:
+                if dlg.isVisible():
+                    dlg.raise_()
+                    dlg.activateWindow()
+                    return
+            except RuntimeError:
+                self._wework_继承_dialog = None
+                dlg = None
+        from 对话框.企业微信客户继承对话框 import C企业微信客户继承对话框
+        dlg = C企业微信客户继承对话框()
+        dlg.destroyed.connect(
+            lambda _obj=None, _self=self: _self._清空_wework继承引用(_obj))
+        dlg.finished.connect(lambda *_: QTimer.singleShot(0, self._激活主窗口到前台))
+        self._wework_继承_dialog = dlg
+        dlg.show()
+
+    def _清空_wework继承引用(self, obj):
+        """企业微信客户继承弹窗引用清空（带对象身份判断）。"""
+        if getattr(self, '_wework_继承_dialog', None) is obj:
+            self._wework_继承_dialog = None

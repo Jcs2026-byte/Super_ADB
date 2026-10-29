@@ -782,6 +782,11 @@ class Ui_MainWindow(object):
 
         self.gridLayout_4.addWidget(self.apifoxBtn, 0, 3, 1, 1)
 
+        self.wework继承Btn = QPushButton(self.toolsScrollContent)
+        self.wework继承Btn.setObjectName(u"wework继承Btn")
+
+        self.gridLayout_4.addWidget(self.wework继承Btn, 1, 0, 1, 1)
+
         self.toolsScrollArea.setWidget(self.toolsScrollContent)
 
         self.gridLayout_3.addWidget(self.toolsScrollArea, 0, 0, 1, 1)
@@ -1026,6 +1031,10 @@ class Ui_MainWindow(object):
         self.apifoxBtn.setToolTip(QCoreApplication.translate("MainWindow", u"Apifox \u5171\u4eab\u6587\u6863\u63a5\u53e3\u4e00\u952e\u63d0\u53d6\u4e3a Excel\uff08\u4fdd\u5b58\u5230\u684c\u9762 Super_ADB \u6587\u4ef6\u5939\uff09", None))
 #endif // QT_CONFIG(tooltip)
         self.apifoxBtn.setText(QCoreApplication.translate("MainWindow", u"Apifox\u5171\u4eab\u63d0\u53d6", None))
+#if QT_CONFIG(tooltip)
+        self.wework继承Btn.setToolTip(QCoreApplication.translate("MainWindow", u"\u4f01\u4e1a\u5fae\u4fe1\u5ba2\u6237\u7ee7\u627f\uff1a\u81ea\u5b9a\u4e49 URL / \u8bf7\u6c42\u5934 / \u8bf7\u6c42\u4f53\uff0c\u652f\u6301\u6279\u91cf\u5206\u6279\u53d1\u9001\uff0c\u907f\u514d\u91cf\u5927\u62a5\u9519", None))
+#endif // QT_CONFIG(tooltip)
+        self.wework继承Btn.setText(QCoreApplication.translate("MainWindow", u"\u4f01\u4e1a\u5fae\u4fe1\u5ba2\u6237\u7ee7\u627f", None))
         self.toolsGroup_2.setTitle(QCoreApplication.translate("MainWindow", u"\u6821\u9a8c\u5de5\u5177", None))
 #if QT_CONFIG(tooltip)
         self.jsonToolBtn.setToolTip(QCoreApplication.translate("MainWindow", u"JSON \u683c\u5f0f\u5316/\u538b\u7f29 + \u5dee\u5f02\u5bf9\u6bd4", None))

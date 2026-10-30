@@ -39,21 +39,12 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-try:
-    from PySide6.QtCore import Qt, QThread, Signal
-    from PySide6.QtGui import QFont, QIcon
-    from PySide6.QtWidgets import (
-        QApplication, QHBoxLayout, QLabel, QLineEdit,
-        QMessageBox, QPlainTextEdit, QPushButton, QSpinBox, QVBoxLayout, QWidget,
-    )
-except ImportError:
-    # 32 位 Windows 没有 PySide6 wheel，回退到 PySide2
-    from PySide2.QtCore import Qt, QThread, Signal
-    from PySide2.QtGui import QFont, QIcon
-    from PySide2.QtWidgets import (
-        QApplication, QHBoxLayout, QLabel, QLineEdit,
-        QMessageBox, QPlainTextEdit, QPushButton, QSpinBox, QVBoxLayout, QWidget,
-    )
+from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QFont, QIcon
+from PySide6.QtWidgets import (
+    QApplication, QHBoxLayout, QLabel, QLineEdit,
+    QMessageBox, QPlainTextEdit, QPushButton, QSpinBox, QVBoxLayout, QWidget,
+)
 
 from fetch import post as http_post
 

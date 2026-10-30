@@ -18,6 +18,7 @@
 - 响应日志。
 """
 import json
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from PySide6.QtCore import Qt, QThread, Signal
@@ -43,7 +44,7 @@ class C企业微信请求线程(QThread):
     失败 = Signal(str)
 
     def __init__(self, url, headers_obj, body_template, 客户列表,
-                 批次大小=20, 并发数=5, 超时秒=20, parent=None):
+                 批次大小=20, 并发数=5, 超时秒=20, 批间延迟ms=0, parent=None):
         super().__init__(parent)
         self._url = url
         self._headers = headers_obj
@@ -52,6 +53,7 @@ class C企业微信请求线程(QThread):
         self._批次大小 = max(1, int(批次大小))
         self._并发数 = max(1, int(并发数))
         self._超时秒 = max(5, int(超时秒))
+        self._批间延迟秒 = max(0, int(批间延迟ms)) / 1000.0
         self._停止 = False
 
     def stop(self):
@@ -106,7 +108,8 @@ class C企业微信请求线程(QThread):
         批次总数 = (总条数 + self._批次大小 - 1) // self._批次大小
         self.日志.emit(
             f"共 {总条数} 条客户，拆成 {批次总数} 批（每批 {self._批次大小} 条），"
-            f"并发 {self._并发数} 线程。\n")
+            f"并发 {self._并发数} 线程"
+            f"{'，波间延迟 ' + str(int(self._批间延迟秒 * 1000)) + 'ms' if self._批间延迟秒 > 0 else ''}。\n")
 
         成功批数 = 0
         失败批数 = 0
@@ -115,27 +118,43 @@ class C企业微信请求线程(QThread):
             for i in range(批次总数)
         ]
 
-        with ThreadPoolExecutor(max_workers=self._并发数) as ex:
-            future_map = {ex.submit(self._F发一批, n, s): (n, len(s)) for n, s in 批次切片}
-            for fut in as_completed(future_map):
-                序号, 条数, data, is_err, err_msg = fut.result()
-                if self._停止 and is_err and err_msg == "已中止":
-                    self.日志.emit(f"[第 {序号} 批] 已跳过（用户中止）")
-                    continue
-                if is_err:
-                    失败批数 += 1
-                    self.日志.emit(f"[第 {序号}/{批次总数} 批] HTTP 异常：{err_msg}")
-                else:
-                    errcode = data.get("errcode")
-                    errmsg = data.get("errmsg") or data.get("humanMessage") or ""
-                    http_status = data.get("_http_status", "?")
-                    if errcode in (0, "0"):
-                        成功批数 += 1
-                        self.日志.emit(f"[第 {序号}/{批次总数} 批] HTTP {http_status} ✓ 成功（{条数} 条）")
-                    else:
+        # 波浪式提交：每波最多并发数个批次，波间 sleep 延迟，避免触发腾讯接口高频限制
+        波次 = 0
+        for 起始 in range(0, len(批次切片), self._并发数):
+            if self._停止:
+                break
+            波次 += 1
+            本波 = 批次切片[起始:起始 + self._并发数]
+            with ThreadPoolExecutor(max_workers=len(本波)) as ex:
+                future_map = {ex.submit(self._F发一批, n, s): (n, len(s)) for n, s in 本波}
+                for fut in as_completed(future_map):
+                    序号, 条数, data, is_err, err_msg = fut.result()
+                    if self._停止 and is_err and err_msg == "已中止":
+                        self.日志.emit(f"[第 {序号} 批] 已跳过（用户中止）")
+                        continue
+                    if is_err:
                         失败批数 += 1
-                        self.日志.emit(
-                            f"[第 {序号}/{批次总数} 批] HTTP {http_status} ✗ errcode={errcode} {errmsg}")
+                        self.日志.emit(f"[第 {序号}/{批次总数} 批] HTTP 异常：{err_msg}")
+                    else:
+                        errcode = data.get("errcode")
+                        errmsg = data.get("errmsg") or data.get("humanMessage") or ""
+                        http_status = data.get("_http_status", "?")
+                        if errcode in (0, "0"):
+                            成功批数 += 1
+                            self.日志.emit(f"[第 {序号}/{批次总数} 批] HTTP {http_status} ✓ 成功（{条数} 条）")
+                        else:
+                            失败批数 += 1
+                            self.日志.emit(
+                                f"[第 {序号}/{批次总数} 批] HTTP {http_status} ✗ errcode={errcode} {errmsg}")
+            # 波间延迟（最后一波后不需要等）
+            if self._批间延迟秒 > 0 and 起始 + self._并发数 < len(批次切片) and not self._停止:
+                self.日志.emit(f"  ── 第 {波次} 波完成，等待 {int(self._批间延迟秒 * 1000)}ms 后继续 ──\n")
+                # 分段 sleep 以便及时响应停止
+                等待截止 = time.monotonic() + self._批间延迟秒
+                while time.monotonic() < 等待截止:
+                    if self._停止:
+                        break
+                    time.sleep(min(0.2, 等待截止 - time.monotonic()))
 
         self.全部完成.emit(批次总数, 成功批数, 失败批数)
 
@@ -209,6 +228,14 @@ class C企业微信客户继承对话框(对话框基类):
         self.concurrency_spin.setRange(1, 20)
         self.concurrency_spin.setValue(5)
         opt_row.addWidget(self.concurrency_spin)
+        opt_row.addWidget(QLabel("批间延迟:"))
+        self.delay_spin = QSpinBox()
+        self.delay_spin.setRange(0, 60000)
+        self.delay_spin.setValue(500)
+        self.delay_spin.setSuffix(" ms")
+        self.delay_spin.setToolTip("每波并发批次之间的等待时间，0=不等待。"
+                                   "腾讯接口有高频限制，建议 300-1000ms")
+        opt_row.addWidget(self.delay_spin)
         opt_row.addStretch()
         self.btn_send = QPushButton("开始发送")
         self.btn_send.setFixedWidth(110)
@@ -298,7 +325,8 @@ class C企业微信客户继承对话框(对话框基类):
         self._worker = C企业微信请求线程(
             url=V_url, headers_obj=V_headers, body_template=V_body,
             客户列表=V_客户列表, 批次大小=self.batch_spin.value(),
-            并发数=self.concurrency_spin.value(), parent=self,
+            并发数=self.concurrency_spin.value(),
+            批间延迟ms=self.delay_spin.value(), parent=self,
         )
         self._worker.日志.connect(self._日志)
         self._worker.全部完成.connect(self._发送完成)

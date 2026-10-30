@@ -64,6 +64,27 @@ class C企业微信请求线程(QThread):
         body["customer_req"]["customer_list"] = 切片
         return json.dumps(body, ensure_ascii=False).encode("utf-8")
 
+    @staticmethod
+    def _F提取响应码(data):
+        """从响应 JSON 提取 (errcode, humanMessage)，兼容扁平与嵌套结构。
+        扁平: {"errcode": 0, "errmsg": "ok"}
+        嵌套: {"statusCode":200, "result":{"errCode":-2003, "humanMessage":"参数不合法"}}
+        """
+        if not isinstance(data, dict):
+            return None, ""
+        # 先试扁平
+        errcode = data.get("errcode")
+        if errcode is not None:
+            human = data.get("humanMessage") or data.get("errmsg") or ""
+            return errcode, str(human)
+        # 再试嵌套 result
+        V_result = data.get("result")
+        if isinstance(V_result, dict):
+            errcode = V_result.get("errCode")
+            human = V_result.get("humanMessage") or V_result.get("errMsg") or ""
+            return errcode, str(human)
+        return None, ""
+
     def _F发一批(self, 序号, 切片):
         """发送单个批次，返回 (序号, 条数, data, is_err, err_msg)。"""
         if self._停止:
@@ -84,8 +105,7 @@ class C企业微信请求线程(QThread):
             return 序号, len(切片), {}, True, str(e)
 
         # 量大报错 → 自动对半拆分重试
-        errcode = data.get("errcode")
-        errmsg = str(data.get("errmsg") or data.get("humanMessage") or "")
+        errcode, errmsg = self._F提取响应码(data)
         if errcode not in (0, "0") and len(切片) > 1 and (
             errcode in (40058, "40058")
             or "参数不合法" in errmsg
@@ -136,16 +156,15 @@ class C企业微信请求线程(QThread):
                         失败批数 += 1
                         self.日志.emit(f"[第 {序号}/{批次总数} 批] HTTP 异常：{err_msg}")
                     else:
-                        errcode = data.get("errcode")
-                        errmsg = data.get("errmsg") or data.get("humanMessage") or ""
+                        errcode, human_msg = self._F提取响应码(data)
                         http_status = data.get("_http_status", "?")
                         if errcode in (0, "0"):
                             成功批数 += 1
-                            self.日志.emit(f"[第 {序号}/{批次总数} 批] HTTP {http_status} ✓ 成功（{条数} 条）")
+                            self.日志.emit(f"[第 {序号}/{批次总数} 批] HTTP {http_status} ✓ 成功（{条数} 条）{human_msg}")
                         else:
                             失败批数 += 1
                             self.日志.emit(
-                                f"[第 {序号}/{批次总数} 批] HTTP {http_status} ✗ errcode={errcode} {errmsg}")
+                                f"[第 {序号}/{批次总数} 批] HTTP {http_status} ✗ errcode={errcode} {human_msg}")
             # 波间延迟（最后一波后不需要等）
             if self._批间延迟秒 > 0 and 起始 + self._并发数 < len(批次切片) and not self._停止:
                 self.日志.emit(f"  ── 第 {波次} 波完成，等待 {int(self._批间延迟秒 * 1000)}ms 后继续 ──\n")

@@ -262,6 +262,17 @@ class C企业微信客户继承对话框(对话框基类):
         self.log_view.setStyleSheet(self._日志样式())
         root.addWidget(self.log_view, 1)
 
+        # 读取上次保存的 URL / 请求头（不含请求体，请求体含客户列表不缓存）
+        try:
+            from 工具.android调试工具.ADB工具 import 加载json配置, 保存json配置
+            V_saved = 加载json配置("企业微信客户继承配置.json") or {}
+            if V_saved.get("url"):
+                self.url_edit.setText(V_saved["url"])
+            if V_saved.get("headers"):
+                self.headers_edit.setPlainText(V_saved["headers"])
+        except Exception:
+            pass
+
     def _日志样式(self):
         bg = THEMES[self._主题id]['bg_input']
         fg = THEMES[self._主题id].get('text_primary', '#dddddd')
@@ -296,6 +307,15 @@ class C企业微信客户继承对话框(对话框基类):
                     f'请求头 "{_hk}" 的值含中文/特殊字符，HTTP 头只允许英文。\n'
                     "请从浏览器 F12 → Network → 对应请求 → Request Headers 里复制真实值。")
                 return
+        # URL + 请求头校验通过 → 写入配置，下次打开自动回填
+        try:
+            from 工具.android调试工具.ADB工具 import 保存json配置
+            保存json配置("企业微信客户继承配置.json", {
+                "url": V_url,
+                "headers": self.headers_edit.toPlainText(),
+            })
+        except Exception:
+            pass
         try:
             V_body = json.loads(self.body_edit.toPlainText())
             if not isinstance(V_body, dict):

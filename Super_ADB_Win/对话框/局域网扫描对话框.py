@@ -331,6 +331,7 @@ class 局域网扫描对话框(QDialog):
         self._scan_thread = None
         self._port = ADB_PORT
         self._closing = False
+        self._embedded = False          # 被统一无线调试面板嵌入时设为 True
         # 追踪正在运行的连接/回填后台线程，避免关闭窗口时悬挂
         self._connect_threads = []   # list[(QThread, _ConnectWorker)]
         self._enrich_threads = []    # list[(QThread, _EnrichWorker)]
@@ -346,6 +347,20 @@ class 局域网扫描对话框(QDialog):
             _mdns_run()
         except Exception:
             pass
+
+    # ── 嵌入模式 ──
+
+    def set_embedded(self, embedded):
+        """嵌入统一无线调试面板时调用：去掉 Qt.Dialog 标志，确保作为子控件正确渲染。
+
+        QDialog 默认带 Qt.Dialog 窗口标志，被 QTabWidget 包裹时首帧可能不渲染内容
+        （表现为标签页空白）。嵌入时显式设为 Qt.Widget，独立弹出时恢复默认。
+        """
+        self._embedded = embedded
+        if embedded:
+            self.setWindowFlag(Qt.WindowType.Widget, True)
+        else:
+            self.setWindowFlag(Qt.WindowType.Dialog, True)
 
     # ── 主题切换 ──
 
@@ -1157,7 +1172,7 @@ class 局域网扫描对话框(QDialog):
         self._enrich_threads.append((thread, worker))
         thread.start()
 
-    def cleanup(self):
+    def 清理(self):
         """停止所有后台线程（扫描 + 连接 + 回填），绝不留悬挂进程。
 
         从 closeEvent 抽取出来，供嵌入到统一无线调试面板时由父窗口调用
@@ -1216,7 +1231,7 @@ class 局域网扫描对话框(QDialog):
 
     def closeEvent(self, event):
         """关闭窗口时停止所有后台线程（扫描 + 连接 + 回填），绝不留悬挂进程。"""
-        self.cleanup()
+        self.清理()
         event.accept()
 
 

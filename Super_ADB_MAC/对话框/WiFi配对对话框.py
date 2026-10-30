@@ -827,7 +827,7 @@ class WiFi配对对话框(QDialog):
         dlg = WifiHistoryDialog(self)
         dlg.exec()
 
-    def cleanup(self):
+    def 清理(self):
         """停止所有后台线程，供嵌入统一面板时由父窗口调用。"""
         self._closing = True
         for w in (self._pair_worker, self._connect_worker, self._reconnect_worker):
@@ -842,7 +842,7 @@ class WiFi配对对话框(QDialog):
                 t.wait(2000)
 
     def closeEvent(self, event):
-        self.cleanup()
+        self.清理()
         event.accept()
 
 

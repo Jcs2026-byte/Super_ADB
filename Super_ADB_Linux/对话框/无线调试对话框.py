@@ -147,6 +147,8 @@ class 无线调试对话框(QDialog, 无边框缩放Mixin):
         # ── 标签页 1：局域网扫描 ──
         self._lan_dialog = 局域网扫描对话框(
             parent=self, on_device_connected=self._设备连接时, adb=self._adb)
+        # 嵌入时去掉 Qt.Dialog 标志，否则 QTabWidget 里首帧可能不渲染内容
+        self._lan_dialog.set_embedded(True)
         # 嵌入后不要让其独立窗口的最小尺寸限制整个 QTabWidget
         self._lan_dialog.setMinimumSize(0, 0)
         self.tab.addTab(self._lan_dialog, "📡 局域网扫描")

@@ -1261,7 +1261,7 @@ class 二维码连接页(QWidget):
     def _log_scan(self, text):
         self.scan_result.append(text)
 
-    def cleanup(self):
+    def 清理(self):
         """停止 mDNS 监听与后台配对线程（嵌入统一面板时由父窗口调用）。"""
         self._stop_waiting()
         self._cleanup_gen_thread()

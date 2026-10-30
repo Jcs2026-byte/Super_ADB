@@ -195,7 +195,7 @@ class C企业微信客户继承对话框(对话框基类):
         root.addLayout(url_row)
 
         # 请求头
-        hdr_lbl = QLabel("请求头 (JSON)：从浏览器 F12 完整复制，含 Cookie")
+        hdr_lbl = QLabel("请求头：从浏览器 F12 完整复制（逐行 name: value 或 JSON 均可，含 Cookie）")
         hdr_lbl.setStyleSheet(f"color: {self._accent}; font-size: 9pt; font-weight: bold;")
         root.addWidget(hdr_lbl)
         self.headers_edit = QPlainTextEdit()
@@ -273,6 +273,31 @@ class C企业微信客户继承对话框(对话框基类):
         except Exception:
             pass
 
+    @staticmethod
+    def _F解析请求头(文本):
+        """把请求头文本解析成 dict，支持 JSON 和 F12 逐行格式。"""
+        文本 = (文本 or "").strip()
+        if not 文本:
+            return {}
+        try:
+            V_obj = json.loads(文本)
+            if isinstance(V_obj, dict):
+                return V_obj
+        except Exception:
+            pass
+        V_headers = {}
+        for V_line in 文本.splitlines():
+            V_line = V_line.strip()
+            if not V_line or ":" not in V_line:
+                continue
+            V_k, _, V_v = V_line.partition(":")
+            V_k = V_k.strip()
+            V_v = V_v.strip()
+            if not V_k or V_k.startswith(":"):
+                continue
+            V_headers[V_k] = V_v
+        return V_headers
+
     def _日志样式(self):
         bg = THEMES[self._主题id]['bg_input']
         fg = THEMES[self._主题id].get('text_primary', '#dddddd')
@@ -290,12 +315,12 @@ class C企业微信客户继承对话框(对话框基类):
         if not V_url:
             QMessageBox.warning(self, "缺少 URL", "请填写请求 URL。")
             return
-        try:
-            V_headers = json.loads(self.headers_edit.toPlainText() or "{}")
-            if not isinstance(V_headers, dict):
-                raise ValueError("请求头必须是 JSON 对象")
-        except Exception as e:
-            QMessageBox.warning(self, "请求头 JSON 错误", str(e))
+        V_headers = self._F解析请求头(self.headers_edit.toPlainText())
+        if not V_headers:
+            QMessageBox.warning(self, "请求头为空",
+                                "请填写请求头。支持两种格式：\n"
+                                "• JSON: {\"Content-Type\": \"application/json\"}\n"
+                                "• F12 逐行复制：每行 name: value")
             return
         # 请求头只允许 ASCII（latin-1），中文直接拦
         for _hk, _hv in V_headers.items():

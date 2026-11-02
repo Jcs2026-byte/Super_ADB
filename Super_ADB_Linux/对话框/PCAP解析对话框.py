@@ -731,6 +731,16 @@ class Pcap解析对话框(QWidget):
         self._current_flow = None
         self._parse_thread = None
         self._cancel_parse = False
+        # 分片填充表格状态
+        self._fill_timer = None
+        self._fill_pos = 0
+        self._fill_flows = []
+        self._pending_stat_text = ''
+        # 搜索防抖
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(250)
+        self._search_timer.timeout.connect(self._apply_filter)
 
         self.setWindowTitle('PCAP 解析器')
         self.setWindowIcon(QIcon(':/Super_ADB.png'))
@@ -974,7 +984,7 @@ class Pcap解析对话框(QWidget):
         self.search_edit.setPlaceholderText('搜索 (domain: method: status:)')
         self.search_edit.setMinimumWidth(150)
         self.search_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.search_edit.textChanged.connect(self._apply_filter)
+        self.search_edit.textChanged.connect(self._on_search_changed)
         bar.addWidget(self.search_edit)
 
         self.btn_clear = QPushButton('清除')
@@ -1221,6 +1231,11 @@ class Pcap解析对话框(QWidget):
         self._cancel_parse = False
         self._flows = []
         self._filtered_flows = []
+        if self._fill_timer is not None:
+            self._fill_timer.stop()
+            self._fill_timer = None
+        self._fill_pos = 0
+        self._fill_flows = []
         self.table.setRowCount(0)
         self._clear_detail()
 
@@ -1324,15 +1339,11 @@ class Pcap解析对话框(QWidget):
                 self.btn_export.setEnabled(len(flows) > 0)
                 self._flows = flows
                 self._filtered_flows = list(flows)
-                for f in self._flows:
-                    f._searchable_text = (f.url + f.method + f.host + f.protocol
-                                          + f.req_body.decode('utf-8', errors='replace')
-                                          + f.resp_body.decode('utf-8', errors='replace')).lower()
-                self._populate_table()
-                self._populate_domains()
-                self._stat_label.setText(
+                self._pending_stat_text = (
                     f'已取消 · 已解析 {len(flows)} 个流 / {total_pkts} 包 · 用时 {elapsed:.1f}s'
                 )
+                self._populate_table()
+                self._populate_domains()
             else:
                 self._stat_label.setText(
                     f'已取消 · 已读 {total_pkts} 包，未解析到流 · 用时 {elapsed:.1f}s'
@@ -1341,16 +1352,6 @@ class Pcap解析对话框(QWidget):
 
         self._flows = flows
         self._filtered_flows = list(flows)
-
-        for f in self._flows:
-            f._searchable_text = (f.url + f.method + f.host + f.protocol
-                                  + f.req_body.decode('utf-8', errors='replace')
-                                  + f.resp_body.decode('utf-8', errors='replace')).lower()
-
-        self._populate_table()
-        self._populate_domains()
-        self._build_structure_tree()
-        self.btn_export.setEnabled(len(flows) > 0)
 
         proto_counts = defaultdict(int)
         for f in flows:
@@ -1380,13 +1381,9 @@ class Pcap解析对话框(QWidget):
         stat_parts.append(f'用时 {elapsed:.1f}s')
 
         if error:
-            self._stat_label.setText(
-                f'解析完成 [{"/".join(stat_parts)}] (错误: {error})'
-            )
+            统计文本 = f'解析完成 [{"/".join(stat_parts)}] (错误: {error})'
         else:
-            self._stat_label.setText(
-                f'解析完成 [{"/".join(stat_parts)}]'
-            )
+            统计文本 = f'解析完成 [{"/".join(stat_parts)}]'
 
         if not flows:
             stats_hint = ''
@@ -1397,15 +1394,73 @@ class Pcap解析对话框(QWidget):
                 f'{stats_hint}'
                 f'可能是 HTTPS(加密)、DNS 或其他协议。'
             )
+        else:
+            self._pending_stat_text = 统计文本
+            self._populate_table()
+            self._populate_domains()
+            self._build_structure_tree()
+            self.btn_export.setEnabled(True)
 
     # ── 表格 ──
 
     def _populate_table(self):
         self.table.setSortingEnabled(False)
+        # 停掉可能仍在运行的上一次分片填充
+        if self._fill_timer is not None:
+            self._fill_timer.stop()
+            self._fill_timer = None
         self.table.setRowCount(0)
-        for flow_idx, flow in enumerate(self._filtered_flows):
-            row = self.table.rowCount()
-            self.table.insertRow(row)
+        # 一次性预分配行数（替代逐行 insertRow，大列表下明显更快）
+        self._fill_flows = list(self._filtered_flows)
+        总数 = len(self._fill_flows)
+        self._fill_pos = 0
+        self.table.setRowCount(总数)
+
+        if 总数 <= 600:
+            self._fill_flow_rows(0, 总数)
+            self._finish_fill_table()
+        else:
+            # 超过阈值分片填充，避免 UI 冻结
+            if self._fill_timer is not None:
+                self._fill_timer.stop()
+            self._fill_timer = QTimer(self)
+            self._fill_timer.setInterval(30)
+            self._fill_timer.timeout.connect(self._fill_table_chunk)
+            self._fill_timer.start()
+            self._stat_label.setText(f'正在填充表格... 0/{总数}')
+
+    def _fill_table_chunk(self):
+        """分片填充一帧：每片最多 400 行，让出事件循环保持 UI 响应。"""
+        总数 = len(self._fill_flows)
+        片大小 = 400
+        起始 = self._fill_pos
+        结束 = min(起始 + 片大小, 总数)
+        self._fill_flow_rows(起始, 结束)
+        self._fill_pos = 结束
+        self._stat_label.setText(f'正在填充表格... {结束}/{总数}')
+        if 结束 >= 总数:
+            if self._fill_timer is not None:
+                self._fill_timer.stop()
+                self._fill_timer = None
+            self._finish_fill_table()
+
+    def _finish_fill_table(self):
+        """填充完成后恢复排序与列宽，并还原状态栏统计文本。"""
+        self.table.setSortingEnabled(True)
+        # 重新应用列宽调整模式（排序可能重置）
+        header = self.table.horizontalHeader()
+        header.setStretchLastSection(True)
+        for col in range(6):
+            header.setSectionResizeMode(col, QHeaderView.Interactive)
+        header.setSectionResizeMode(6, QHeaderView.Stretch)
+        if self._pending_stat_text:
+            self._stat_label.setText(self._pending_stat_text)
+
+    def _fill_flow_rows(self, 起始, 结束):
+        """填充 [起始, 结束) 区间的行到表格。"""
+        for flow_idx in range(起始, 结束):
+            flow = self._fill_flows[flow_idx]
+            row = flow_idx
 
             # 序号（存储 flow_idx 在 UserRole 用于排序后索引映射）
             item = QTableWidgetItem(str(flow.idx))
@@ -1465,14 +1520,6 @@ class Pcap解析对话框(QWidget):
                     cell = self.table.item(row, col)
                     if cell:
                         cell.setBackground(bg_color)
-
-        self.table.setSortingEnabled(True)
-        # 重新应用列宽调整模式（排序可能重置）
-        header = self.table.horizontalHeader()
-        header.setStretchLastSection(True)
-        for col in range(6):
-            header.setSectionResizeMode(col, QHeaderView.Interactive)
-        header.setSectionResizeMode(6, QHeaderView.Stretch)
     
     def _on_tab_changed(self, index: int):
         """当用户切换tab时触发。"""
@@ -2062,7 +2109,6 @@ class Pcap解析对话框(QWidget):
 
         def _group(name, items, group_color=None):
             g = QTreeWidgetItem([name, ''])
-            g.setExpanded(True)
             # 分组标题用强调色
             g.setForeground(0, QColor(group_color or accent))
             g.setForeground(1, QColor(group_color or accent))
@@ -2072,7 +2118,9 @@ class Pcap解析对话框(QWidget):
                 子.setForeground(0, QColor(text_primary))
                 子.setForeground(1, QColor(text_primary))
                 g.addChild(子)
+            # 必须先挂到 tree 上再 setExpanded，否则在部分 Qt 版本下不生效
             self.overview_tree.addTopLevelItem(g)
+            g.setExpanded(True)
 
         # 1. 基本信息
         _group('📋 基本信息', [
@@ -2343,26 +2391,49 @@ class Pcap解析对话框(QWidget):
                                 break
                 if not matched:
                     continue
-            # 关键词搜索（使用预计算的搜索文本）
+            # 关键词搜索（轻量惰性匹配：URL/方法/主机/协议/请求响应头 + body 限长）
             if keyword_lower:
-                searchable = getattr(f, '_searchable_text', '')
-                if not searchable:
-                    # 首次搜索时计算并缓存
-                    searchable = (f.url + f.method + f.host + f.protocol
-                                  + f.req_body.decode('utf-8', errors='replace')
-                                  + f.resp_body.decode('utf-8', errors='replace')).lower()
-                    f._searchable_text = searchable
-                if keyword_lower not in searchable:
+                if not self._flow_match_search(f, keyword_lower):
                     continue
             filtered.append(f)
 
         self._filtered_flows = filtered
-        self._populate_table()
-        self._build_structure_tree()
         count_info = f'显示 {len(filtered)} / {len(self._flows)} 个请求'
         if search_text:
             count_info += f' (过滤: "{search_text}")'
-        self._stat_label.setText(count_info)
+        self._pending_stat_text = count_info
+        self._populate_table()
+        # 结构树只在「结构」视图激活时重建，避免过滤时全量重建卡顿
+        if self.left_tabs.currentIndex() == 0:
+            self._build_structure_tree()
+
+    def _on_search_changed(self):
+        """搜索框输入防抖：停止后 250ms 才执行过滤，避免每敲一键全量重算。"""
+        self._search_timer.start()
+
+    def _flow_match_search(self, f, keyword_lower):
+        """轻量关键词匹配。
+
+        预建文本只含 URL/方法/主机/协议/请求响应头（不预存整个 body，
+        避免大文件内存爆炸）；body 搜索改为惰性限长（前 64KB）解码。
+        """
+        searchable = getattr(f, '_searchable_text', None)
+        if searchable is None:
+            try:
+                头文本 = ''.join(
+                    f'{k}{v}' for d in (f.req_headers, f.resp_headers)
+                    for k, v in (d or {}).items())
+            except Exception:
+                头文本 = ''
+            searchable = (f.url + f.method + f.host + f.protocol + 头文本).lower()
+            f._searchable_text = searchable
+        if keyword_lower in searchable:
+            return True
+        # body 惰性限长搜索（请求体/响应体各前 64KB）
+        for body in (f.req_body, f.resp_body):
+            if body and keyword_lower in body[:65536].decode('utf-8', errors='replace').lower():
+                return True
+        return False
 
     def _clear_filter(self):
         self.method_combo.setCurrentIndex(0)

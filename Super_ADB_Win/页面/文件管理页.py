@@ -174,6 +174,11 @@ class 文件管理页(QWidget):
         self._mgr = AdbFileManager()
         self._pool = QThreadPool()
         self._pool.setMaxThreadCount(4)
+        # 独立单线程池：仅用于后台 du 目录大小计算（串行设计）。
+        # 与用户主动操作（删除/重命名/移动等）分离，避免慢速 du 占满主池
+        # 导致删除等命令排队无响应（"右击删除没反应"的根因）。
+        self._du_pool = QThreadPool()
+        self._du_pool.setMaxThreadCount(1)
         self._current_serial = None
         self._root_path = '/sdcard'
         self._dir_items = {}
@@ -365,7 +370,7 @@ class 文件管理页(QWidget):
     # ------------------------------------------------------------------
     # Worker 管理
     # ------------------------------------------------------------------
-    def _track(self, worker, on_result=None, on_error=None, on_finished=None):
+    def _track(self, worker, on_result=None, on_error=None, on_finished=None, pool=None):
         if on_result:
             worker.signals.result.connect(on_result)
         if on_error:
@@ -374,7 +379,7 @@ class 文件管理页(QWidget):
         if on_finished:
             worker.signals.finished.connect(on_finished)
         self._live_workers.append(worker)
-        self._pool.start(worker)
+        (pool or self._pool).start(worker)
 
     def _drop(self, worker):
         try:
@@ -767,7 +772,7 @@ class 文件管理页(QWidget):
             self._computed_dir_sizes.add(cp)
             def _do_du():
                 try:
-                    out = self._mgr.执行shell(self._current_serial, f'du -sk "{cp}"', timeout=30)
+                    out = self._mgr.执行shell(self._current_serial, f'du -sk "{cp}"', timeout=15)
                     first = out.strip().splitlines()[0] if out.strip() else ''
                     parts = first.split()
                     if len(parts) >= 1 and parts[0].isdigit():
@@ -786,7 +791,7 @@ class 文件管理页(QWidget):
                     pass
                 _run_next(idx + 1)  # 跑完下一个
             w = _CmdWorker(_do_du)
-            self._track(w, on_result=_on_done)
+            self._track(w, on_result=_on_done, pool=self._du_pool)
         _run_next(0)
 
     # 虚拟文件系统路径前缀，du 算不出来，直接跳过
@@ -804,7 +809,7 @@ class 文件管理页(QWidget):
         def _do_du():
             try:
                 # du -sk 输出 KB 数，最通用；失败再试 -sh
-                out = self._mgr.执行shell(self._current_serial, f'du -sk "{path}"', timeout=30)
+                out = self._mgr.执行shell(self._current_serial, f'du -sk "{path}"', timeout=15)
                 first = out.strip().splitlines()[0] if out.strip() else ''
                 parts = first.split()
                 if len(parts) >= 1 and parts[0].isdigit():
@@ -828,7 +833,7 @@ class 文件管理页(QWidget):
             except Exception:
                 pass
         w = _CmdWorker(_do_du)
-        self._track(w, on_result=_on_done)
+        self._track(w, on_result=_on_done, pool=self._du_pool)
 
     def _refresh_dir(self, path):
         item = self._dir_items.get(path)
@@ -916,7 +921,7 @@ class 文件管理页(QWidget):
         act_mv.triggered.connect(lambda: self._move())
         act_edit.triggered.connect(lambda: self._edit_file())
         act_ch.triggered.connect(lambda: self._chmod())
-        act_del.triggered.connect(lambda: self._delete())
+        act_del.triggered.connect(lambda: self._delete(entry))
         if act_open_path:
             act_open_path.triggered.connect(lambda: self._open_in_browser(entry))
         act_rf.triggered.connect(lambda: self._refresh_current())
@@ -1329,8 +1334,9 @@ class 文件管理页(QWidget):
         self._auto_close_msg('授权失败', f'授权 "{name}" 失败:\n{error_msg}',
                             icon=QMessageBox.Icon.Warning)
 
-    def _delete(self):
-        entry = self._selected_path()
+    def _delete(self, entry=None):
+        # 优先使用右键菜单时的条目（currentIndex 在部分场景可能未同步到右击行）
+        entry = entry or self._selected_path()
         if not entry:
             return
         _name = self._entry_name(entry)
@@ -1768,7 +1774,7 @@ class 文件管理页(QWidget):
         msg_box.exec()
 
     def _status(self, msg):
-        self.status_label.setText(msg)
+        self.status_label.setText(msg)
 
 def _parse_du_size(s):
     """把 du -sh 的输出（如 1.2G、500M、3.4K）转成字节数。"""

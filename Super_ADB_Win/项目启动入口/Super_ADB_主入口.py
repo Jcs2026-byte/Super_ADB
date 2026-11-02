@@ -377,16 +377,16 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self.setMinimumSize(1, 1)
         self._恢复几何()
         self.splitter_log.setSizes([600, 1200])
-        # 默认打开时折叠左侧 adb 调试工具栏，只保留右侧内容区。
-        # 注意：sizes/stretch 方向必须一致 —— 折叠 index0（leftPanel 工具栏）、
-        # 多余空间给 index1（右侧内容区）；原先写成 [1, 0]+stretch(0,1) 方向反了，
-        # 打开即右侧内容区折叠，拖动时还会与折叠逻辑冲突。
+        # 默认展开左侧 adb 调试工具栏（左侧约占 1/3、右侧内容区 2/3）；
+        # 方向注意：sizes/stretch 必须一致 —— 折叠 index0 应写 0，
+        # 多余空间给 index1（stretchFactor(1,1)），原先写成 [1, 0]+stretch(0,1)
+        # 方向反了，打开即右侧内容区折叠，拖动时还会与折叠逻辑冲突。
         self.splitter_main.setCollapsible(0, True)
         self.splitter_main.setCollapsible(1, True)
         self.splitter_main.setStretchFactor(0, 0)
         self.splitter_main.setStretchFactor(1, 1)
-        self.splitter_main.setSizes([0, 1])
-        self._恢复分割条主()  # 启动读配置；缺失/损坏时保持默认折叠左侧
+        self.splitter_main.setSizes([600, 1200])
+        self._恢复分割条主()  # 启动读配置；缺失/损坏时保持默认展开左侧
         self.splitter_main.splitterMoved.connect(self._分割条移动时)
         # ── splitter_3：默认折叠上方（adb 调试模块），下方 便捷工具/输出 占满 ──
         # 上下两个子面板都可折叠（让用户能拖手柄再次展开）；
@@ -1926,13 +1926,13 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
     # ------------------------------------------------------------------
     def _恢复分割条主(self):
         """从配置恢复 splitter_main 的左右面板宽度。
-        缺失或损坏时保持默认 [0, 1]（折叠左侧工具栏）。"""
+        缺失或损坏时使用默认 [600, 1200]（展开左侧工具栏，约占 1/3）。"""
         sizes = 加载json配置(CONFIG_NAME).get('splitter_main_sizes')
         if isinstance(sizes, list) and len(sizes) == 2 and all(isinstance(s, int) and s >= 0 for s in sizes):
             self.splitter_main.setSizes(sizes)
         else:
-            # 默认：折叠左侧 adb 调试工具栏，右侧内容区占满
-            self.splitter_main.setSizes([0, 1])
+            # 默认：展开左侧 adb 调试工具栏（1/3），右侧内容区 2/3
+            self.splitter_main.setSizes([600, 1200])
 
     def _保存分割条主(self):
         """把当前 splitter_main 的左右面板宽度写入配置。"""

@@ -387,6 +387,18 @@ class 文件管理页(QWidget):
         except ValueError:
             pass
 
+    def _item_alive(self, item):
+        """代际校验：item 是否仍挂在当前树 model 上。
+
+        整树重建（_build_root 的 model.clear() / 退出深度搜索的 removeRows）后，
+        旧 QStandardItem 悬空，此时 item.model() 为 None 或抛 RuntimeError；
+        后台 worker 回调若继续操作它会造成状态错乱或崩溃。
+        """
+        try:
+            return item is not None and item.model() is self.model
+        except RuntimeError:
+            return False
+
     def 设置日志回调(self, cb):
         """把文件操作（上传/下载/删除等）的详细日志接到主窗口输出区。"""
         self._mgr.log_callback = cb
@@ -427,8 +439,14 @@ class 文件管理页(QWidget):
     def _apply_col_widths(self):
         w = self.tree.viewport().width()
         if w <= 0:
-            QTimer.singleShot(50, self._apply_col_widths)
+            # 窗口隐藏/最小化期间 viewport 宽度为 0：有限重试（50×50ms≈2.5s），
+            # 超限放弃；窗口恢复可见时 Resize 事件（eventFilter）会再次触发应用。
+            n = getattr(self, '_col_retry', 0) + 1
+            if n <= 50:
+                self._col_retry = n
+                QTimer.singleShot(50, self._apply_col_widths)
             return
+        self._col_retry = 0
         ratios = self._col_ratios
         head = list(ratios[:-1])
         head_sum = sum(head)
@@ -483,11 +501,16 @@ class 文件管理页(QWidget):
         self._track(w, on_result=self._on_devices, on_error=lambda e: self._status(f'扫描失败: {e}'))
 
     def _on_devices(self, devices):
+        prev = self.device_combo.currentData()
         self._fill_devices(devices)
-        if self.device_combo.count() > 0:
-            self._on_device()
-        else:
+        new = self.device_combo.currentData()
+        if not new:
             self._status('无设备')
+            return
+        # 仅当选中设备真正变化时才重建整树；设备未变时刷新不打断当前浏览
+        # （原实现无条件 _on_device() → _build_root() → model.clear()）。
+        if new != prev:
+            self._on_device()
 
     def _fill_devices(self, devices, select_serial=None):
         """填充设备下拉框；优先选中 select_serial，否则尽量保留当前选中项。"""
@@ -625,6 +648,8 @@ class 文件管理页(QWidget):
         缺失的插入新建，多余的删除；全程不整体 removeRows，节点对象不销毁。
         """
         # item 可能已被 removeRows 删除（如退出深度搜索重建根目录时）
+        if not self._item_alive(item):
+            return
         try:
             was_exp = self.tree.isExpanded(item.index())
         except RuntimeError:
@@ -734,6 +759,8 @@ class 文件管理页(QWidget):
             self._dir_items[e['path']] = child
 
     def _on_list_err(self, item, path, err):
+        if not self._item_alive(item):
+            return
         item.removeRows(0, item.rowCount())
         self.tree.setExpanded(item.index(), False)
         item.setData(False, LOADED_ROLE)
@@ -781,6 +808,10 @@ class 文件管理页(QWidget):
                 except Exception:
                     return None
             def _on_done(size_bytes):
+                # item 悬空（整树重建）则跳过大小回写，仍继续下一个 du
+                if not self._item_alive(ci):
+                    _run_next(idx + 1)
+                    return
                 try:
                     if size_bytes and size_bytes > 0:
                         idx2 = ci.index().siblingAtColumn(1)
@@ -821,6 +852,9 @@ class 文件管理页(QWidget):
                 return None
         def _on_done(size_bytes):
             try:
+                # item 悬空（整树重建/退出深度搜索）则不回写，防止操作旧节点
+                if not self._item_alive(item):
+                    return
                 if size_bytes is None or size_bytes <= 0:
                     return  # 虚拟FS或无权限目录，静默跳过不刷状态栏
                 # item 是第0列，用 index().siblingAtColumn(1) 取同一行大小列
@@ -955,14 +989,18 @@ class 文件管理页(QWidget):
         # 目标是目录，拼接文件名（与 adb push local /dir/ 行为一致）
         target = target_dir.rstrip('/') + '/' + os.path.basename(local)
         file_name = os.path.basename(local)
-        # 检查远程是否已有同名文件
-        try:
-            检查结果 = self._mgr.执行shell(
-                self._current_serial, f'ls -la "{target}" 2>&1', timeout=5)
-            检查文本 = (检查结果 or '').strip()
-            文件已存在 = bool(检查文本) and 'No such file' not in 检查文本 and 'cannot access' not in 检查文本
-        except Exception:
-            文件已存在 = False
+        # 检查远程是否已有同名文件：放后台 worker，避免主线程同步阻塞
+        # （设备响应慢时 执行shell(timeout=5) 会让整个 UI 冻结）
+        w = _CmdWorker(
+            self._mgr.执行shell, self._current_serial, f'ls -la "{target}" 2>&1', timeout=5)
+        self._track(w,
+                    on_result=lambda r: self._on_upload_check_done(r, local, target, target_dir, file_name),
+                    on_error=lambda e: self._do_upload(local, target, target_dir, file_name))
+
+    def _on_upload_check_done(self, 检查结果, local, target, target_dir, file_name):
+        """同名检查完成（主线程）：需要覆盖确认则弹窗，否则直接推送。"""
+        检查文本 = (检查结果 or '').strip()
+        文件已存在 = bool(检查文本) and 'No such file' not in 检查文本 and 'cannot access' not in 检查文本
         if 文件已存在:
             # 弹窗询问是否覆盖
             回复 = QMessageBox.question(
@@ -975,6 +1013,9 @@ class 文件管理页(QWidget):
                 self._status(f'已取消上传: {file_name}')
                 return
             self._log(f'[上传] 用户确认覆盖: {file_name}')
+        self._do_upload(local, target, target_dir, file_name)
+
+    def _do_upload(self, local, target, target_dir, file_name):
         try:
             size = os.path.getsize(local)
         except OSError as e:
@@ -1038,7 +1079,7 @@ class 文件管理页(QWidget):
         # 诊断1: 检查远程目录权限
         try:
             目录状态 = self._mgr.执行shell(
-                self._current_serial, f'ls -ld "{target_dir}" 2>&1', timeout=5)
+                self._current_serial, f'ls -ld "{target_dir}" 2>&1', timeout=2)
             self._log(f'[上传] 诊断: 目标目录状态: {(目录状态 or "").strip()}')
             if 'No such file' in (目录状态 or ''):
                 self._log('[上传] ✗ 诊断: 目标目录不存在')
@@ -1060,7 +1101,7 @@ class 文件管理页(QWidget):
         if target_dir.startswith('/system'):
             try:
                 空间 = self._mgr.执行shell(
-                    self._current_serial, 'df -k /system 2>&1', timeout=5)
+                    self._current_serial, 'df -k /system 2>&1', timeout=2)
                 self._log(f'[上传] 诊断: /system 空间: {(空间 or "").strip()}')
             except Exception:
                 pass

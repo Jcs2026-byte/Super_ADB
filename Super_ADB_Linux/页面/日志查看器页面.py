@@ -9,6 +9,7 @@ ADB Logcat 日志查看器 —— 内嵌子页面
 import os
 import re
 import time
+import shlex
 import threading
 import datetime
 from collections import deque
@@ -198,9 +199,14 @@ class 日志查看器页(QWidget):
         self._capturing = False
         self._paused = False
         self._total = 0
+        # 真实匹配总数（按当前过滤累计，供状态栏显示；视图行数会被
+        # VIEW_MAX_BLOCKS 裁剪，不能用 text_edit.count() 冒充匹配数）
+        self._matched_total = 0
         self._entries = deque(maxlen=BUFFER_MAX)
         self._pending_view = []
-        self._line_buf = ''
+        # 字节级行缓冲：先按 b'\n' 拆行、对完整行 decode，避免 UTF-8 多字节
+        # 字符被 pipe/socket 分块截断时在整块 decode 阶段被 U+FFFD 破坏（中文乱码）。
+        self._line_buf = b''
         self._write_buf = []      # 磁盘写缓冲：累积行，由 _flush_view 批量写入
         # 原始行缓冲：_on_data 只负责"读+拆行+入缓冲"（零正则，极快），
         # 解析+过滤交给后台线程，避免万行/批的正则匹配冻结主线程。
@@ -266,6 +272,13 @@ class 日志查看器页(QWidget):
         self._filter_timer.setInterval(250)
         self._filter_timer.setSingleShot(True)
         self._filter_timer.timeout.connect(self._apply_filter)
+
+        # 高亮关键字防抖：textChanged 只更新关键字列表，250ms 后统一重渲染，
+        # 避免每次击键都触发一次全量 _rerender（大日志时反复冻结主线程）。
+        self._hl_timer = QTimer(self)
+        self._hl_timer.setInterval(250)
+        self._hl_timer.setSingleShot(True)
+        self._hl_timer.timeout.connect(self._rerender)
 
         # 抓取期间每 3 秒轮询一次 ps，累积"包名 -> 历史 PID"映射
         self._ps_timer = QTimer(self)
@@ -471,6 +484,10 @@ class 日志查看器页(QWidget):
         self._pool.start(w)
 
     def _on_scan_result(self, devices, select_serial=None):
+        # 必须在 clear() 之前取当前选中串：clear 后 currentData() 恒为 None，
+        # 刷新会导致设备选择丢失（原 bug）。
+        if select_serial is None:
+            select_serial = self.device_combo.currentData()
         self.device_combo.blockSignals(True)
         self.device_combo.clear()
         self.device_combo.blockSignals(False)
@@ -482,8 +499,6 @@ class 日志查看器页(QWidget):
             self.btn_start.setEnabled(False)
             self._current_serial = None
             return
-        if select_serial is None:
-            select_serial = self.device_combo.currentData()
         self.device_combo.blockSignals(True)
         online = [d for d in devices if d.get('state') == 'device']
         for d in online:
@@ -499,7 +514,14 @@ class 日志查看器页(QWidget):
             self.btn_start.setText('开始抓取')
             self.btn_start.setEnabled(False)
         else:
-            self._current_serial = self.device_combo.currentData()
+            new_serial = self.device_combo.currentData()
+            # blockSignals 期间 _on_device 不会触发：若选中设备真的变化
+            # （如刷新后回退到另一台），必须停掉旧设备的抓取，避免 UI 认为在抓 B、
+            # logcat 实际还在抓 A 的静默错位。
+            if new_serial != self._current_serial:
+                if self._capturing and self._current_serial:
+                    self._stop_capture()
+                self._current_serial = new_serial
             self.btn_start.setEnabled(True)
             self.status_label.setText(f'已连接 {self.device_combo.count()} 台设备')
 
@@ -533,10 +555,11 @@ class 日志查看器页(QWidget):
             return
         self._entries.clear()
         self._pending_view.clear()
-        self._line_buf = ''
+        self._line_buf = b''
         with self._raw_lock:
             self._raw_lines = []
         self._total = 0
+        self._matched_total = 0
         self.text_edit.clear()
 
         # 自研 ADB 模式：用后台线程 + shell流，不启动官方 adb 进程
@@ -605,7 +628,7 @@ class 日志查看器页(QWidget):
         # 立刻停止定时器和后续数据流入；UI 状态立即反馈给用户
         self._capturing = False
         # 清掉行缓冲里残留的不完整行，避免被下一次抓取误当作首行
-        self._line_buf = ''
+        self._line_buf = b''
         # 清空未解析的原始行：用户已选择停止，丢弃尚未来得及解析的数据（磁盘已保存）
         with self._raw_lock:
             self._raw_lines = []
@@ -668,11 +691,28 @@ class 日志查看器页(QWidget):
             self._finalize_stop()
 
     def _wait_shell_thread(self):
-        """轮询等待自研 ADB shell 流后台线程结束。"""
+        """轮询等待自研 ADB shell 流后台线程结束。
+
+        正常路径 shell 流循环读 0.5s 超时，stop_event 置位后 ≤0.5s 退出；
+        这里给 10s（100×100ms）兜底上限：若线程卡在借用流连接/打开服务/
+        USB 命令锁竞争阶段，超时后强制收尾，避免「开始抓取」按钮永久禁用。
+        """
+        n = getattr(self, '_shell_wait_count', 0) + 1
+        self._shell_wait_count = n
         if self._shell_thread and self._shell_thread.is_alive():
-            _dbg('KILL', 'shell thread still alive, retry in 100ms')
-            QTimer.singleShot(100, self._wait_shell_thread)
+            if n <= 100:
+                _dbg('KILL', f'shell thread still alive ({n}), retry in 100ms')
+                QTimer.singleShot(100, self._wait_shell_thread)
+                return
+            _dbg('KILL', 'shell thread stuck >10s, force finalize stop')
+            try:
+                self._shell_thread = None
+            except Exception:
+                pass
+            self._shell_stop_event = None
+            self._finalize_stop()
             return
+        self._shell_wait_count = 0
         _dbg('KILL', 'shell thread finished')
         self._shell_thread = None
         self._shell_stop_event = None
@@ -705,6 +745,7 @@ class 日志查看器页(QWidget):
         with self._raw_lock:
             self._raw_lines = []
         self._total = 0
+        self._matched_total = 0
         self.text_edit.clear()
         self._update_count()
         self._更新占位提示()
@@ -724,14 +765,16 @@ class 日志查看器页(QWidget):
             self._proc.readAllStandardOutput()
             _dbg('DATA', 'SKIP (capturing=False) drain buffer')
             return
-        data = bytes(self._proc.readAllStandardOutput()).decode('utf-8', 'replace')
+        data = bytes(self._proc.readAllStandardOutput())
         cnt = 0
         self._line_buf += data
         with self._raw_lock:
-            while '\n' in self._line_buf:
-                line, self._line_buf = self._line_buf.split('\n', 1)
-                line = line.rstrip('\r')
-                if line:
+            while b'\n' in self._line_buf:
+                line_b, self._line_buf = self._line_buf.split(b'\n', 1)
+                line_b = line_b.rstrip(b'\r')
+                if line_b:
+                    # 完整行再 decode：UTF-8 多字节字符在字节缓冲里保持完整
+                    line = line_b.decode('utf-8', 'replace')
                     self._raw_lines.append(line)
                     if self._log_file:
                         self._write_buf.append(line)   # 磁盘缓冲（原始行）
@@ -745,14 +788,15 @@ class 日志查看器页(QWidget):
         if not self._capturing:
             _dbg('DATA', 'SKIP shell (capturing=False)')
             return
-        text = data.decode('utf-8', 'replace')
         cnt = 0
-        self._line_buf += text
+        self._line_buf += data
         with self._raw_lock:
-            while '\n' in self._line_buf:
-                line, self._line_buf = self._line_buf.split('\n', 1)
-                line = line.rstrip('\r')
-                if line:
+            while b'\n' in self._line_buf:
+                line_b, self._line_buf = self._line_buf.split(b'\n', 1)
+                line_b = line_b.rstrip(b'\r')
+                if line_b:
+                    # 完整行再 decode，避免跨块中文被截断成 U+FFFD
+                    line = line_b.decode('utf-8', 'replace')
                     self._raw_lines.append(line)
                     if self._log_file:
                         self._write_buf.append(line)
@@ -803,6 +847,7 @@ class 日志查看器页(QWidget):
         entries, matched = result
         self._entries.extend(entries)
         self._total += len(entries)
+        self._matched_total += len(matched)
         if self._capturing and not self._paused:
             self._pending_view.extend(matched)
         self._parsing = False
@@ -1054,7 +1099,7 @@ class 日志查看器页(QWidget):
                 self._insert_batch(batch)
                 if self.follow_chk.isChecked():
                     self.text_edit.scrollToBottom()
-            self._update_count()
+            self._update_count(self._matched_total)
             _dbg('FLUSH', f'DRAG batch={len(batch)} pending_left={len(self._pending_view)} '
                           f'cost={time.perf_counter() - t0:.3f}s')
             return
@@ -1074,7 +1119,7 @@ class 日志查看器页(QWidget):
         self._insert_batch(batch)
         if self.follow_chk.isChecked():
             self.text_edit.scrollToBottom()
-        self._update_count()
+        self._update_count(self._matched_total)
         _dbg('FLUSH', f'batch={len(batch)} pending_left={len(self._pending_view)} '
                       f'cost={time.perf_counter() - t0:.3f}s')
 
@@ -1132,6 +1177,9 @@ class 日志查看器页(QWidget):
         self._insert_batch(result['shown'])
         if self.follow_chk.isChecked():
             self.text_edit.scrollToBottom()
+        # 全量重算结果回写为累计基数：后续 _flush_view 的增量计数在此基础上累加，
+        # 状态栏显示真实匹配数而非被 VIEW_MAX_BLOCKS 裁剪后的视图行数
+        self._matched_total = result['matched_count']
         self._update_count(result['matched_count'], len(result['shown']))
         self._更新占位提示()
 
@@ -1193,11 +1241,13 @@ class 日志查看器页(QWidget):
         return find(widget, top)
 
     def _init_mode_label(self, mode_label=None):
-        """模式提示标签：优先使用 .ui 中的控件，独立模式才动态创建。"""
-        if getattr(self, '_mode_label', None) is not None:
-            return
+        """模式提示标签：注入路径优先使用 .ui 中的控件（覆盖 _build_ui 动态创建的旧标签），
+        独立模式才动态创建。注入必须覆盖：__init__ 无条件 _build_ui() 已先创建了
+        一个动态 QLabel，若不覆盖，.ui 的 logViewer_modeLabel 永远停留在「未加载日志」。"""
         if mode_label is not None:
             self._mode_label = mode_label
+            return
+        if getattr(self, '_mode_label', None) is not None:
             return
         self._mode_label = QLabel('未加载日志')
         lay = self._layout_of(self.count_label)
@@ -1249,12 +1299,17 @@ class 日志查看器页(QWidget):
         self._filter_timer.start()
 
     def _on_hl_changed(self, text):
-        """高亮关键字变化：更新关键字列表，并立即重渲染已有日志以套用/取消红底。"""
+        """高亮关键字变化：立即更新关键字列表（后续渲染即生效），重渲染防抖 250ms。"""
         self._hl_keywords = [k.strip().lower() for k in text.split(',') if k.strip()]
-        self._rerender()
+        self._hl_timer.start()
 
     def _apply_filter(self):
         self._filter_seq += 1
+        # 清掉按旧过滤条件进入待渲染队列的行：否则 _rerender 重建视图后，
+        # _flush_view 仍会把旧过滤的残留行注入界面，造成新旧过滤结果混杂。
+        self._pending_view.clear()
+        # 匹配计数切换口径：从新过滤开始重新累计
+        self._matched_total = 0
         self._filter_tag = self.tag_combo.currentText().strip()
         self._filter_msg = self.msg_combo.currentText().strip()
         self._filter_regex = self.regex_chk.isChecked()
@@ -1281,8 +1336,10 @@ class 日志查看器页(QWidget):
             for pkg in pkgs:
                 pids = set(hist.get(pkg, set()))
                 # 1) pidof 最快，但部分 ROM/模拟器无此命令
+                # 包名来自用户输入（按 [,\s]+ 拆分，不含空格，但可含 ; $() ` 等
+                # shell 元字符），必须 shlex.quote 防注入。
                 try:
-                    out = self._mgr.执行shell(serial, f'pidof {pkg}', timeout=5)
+                    out = self._mgr.执行shell(serial, f'pidof {shlex.quote(pkg)}', timeout=5)
                     pids.update(out.split())
                 except Exception:
                     pass
@@ -1444,7 +1501,7 @@ class 日志查看器页(QWidget):
             self._log_file = None
 
     def _update_count(self, matched=None, shown=None):
-        mc = matched if matched is not None else self.text_edit.count()
+        mc = matched if matched is not None else self._matched_total
         save = os.path.basename(self._log_path) if self._log_path else '（未保存）'
         suffix = f'（仅渲染最近 {shown} 条）' if shown is not None and shown >= RENDER_MAX else ''
         self.count_label.setText(
@@ -1470,6 +1527,7 @@ class 日志查看器页(QWidget):
         self._entries.clear()
         self._pending_view.clear()
         self._total = 0
+        self._matched_total = 0
         for line in lines:
             if line:
                 self._ingest(line)

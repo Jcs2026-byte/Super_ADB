@@ -386,6 +386,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self.splitter_main.setStretchFactor(0, 0)
         self.splitter_main.setStretchFactor(1, 1)
         self.splitter_main.setSizes([0, 1])
+        self._恢复分割条主()  # 启动读配置；缺失/损坏时保持默认折叠左侧
         self.splitter_main.splitterMoved.connect(self._分割条移动时)
         # ── splitter_3：默认折叠上方（adb 调试模块），下方 便捷工具/输出 占满 ──
         # 上下两个子面板都可折叠（让用户能拖手柄再次展开）；
@@ -1920,6 +1921,39 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self._splitter3_timer.start(300)
 
     # ------------------------------------------------------------------
+    # splitter_main 持久化：启动读、拖动写、关闭再写
+    # key 用 'splitter_main_sizes'；默认折叠左侧工具栏、右侧内容区占满。
+    # ------------------------------------------------------------------
+    def _恢复分割条主(self):
+        """从配置恢复 splitter_main 的左右面板宽度。
+        缺失或损坏时保持默认 [0, 1]（折叠左侧工具栏）。"""
+        sizes = 加载json配置(CONFIG_NAME).get('splitter_main_sizes')
+        if isinstance(sizes, list) and len(sizes) == 2 and all(isinstance(s, int) and s >= 0 for s in sizes):
+            self.splitter_main.setSizes(sizes)
+        else:
+            # 默认：折叠左侧 adb 调试工具栏，右侧内容区占满
+            self.splitter_main.setSizes([0, 1])
+
+    def _保存分割条主(self):
+        """把当前 splitter_main 的左右面板宽度写入配置。"""
+        sizes = self.splitter_main.sizes()
+        # 防御：极端 resize 后 sizes 偶尔会返回 [-1]，跳过保存避免污染配置
+        if any(s < 0 for s in sizes) or len(sizes) != 2:
+            return
+        cfg = 加载json配置(CONFIG_NAME)
+        cfg['splitter_main_sizes'] = list(sizes)
+        保存json配置(CONFIG_NAME, cfg)
+
+    def _防抖保存分割条主(self, *_):
+        """splitterMoved 防抖：拖动结束后 300ms 才写盘，避免高频 IO；
+        折叠/展开同样经由此路径保存，下次启动即还原。"""
+        if not hasattr(self, '_splitter_main_save_timer'):
+            self._splitter_main_save_timer = QTimer(self)
+            self._splitter_main_save_timer.setSingleShot(True)
+            self._splitter_main_save_timer.timeout.connect(self._保存分割条主)
+        self._splitter_main_save_timer.start(300)
+
+    # ------------------------------------------------------------------
     # 默认页持久化：启动读、切换写、退出再写
     # 与 _恢复几何 / _保存几何 同样套路；key 用 'default_pages'，
     # 值 [左侧页签索引, 右侧页签索引]（tabWidget / tabWidget_2）。
@@ -2053,6 +2087,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         if getattr(self, '_force_close', False):
             self._保存几何()
             self._保存分割条3()
+            self._保存分割条主()
             self._保存默认页()
             ev.accept()
             return
@@ -2105,6 +2140,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
                 return
             self._保存几何()
             self._保存分割条3()
+            self._保存分割条主()
             self._保存默认页()
             ev.accept()
         else:
@@ -2166,6 +2202,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
     def _隐藏到托盘(self):
         self._保存几何()
         self._保存分割条3()
+        self._保存分割条主()
         self._保存默认页()
         self.hide()
         self.tray_icon.showMessage(
@@ -2341,6 +2378,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             return
         self._保存几何()
         self._保存分割条3()
+        self._保存分割条主()
         self._保存默认页()
         QApplication.instance().quit()
 
@@ -2603,6 +2641,8 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             self._splitter_main_timer.setSingleShot(True)
             self._splitter_main_timer.timeout.connect(self._重算分割条布局)
         self._splitter_main_timer.start(150)
+        # 持久化走独立防抖（300ms），与布局重算互不干扰
+        self._防抖保存分割条主()
 
     def _重算分割条布局(self):
         for _w in (self.splitter_log, self.leftPanelWidget, self.toolsPanelWidget):

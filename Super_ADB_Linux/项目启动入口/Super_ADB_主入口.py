@@ -377,11 +377,15 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self.setMinimumSize(1, 1)
         self._恢复几何()
         self.splitter_log.setSizes([600, 1200])
-        # 默认打开时折叠左侧 adb 调试工具栏，只保留右侧内容区
+        # 默认打开时折叠左侧 adb 调试工具栏，只保留右侧内容区。
+        # 注意：sizes/stretch 方向必须一致 —— 折叠 index0（leftPanel 工具栏）、
+        # 多余空间给 index1（右侧内容区）；原先写成 [1, 0]+stretch(0,1) 方向反了，
+        # 打开即右侧内容区折叠，拖动时还会与折叠逻辑冲突。
+        self.splitter_main.setCollapsible(0, True)
         self.splitter_main.setCollapsible(1, True)
-        self.splitter_main.setStretchFactor(0, 1)
-        self.splitter_main.setStretchFactor(1, 0)
-        self.splitter_main.setSizes([1, 0])
+        self.splitter_main.setStretchFactor(0, 0)
+        self.splitter_main.setStretchFactor(1, 1)
+        self.splitter_main.setSizes([0, 1])
         self.splitter_main.splitterMoved.connect(self._分割条移动时)
         # ── splitter_3：默认折叠上方（adb 调试模块），下方 便捷工具/输出 占满 ──
         # 上下两个子面板都可折叠（让用户能拖手柄再次展开）；
@@ -2588,7 +2592,19 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             self._防抖保存几何()
 
     def _分割条移动时(self, *_):
-        """折叠/拖动左右分隔条后立即重算布局，避免右侧控件残留旧宽度被裁剪。"""
+        """折叠/拖动左右分隔条后重算布局，避免右侧控件残留旧宽度被裁剪。
+
+        拖动过程中只记防抖、不立即重排：splitterMoved 每个像素都会触发，
+        此时顶层 layout().activate() 会反复重新分配 splitter 尺寸、把 handle
+        拉回原处，视觉上就是左右不停闪；拖动结束后 150ms 一次性重算即可。
+        """
+        if not hasattr(self, '_splitter_main_timer'):
+            self._splitter_main_timer = QTimer(self)
+            self._splitter_main_timer.setSingleShot(True)
+            self._splitter_main_timer.timeout.connect(self._重算分割条布局)
+        self._splitter_main_timer.start(150)
+
+    def _重算分割条布局(self):
         for _w in (self.splitter_log, self.leftPanelWidget, self.toolsPanelWidget):
             _w.updateGeometry()
         if self.layout() is not None:

@@ -227,6 +227,7 @@ class _EnrichWorker(QObject):
     def __init__(self, ip, port=ADB_PORT, timeout=5, adb=None):
         super().__init__()
         self._ip = ip
+        self._addr = f"{ip}:{port}"
         self._serial = f"{ip}:{port}"
         self._timeout = timeout
         self._cancelled = False
@@ -248,7 +249,7 @@ class _EnrichWorker(QObject):
                 name = (brand + " " + model).strip() or model or ''
                 if self._cancelled:
                     return
-                self.done.emit(self._ip, name)
+                self.done.emit(self._addr, name)
                 return
             # 兜底：无 AdbHelper 时直接用自研 ADB 客户端直连
             # 注意：本类只存了 _serial，没有 _port；且 自研adb客户端 的构造签名是
@@ -265,12 +266,12 @@ class _EnrichWorker(QObject):
                 name = (brand + " " + model).strip() or model or ''
                 if self._cancelled:
                     return
-                self.done.emit(self._ip, name)
+                self.done.emit(self._addr, name)
                 return
         except Exception:
             pass
         # 未授权 / 离线 / 超时 → 静默回填空串，UI 据此保留原状态
-        self.done.emit(self._ip, '')
+        self.done.emit(self._addr, '')
 
 
 class _RangeCombo(QComboBox):
@@ -297,6 +298,11 @@ class _RangeCombo(QComboBox):
             idx = self.findText(prev)
             if idx >= 0:
                 self.setCurrentIndex(idx)
+            elif prev:
+                # refresh_network_range() 内部 clear() 会清空可编辑行编辑框，
+                # 手输的自定义范围（如 "192.168.1.10-192.168.1.60"）不在下拉项里，
+                # 必须显式回填，否则用户点一下下拉箭头输入就被清掉。
+                self.setEditText(prev)
         # 下拉列表按最长项自适应宽度，但设上限，避免过长 popup 遮挡界面上的按钮
         v = self.view()
         hint = v.sizeHintForColumn(0)
@@ -617,6 +623,7 @@ class 局域网扫描对话框(QDialog):
         self.range_combo.setEnabled(False)
         self.timeout_spin.setEnabled(False)
         self.worker_spin.setEnabled(False)
+        self.port_spin.setEnabled(False)
 
         # 启动后台线程
         self._scan_thread = QThread()
@@ -691,15 +698,19 @@ class 局域网扫描对话框(QDialog):
         self.range_combo.setEnabled(True)
         self.timeout_spin.setEnabled(True)
         self.worker_spin.setEnabled(True)
+        self.port_spin.setEnabled(True)
 
-        if found > 0:
+        # 先合并 mDNS(_adb-tls-connect) 随机端口设备，再判断是否启用批量按钮：
+        # 否则 5555 一台都没扫到、只靠 mDNS 补到设备时，表格有行但按钮永久禁用。
+        self._补充_mdns设备()
+
+        if self._found_ips:
             self.btn_connect_all.setEnabled(True)
             self.btn_copy_all.setEnabled(True)
-            self._resort_by_latency()
+            if found > 0:
+                self._resort_by_latency()
             # 扫描完成后**不自动连接**获取机型名，避免抢占单客户设备的连接槽位。
             # 只有用户手动点击「连接」按钮后，才在连接成功的回调里回填机型名。
-        # 无论 5555 扫到几台，都合并一次 mDNS(_adb-tls-connect) 发现的随机端口设备
-        self._补充_mdns设备()
         if total_scanned > 0 and self.table.rowCount() == 0:
             # 全部离线时也加一行提示
             self.table.insertRow(0)
@@ -765,13 +776,18 @@ class 局域网扫描对话框(QDialog):
         if not _is_valid(self) or getattr(self, '_closing', False):
             return
         self._cleanup_thread()
-        self.progress.setValue(self.progress.maximum())
+        # 进度条保持停止时的真实进度，不再强行拉满（拉满会被误读成「扫描已完成」）
         self.lbl_status.setText("⛔ 扫描已停止")
         self.btn_scan.setText("▶ 开始扫描")
         self.btn_scan.setEnabled(True)
         self.range_combo.setEnabled(True)
         self.timeout_spin.setEnabled(True)
         self.worker_spin.setEnabled(True)
+        self.port_spin.setEnabled(True)
+        # 中途停止：表格里已有结果就恢复批量按钮，否则「一键连接全部/复制所有 IP」会永久灰死
+        if self._found_ips:
+            self.btn_connect_all.setEnabled(True)
+            self.btn_copy_all.setEnabled(True)
 
     def _cleanup_thread(self):
         if self._scan_thread:
@@ -1131,7 +1147,7 @@ class 局域网扫描对话框(QDialog):
             return
         # 同一个 ip 短时间内多次触发（比如批量连接后再 enrich）→ 合并到一个 worker
         for t, w in self._enrich_threads:
-            if getattr(w, '_ip', None) == ip:
+            if getattr(w, '_addr', None) == ip:
                 return
         host, _, port_str = ip.rpartition(':')
         host = host or ip

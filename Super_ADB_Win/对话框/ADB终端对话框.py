@@ -18,6 +18,7 @@ ADB 交互式终端弹窗
   - apply_theme() 支持运行时主题切换
 """
 
+import codecs
 import re
 from collections import deque
 
@@ -36,13 +37,20 @@ from 项目UI.弹窗样式 import add_green_glow, highlight_card_style, _create_
 from 工具.android调试工具.ADB工具 import 格式化设备标签
 
 # ANSI 转义序列过滤（字节级，在解码前过滤，避免 UTF-8 多字节字符干扰）
+# 注意：所有分支都要求 ESC(0x1b) 前缀。曾经的 `\[[0-9;?]*[a-zA-Z~]` 分支不带
+# ESC，会把正常文本当「被分割的残留序列」删掉——实测 [INFO] → NFO]、
+# [kworker/0:1] → worker/0:1]、[E] → ]，输出被静默篡改，已删除。
 _ANSI_BYTES_RE = re.compile(
     rb'\x1b\[[0-9;?]*[a-zA-Z~]'     # 标准 CSI 序列
     rb'|\x1b\][^\x07]*\x07'          # OSC 序列
     rb'|\x1b[()][AB012]'              # 字符集切换
     rb'|\x1b[>=<c]'                   # 其他单字节 ESC
-    rb'|\[[0-9;?]*[a-zA-Z~]'          # 被分割后残留的无 ESC CSI 序列
     rb'|\x0f|\x0e|\x07'               # 移位/BEL 控制字符
+)
+# 「尚未收全」的 ANSI 序列前缀：只有匹配这个才允许扣留到下一包，
+# 避免像旧实现那样把任意短数据或整段文本都扣在残余缓冲里。
+_INCOMPLETE_ANSI_RE = re.compile(
+    rb'^\x1b(?:\[[0-9;?]*|\][^\x07]*|[()]?)$'
 )
 # 文本级 ANSI 过滤（兼容旧代码路径）
 _ANSI_RE = re.compile(
@@ -50,7 +58,6 @@ _ANSI_RE = re.compile(
     r'|\x1b\][^\x07]*\x07'
     r'|\x1b[()][AB012]'
     r'|\x1b[>=<c]'
-    r'|\[[0-9;?]*[a-zA-Z~]'
     r'|\x0f|\x0e|\x07'
 )
 
@@ -59,7 +66,8 @@ class _终端信号桥(QObject):
     """跨线程信号桥：交互式Shell 的回调在后台线程，通过信号回主线程。"""
     输出 = Signal(bytes)
     关闭 = Signal()
-    连接完成 = Signal(object, str)  # (shell或None, 错误信息)
+    # (shell或None, 错误信息, 设备序列号, 连接代际)
+    连接完成 = Signal(object, str, str, int)
 
 
 class ADB终端对话框(QDialog):
@@ -90,8 +98,16 @@ class ADB终端对话框(QDialog):
         self._命令历史 = deque(maxlen=200)
         self._历史索引 = -1
         self._正在同步 = False
-        self._输出残余 = b''  # 防止 ANSI 序列被 ADB 流分割的残余缓冲区
-        self._不完整行 = ''  # 行级残余缓冲：上一包末尾不完整的行
+        # 输出管线状态
+        self._输出残余 = b''         # 只存「尚未收全的 ANSI 序列」
+        self._不完整行 = ''          # 尚未遇到 \n 的尾巴行（原始文本，含 \r）
+        self._已渲染残留 = ''        # 上一次已渲染到文档末尾的尾巴行（重绘时先删除）
+        # 增量 UTF-8 解码器：跨包被劈开的多字节字符由它内部缓冲，
+        # 替代旧「UTF-8 失败就试 GBK」的启发式（那会把中文解成伪汉字）
+        self._解码器 = codecs.getincrementaldecoder('utf-8')(errors='replace')
+        # 连接代际：每次发起连接自增，用于丢弃过期回调（防旧连接覆盖新会话）
+        self._连接代际 = 0
+        self._当前终端序列号 = None
 
         # 加载自定义命令配置
         self._自定义命令配置文件 = '配置/终端自定义命令.json'
@@ -341,6 +357,14 @@ class ADB终端对话框(QDialog):
             if idx >= 0:
                 self.device_combo.setCurrentIndex(idx)
             self.device_combo.blockSignals(False)
+            # 会话跟随：下拉框选中的设备若与当前会话不一致就重连。
+            # 旧实现用 blockSignals 改了选项却不通知会话，会出现
+            # 「界面显示 B 设备、命令实际发往 A 设备」的静默错发。
+            new_serial = self.device_combo.currentData()
+            if (new_serial and self._shell is not None
+                    and not self._shell.已关闭
+                    and new_serial != self._当前终端序列号):
+                QTimer.singleShot(0, lambda s=new_serial: self._连接终端(s))
         finally:
             self._正在同步 = False
 
@@ -365,17 +389,30 @@ class ADB终端对话框(QDialog):
         """点击刷新按钮 → 调用主窗口的刷新设备（会同步所有下拉框）。"""
         try:
             self._主窗口.刷新设备()
-        except Exception:
-            pass
+        except Exception as e:
+            # 旧实现 except: pass，刷新失败零反馈
+            self.status_label.setText(f'刷新失败: {e}')
 
     # ── 终端连接 / 断开 ──
 
     def _连接终端(self, serial):
         """连接到指定设备的交互式 shell（后台线程，不阻塞 UI）。"""
-        # 先断开已有连接
-        self._断开终端()
-        # 切换设备时自动清屏，避免新旧设备输出混杂
+        # 静默关闭旧会话：不能让 _断开终端() → _已断开UI() 把输入框禁用。
+        # 旧实现在这里先禁用、连接失败路径又不恢复，导致「下拉框已选设备、
+        # 输入框却永久灰掉，只能重选设备」的死锁。
+        if self._shell:
+            try:
+                self._shell.关闭()
+            except Exception:
+                pass
+        self._shell = None
+        self._当前终端序列号 = None
+        # 连接代际自增：过期回调据此丢弃
+        self._连接代际 += 1
+        代际 = self._连接代际
+        # 切换设备/重连时清屏并丢弃旧设备残留的输出缓冲
         self.output.clear()
+        self._重置输出缓冲()
         self.status_label.setText('正在打开终端...')
 
         import threading
@@ -383,7 +420,8 @@ class ADB终端对话框(QDialog):
             try:
                 连接源 = self._adb._获取自研adb(serial)
                 if 连接源 is None:
-                    self._信号桥.连接完成.emit(None, '自研 ADB 客户端不可用')
+                    self._信号桥.连接完成.emit(
+                        None, '自研 ADB 客户端不可用', serial, 代际)
                     return
                 from 工具.android调试工具.自研adb.自研adb客户端 import 交互式Shell
                 shell = 交互式Shell(
@@ -392,20 +430,33 @@ class ADB终端对话框(QDialog):
                     on_close=lambda: self._信号桥.关闭.emit(),
                 )
                 shell.启动()
-                self._信号桥.连接完成.emit(shell, '')
+                self._信号桥.连接完成.emit(shell, '', serial, 代际)
             except Exception as e:
-                self._信号桥.连接完成.emit(None, str(e))
+                self._信号桥.连接完成.emit(None, str(e), serial, 代际)
         threading.Thread(target=_do_connect, daemon=True).start()
 
-    def _连接完成(self, shell, err):
+    def _连接完成(self, shell, err, serial, 代际):
         """后台连接完成 → 主线程更新 UI。"""
+        # 竞态防护：用户连接期间又切了设备，丢弃过期回调；已建立的 shell
+        # 无人认领必须关掉，否则设备端残留 shell 进程 + 连接泄漏
+        if 代际 != self._连接代际:
+            if shell is not None:
+                try:
+                    shell.关闭()
+                except Exception:
+                    pass
+            return
         if shell is None:
-            self.status_label.setText(f'连接失败: {err}')
+            self.status_label.setText(f'连接失败: {err}（可重选设备或点刷新重试）')
             self._shell = None
+            self._当前终端序列号 = None
+            # 保持输入可用：_发送输入 在无 shell 时会自动重连并重发本次命令
+            self.input_edit.setEnabled(True)
+            self.btn_send.setEnabled(True)
             return
         self._shell = shell
+        self._当前终端序列号 = serial
         self._已连接UI()
-        serial = self.device_combo.currentData() or ''
         self.status_label.setText(f'已连接 {serial}')
         self.input_edit.setFocus()
         # 连接后刷新残余，确保 shell 提示符立即显示
@@ -424,29 +475,41 @@ class ADB终端对话框(QDialog):
             return
         # 发送 stty 命令设置宽度（toybox 自带，绝大多数 Android 设备可用）
         self._shell.发送输入(f'stty cols {cols}\n')
-        # 等待 stty 执行完成后，在 GUI 层面只保留最后一行提示符
-        QTimer.singleShot(200, self._只保留最后一行提示符)
+        # 等 stty 执行完，清掉它自己产生的回显行（只清这些行，不动真实输出）。
+        # 二次清理：慢设备上 stty 回显可能晚于 200ms 到达，首次清理会漏掉，
+        # 800ms 再清一次兜底（幂等，只删含 'stty cols' 的行）。
+        QTimer.singleShot(200, self._清理初始化回显)
+        QTimer.singleShot(800, self._清理初始化回显)
 
-    def _只保留最后一行提示符(self):
-        """连接初始化后清理多余行：只保留最后一行（stty 后的提示符），删除前面所有行。
+    def _清理初始化回显(self):
+        """删除连接初始化产生的噪声行（`stty cols ...` 回显），保留设备真实输出。
 
-        连接后终端通常有：初始提示符行 + stty 回显行 + stty 后提示符行。
-        只保留最后一行，避免空行和多余回显，同时保证 shell 的当前提示符
-        行不被破坏（后续命令回显会正确追加在该行）。
+        旧实现 `_只保留最后一行提示符` 会无条件删除「除最后一行以外的全部
+        内容」，连接后 450ms 内到达的设备欢迎信息/启动输出会被整段抹掉
+        （实测 'Android 9 / API 28' + 'uid=2000 shell' 被清空）。
         """
         doc = self.output.document()
         if doc.blockCount() <= 1:
-            return  # 只有一行或空，不处理
+            return
+        待删 = []
+        block = doc.firstBlock()
+        while block.isValid():
+            if 'stty cols' in block.text():
+                待删.append(block.blockNumber())
+            block = block.next()
+        if not 待删:
+            return
         cursor = self.output.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.Start)
-        # 选择前面所有行（保留最后一行）
-        blocks_to_remove = doc.blockCount() - 1
-        cursor.movePosition(QTextCursor.MoveOperation.NextBlock,
-                            QTextCursor.MoveMode.KeepAnchor, blocks_to_remove)
-        cursor.removeSelectedText()
-        # 光标移到末尾
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        self.output.setTextCursor(cursor)
+        cursor.beginEditBlock()
+        for num in reversed(待删):
+            b = doc.findBlockByNumber(num)
+            if not b.isValid():
+                continue
+            c = QTextCursor(b)
+            c.select(QTextCursor.SelectionType.LineUnderCursor)
+            c.removeSelectedText()
+            c.deleteChar()   # 连同该行换行一起删掉，避免留下空行
+        cursor.endEditBlock()
 
     def _断开终端(self):
         """断开当前终端连接。"""
@@ -461,6 +524,7 @@ class ADB终端对话框(QDialog):
     def _会话已关闭(self):
         """设备主动关闭或连接断开。"""
         self._shell = None
+        self._当前终端序列号 = None
         self._已断开UI()
         self.status_label.setText('会话已结束')
         self._追加输出('[连接已关闭]\n'.encode('utf-8'))
@@ -537,64 +601,66 @@ class ADB终端对话框(QDialog):
     def _追加输出(self, data: bytes):
         """将设备输出追加到终端显示区（主线程）。
 
-        字节级残余缓冲（防ANSI序列分割）→ 行级缓冲（防行分割）→
-        制表符展开 → 输出。
+        处理链：ANSI 残留缓冲 → 增量 UTF-8 解码 → 控制字符清理
+        → 行合并（含 \\r 覆盖模拟）→ 制表符展开 → 渲染。
+
+        与旧实现的三点关键差异：
+          1. 彻底去掉「≤8 字节一律扣留」的门槛。旧逻辑会把 pwd/echo/id 这类
+             短输出永久吞掉（实测 pwd 的 "/\\r\\n" 显示为空，连 _刷新残余 都
+             无效，因为残余会被再次回灌）。
+          2. 不完整的尾巴行也实时渲染；下次数据到达时先删除上次渲染的尾巴
+             再重绘。旧实现只在收到 \\n 时输出，导致 PTY 提示符和命令回显
+             （都没有换行）永远不显示——连上设备后终端一片空白。
+          3. 解码改用增量解码器，中文被包边界劈开时不再回退 GBK。
         """
-        # ── 1. 字节级残余缓冲：只在末尾有 ESC 时保留（ANSI序列以ESC开头）──
-        full = self._输出残余 + data
-        filtered = _ANSI_BYTES_RE.sub(b'', full)
-        if len(filtered) > 8 and b'\x1b' in filtered[-8:]:
-            self._输出残余 = filtered[-8:]
-            output_bytes = filtered[:-8]
-        elif len(filtered) > 8:
-            self._输出残余 = b''
-            output_bytes = filtered
-        else:
-            self._输出残余 = filtered
-            output_bytes = b''
-        if not output_bytes:
+        if not data:
             return
 
-        # ── 2. 解码 + 过滤控制字符 ──
-        text = self._智能解码(output_bytes)
+        # ── 1. 只扣留「尚未收全」的 ANSI 序列（ESC 起始且未闭合）──
+        full = self._输出残余 + data
+        idx = full.rfind(b'\x1b')
+        if idx >= 0 and len(full) - idx <= 64 and _INCOMPLETE_ANSI_RE.match(full[idx:]):
+            self._输出残余 = full[idx:]
+            ready = full[:idx]
+        else:
+            self._输出残余 = b''
+            ready = full
+        if not ready:
+            return
+
+        filtered = _ANSI_BYTES_RE.sub(b'', ready)
+        if not filtered:
+            return
+
+        # ── 2. 增量解码（跨包多字节字符由解码器内部缓冲）──
+        text = self._解码器.decode(filtered)
+        if not text:
+            return
+        # 控制字符清理：保留 \n \t \r（\r 用于模拟回行覆盖）
         text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
-        # 换行符处理：\r\n → \n（Windows风格换行）
-        # 注意：单独的 \r（回车）不删除，保留到行级处理中模拟其"回到行首覆盖"的真实终端行为
-        text = text.replace('\r\n', '\n')
         if not text:
             return
 
-        # ── 3. 行级缓冲：确保每行完整，制表符展开基于完整行 ──
-        # 合并上一次的不完整行
-        text = self._不完整行 + text
-        self._不完整行 = ''
-        # 按换行分割
-        if text.endswith('\n'):
-            lines = text.split('\n')
-            lines = lines[:-1]  # 末尾空行去掉
-        else:
-            lines = text.split('\n')
-            # 最后一行不完整，保留到下次
-            self._不完整行 = lines[-1]
-            lines = lines[:-1]
+        # ── 3. 行合并：整行入显示区，尾巴行单独渲染 ──
+        parts = (self._不完整行 + text).split('\n')
+        self._不完整行 = parts.pop() if parts else ''
+        out_text = ''.join(
+            self._展开制表符(self._处理回车(ln)) + '\n' for ln in parts)
+        tail = (self._展开制表符(self._处理回车(self._不完整行))
+                if self._不完整行 else '')
 
-        if not lines:
-            return
-
-        # ── 4. 处理回车（\r）：模拟终端"回到行首，后续内容覆盖前面"的真实行为 ──
-        # 必须在制表符展开之前处理，因为 \r 会重置列位置
-        lines = [self._处理回车(line) for line in lines]
-
-        # ── 5. 制表符展开为空格（8字符对齐，含中文宽度计算）──
-        expanded_lines = []
-        for line in lines:
-            expanded_lines.append(self._展开制表符(line))
-        output_text = '\n'.join(expanded_lines) + '\n'
-
-        # ── 5. 追加到终端输出区 ──
+        # ── 4. 先删掉上次渲染的尾巴行，再整段写入 ──
         cursor = self.output.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
-        cursor.insertText(output_text)
+        if self._已渲染残留:
+            cursor.movePosition(QTextCursor.MoveOperation.Left,
+                               QTextCursor.MoveMode.KeepAnchor,
+                               len(self._已渲染残留))
+            cursor.removeSelectedText()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        if out_text or tail:
+            cursor.insertText(out_text + tail)
+        self._已渲染残留 = tail
         self.output.setTextCursor(cursor)
         self.output.ensureCursorVisible()
 
@@ -753,27 +819,34 @@ class ADB终端对话框(QDialog):
         return '\n'.join(line for line, _, _ in parsed)
 
     def _刷新残余(self):
-        """强制输出残余缓冲区（发送命令后调用，确保提示符立即显示）。"""
-        # 先刷新字节级残余
-        if self._输出残余:
-            data = self._输出残余
-            self._输出残余 = b''
-            self._追加输出(data)
-        # 再刷新行级残余（不完整行直接输出）
-        if self._不完整行:
-            line = self._不完整行
-            self._不完整行 = ''
-            # 先处理回车，再展开制表符
-            line = self._处理回车(line)
-            expanded = self._展开制表符(line)
-            cursor = self.output.textCursor()
-            cursor.movePosition(QTextCursor.MoveOperation.End)
-            cursor.insertText(expanded)
-            self.output.setTextCursor(cursor)
-            self.output.ensureCursorVisible()
+        """把视图滚到最新内容。
+
+        旧实现会把字节残余回灌 _追加输出，但 ≤8 字节的残余会被再次扣留，
+        等于无效刷新（实测 hi\\n 刷新后仍在缓冲里）。现在短输出和尾巴行都已
+        实时渲染，这里只需保证光标/滚动条跟上。
+        """
+        cursor = self.output.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        self.output.setTextCursor(cursor)
+        self.output.ensureCursorVisible()
+
+    def _重置输出缓冲(self):
+        """清空输出管线全部中间状态（切设备、重连、清屏时调用）。
+
+        旧实现清屏只调 output.clear()，字节残余和尾巴行仍留在内存里，
+        下一段输出到达时会先把旧设备/旧内容拼进来（实测 'OLD0123456789'）。
+        """
+        self._输出残余 = b''
+        self._不完整行 = ''
+        self._已渲染残留 = ''
+        try:
+            self._解码器.reset()
+        except Exception:
+            pass
 
     def _清屏(self):
         self.output.clear()
+        self._重置输出缓冲()
 
     # ── 命令历史 ──
 
@@ -955,6 +1028,8 @@ class _自定义命令配置对话框(QDialog):
 
     def __init__(self, commands, parent=None):
         super().__init__(parent)
+        # 关闭即释放：旧实现每次开关都 new 一个 QDialog 且不释放（轻微内存泄漏）
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self._commands = [c.copy() for c in commands]  # 深拷贝，取消时不影响原列表
         self.setWindowTitle('自定义快捷命令配置')
         self.setMinimumSize(560, 460)
@@ -1110,6 +1185,8 @@ class _命令编辑对话框(QDialog):
 
     def __init__(self, name='', command='', parent=None):
         super().__init__(parent)
+        # 关闭即释放：避免每次打开编辑框都残留一个未释放的 QDialog
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.setWindowTitle('编辑命令')
         self.setMinimumSize(440, 260)
         self._theme_id = get_current_theme_id(self)

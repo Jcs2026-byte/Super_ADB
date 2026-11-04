@@ -16,7 +16,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import shiboken6
-from PySide6.QtCore import Qt, QThread, Signal, QObject
+from PySide6.QtCore import Qt, QThread, QTimer, Signal, QObject
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel,
@@ -134,6 +134,18 @@ class _ConnectWorker(QObject):
         if self._cancelled:
             return
         target = f"{self._ip}:{self._port}"
+        # 防重复汇报：主线程侧护栏（见 _enqueue_batch_connect 的 QTimer）超时
+        # 强制失败后，run 最终返回时不得再汇报一次，否则队列回调会执行两次、
+        # 跳过设备。所有出口统一走 _emit；护栏通过 self._已汇报done 同步标记。
+        _已汇报 = {'done': False}
+        self._已汇报done = _已汇报
+
+        def _emit(ok, msg):
+            if _已汇报['done']:
+                return
+            _已汇报['done'] = True
+            self.done.emit(ok, msg)
+
         try:
             from 工具.android调试工具.ADB工具 import AdbHelper
             helper = AdbHelper()
@@ -152,17 +164,17 @@ class _ConnectWorker(QObject):
                     #      于是第二次就是「连接失败，状态=None」。
                     #   现在连接由缓存持有并保持存活，主窗口直接复用，
                     #   全过程只有一次认证、一次弹窗。
-                    client = helper._获取自研adb(target)
+                    client = helper._获取自研adb(target, 跳过诊断=True)
                     if client is not None:
-                        self.done.emit(True, f"connected to {target}")
+                        _emit(True, f"connected to {target}")
                     else:
                         # _获取自研adb 失败返回 None，具体原因已打印在控制台
-                        self.done.emit(
+                        _emit(
                             False,
                             "连接失败：设备未授权或未响应，请在设备上确认调试授权弹窗")
                     return
                 except Exception as e:
-                    self.done.emit(False, f"❌ 连接失败：{e}")
+                    _emit(False, f"❌ 连接失败：{e}")
                     return
 
             # 系统 ADB / Socket 直连模式：用 subprocess 调用 adb connect
@@ -189,13 +201,16 @@ class _ConnectWorker(QObject):
             # adb connect 成功返回类似 "connected to 1.2.3.4:5555"
             ok = ('connected' in result.lower()
                   or 'already' in result.lower())
-            self.done.emit(ok, result or '无返回')
+            _emit(ok, result or '无返回')
         except subprocess.TimeoutExpired:
             # 10s 仍未返回 → 视为失败(用户看到的就是失败提示,而非「未响应」)
-            self.done.emit(False, f"连接超时 ({self._timeout}s)，请检查目标设备是否开启无线调试")
+            _emit(False, f"连接超时 ({self._timeout}s)，请检查目标设备是否开启无线调试")
         except Exception as e:
             # 超时 / 进程卡死 / 任何异常都汇报错误而非让 UI 永久挂着
-            self.done.emit(False, f"❌ 连接失败：{e}")
+            _emit(False, f"❌ 连接失败：{e}")
+        finally:
+            # 通知主线程侧护栏：run 已收尾，无需再强制汇报
+            self._已结束 = True
 
 
 class _EnrichWorker(QObject):
@@ -963,10 +978,26 @@ class 局域网扫描对话框(QDialog):
         """一键连接所有发现的设备（异步串行：避免一次性起 N 个 adb 进程卡死）。"""
         if not hasattr(self, '_found_ips') or not self._found_ips:
             return
+        # 同 IP 去重：同一台设备可能同时被 5555 扫描和 mDNS(_adb-tls-connect)
+        # 发现（不同端口），批量连接只连一次、优先标准 5555 端口，避免重复
+        # 连接/重复授权把串行队列拖慢（「一键连接全部卡死」的一大来源）。
+        _去重 = {}
+        for _addr in self._found_ips:
+            _host = _addr.rpartition(':')[0] or _addr
+            _port = _addr.rpartition(':')[2]
+            _旧 = _去重.get(_host)
+            if _旧 is None:
+                _去重[_host] = _addr
+            elif (_port == str(self._port)
+                    and _旧.rpartition(':')[2] != str(self._port)):
+                _去重[_host] = _addr  # 已有非标准端口条目，换成 5555
+        _队列 = list(_去重.values())
+        if not _队列:
+            return
         reply = QMessageBox.question(
             self, "确认连接",
-            f"确定要连接全部 {len(self._found_ips)} 台设备吗？\n"
-            + "\n".join(f"  • {ip}" for ip in self._found_ips),
+            f"确定要连接全部 {len(_队列)} 台设备吗？\n"
+            + "\n".join(f"  • {ip}" for ip in _队列),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -974,7 +1005,7 @@ class 局域网扫描对话框(QDialog):
         if getattr(self, '_closing', False):
             return
         # 串行触发：每台完成后由 _on_connect_done 自行递归下一台
-        self._connect_all_queue = list(self._found_ips)
+        self._connect_all_queue = _队列
         self._connect_all_results = []
         self._set_status_for_ip  # keep linter quiet
         self.btn_connect_all.setEnabled(False)
@@ -1059,6 +1090,27 @@ class 局域网扫描对话框(QDialog):
                 pass
 
         worker.done.connect(_done)
+
+        # 总超时护栏（主线程 QTimer 兜底）：
+        #  - 非自研模式 subprocess.run 超时靠杀 adb.exe 进程，但 Windows 上
+        #    adb 会派生子进程/server，进程可能杀不掉 → run 长时间不返回；
+        #  - 自研模式握手 + 类级锁等待最坏也能拖到 10s+。
+        # 批量连接是串行队列，任何一台卡死都会让后续全部排队、界面看起来
+        # 「卡死」。到点后若 run 仍未收尾，在主线程强制汇报失败并推进队列。
+        # ★ 必须直接同步调用 _done，不能用 worker.done.emit：_done 是普通闭包，
+        #   信号连接到它时按 worker 所在线程排队，而 worker 线程没有事件循环
+        #   （thread.started.connect(worker.run) 直跑 run），跨线程 emit 会
+        #   永久排队不执行，护栏就失效了。主线程同步调用 _done 才可靠。
+        def _guard():
+            if getattr(worker, '_已结束', False):
+                return  # run 已正常收尾，不重复汇报
+            # 同步防重标志：run 收尾的 _emit 检查到已汇报就跳过，避免双回调
+            已汇报 = getattr(worker, '_已汇报done', None)
+            if 已汇报 is not None:
+                已汇报['done'] = True
+            _done(False, f"连接超时（超过 {worker._timeout + 7}s 未完成），已跳过")
+
+        QTimer.singleShot(worker._timeout + 7, _guard)
         # 跟踪并清理
         self._connect_threads.append((thread, worker))
         thread.start()

@@ -611,7 +611,7 @@ class AdbHelper:
                 self._用协议客户端 = False
         return self._协议客户端
 
-    def _获取自研adb(self, serial):
+    def _获取自研adb(self, serial, 跳过诊断=False):
         """懒加载自研 ADB 客户端，按 serial 缓存。
 
         serial 格式:
@@ -620,6 +620,11 @@ class AdbHelper:
 
         缓存现为**类级共享**：TCPDump/Monkey/性能监控/局域网扫描等各自 new
         的 AdbHelper 实例，也能命中主窗口已建立的 client，避免重复 AUTH。
+
+        跳过诊断=True：首次连接失败后直接返回 None，不执行「ping → 清理残留
+        adb → sleep 1s → 重试」的诊断链。批量连接场景必须开启——诊断链在类级
+        锁内串行执行，单台失败会被放大到 10s+，还会误杀系统 adb 进程，导致
+        「一键连接全部」看起来像卡死。
         """
         if not serial:
             return None
@@ -695,6 +700,12 @@ class AdbHelper:
                 except Exception as e:
                     print(f'[自研adb] 连接异常 {serial}: {e}')
                     _err = str(e)
+
+                if 跳过诊断:
+                    # 批量连接等场景：失败直接返回，不做 ping/杀 adb/sleep/重试，
+                    # 避免诊断链把单台失败拖到 10s+ 且误杀系统 adb 进程。
+                    print(f'[自研adb] 跳过诊断重试（调用方要求）: {serial}')
+                    return None
 
                 # ── 首次失败，诊断并自动清理重试 ──
                 # 1) 先 ping 一下，判断网络通不通

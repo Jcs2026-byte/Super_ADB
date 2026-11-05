@@ -48,9 +48,9 @@ except ImportError as e:
     print('  python 项目启动入口/Super_ADB_主入口.py')
     sys.exit(1)
 
-# 投屏参数设置对话框（已移入 对话框/，由上面的 sys.path 注入包含；
-# 以 scrcpy_settings_dialog 别名导入，供 启动scrcpy / 打开scrcpy设置 使用）
-from 对话框 import scrcpy_设置对话框 as scrcpy_settings_dialog
+# 投屏参数设置对话框（对话框/ 已由上面的 sys.path 注入包含）
+# 改为「用到时才 import」（见 打开scrcpy设置 方法内的局部 import），
+# 避免启动即加载该对话框模块（实测约占启动 import 耗时 40ms+）。
 
 from 项目UI.Super_ADB import Ui_MainWindow
 from 工具.android调试工具.ADB工具 import Adb设备操作, 加载json配置, 保存json配置
@@ -927,6 +927,8 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             self._scrcpy设置_dialog.raise_()
             self._scrcpy设置_dialog.activateWindow()
             return
+        # 局部 import：该对话框只在打开 scrcpy 设置时用到，推迟加载以加快启动
+        from 对话框 import scrcpy_设置对话框 as scrcpy_settings_dialog
         self._scrcpy设置_dialog = scrcpy_settings_dialog.Scrcpy设置对话框()
         self._scrcpy设置_dialog.show()
         self._scrcpy设置_dialog.raise_()
@@ -2380,6 +2382,10 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self._保存分割条3()
         self._保存分割条主()
         self._保存默认页()
+        # 程序化退出必须先置 _force_close 再 quit：
+        # QApplication.quit() 会触发主窗口 closeEvent，而 closeEvent 默认分支会再弹一次
+        # 「确认退出」模态框；托盘退出时主窗口通常已隐藏，弹框不可见 → 用户看到的是「退出卡住」。
+        self._force_close = True
         QApplication.instance().quit()
 
     # ------------------------------------------------------------------

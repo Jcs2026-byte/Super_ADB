@@ -2,13 +2,17 @@
 """
 ADB 交互式终端弹窗
 ==================
-自研 ADB 模式专属：点击「便携工具 → ADB命令行」打开的独立窗口。
+点击「便携工具 → ADB命令行」打开的独立窗口。
 类似 adb shell 不带参数进入的交互式终端，可持续敲命令、实时看输出。
+
+连接方式按环境配置自动分流：
+  - 自研 ADB 模式：自研adb客户端.交互式Shell（真 PTY，保持 cd/环境变量）
+  - 非自研模式：行模式会话（每条命令独立 `adb -s serial shell <cmd>`，
+    不保持工作目录；无 PTY，命令由 GUI 本地回显）
 
 功能:
   - 设备下拉框列所有已连接设备，点击自动连接终端
   - 与主窗口三个设备选择栏双向同步
-  - 交互式 shell（自研adb客户端.交互式Shell），支持 TCP + USB
   - 命令历史（上下箭头）、Ctrl+C / Ctrl+D、清屏
   - ANSI 转义序列过滤，深色终端风格
 
@@ -68,6 +72,63 @@ class _终端信号桥(QObject):
     关闭 = Signal()
     # (shell或None, 错误信息, 设备序列号, 连接代际)
     连接完成 = Signal(object, str, str, int)
+
+
+class _AdbShell行会话:
+    """非自研模式下的 adb shell 行模式会话（每条命令独立 subprocess）。
+
+    与 自研adb客户端.交互式Shell 接口对齐：on_output / on_close / 启动() /
+    发送输入() / 关闭() / 已关闭，使上层 _连接完成/_发送输入/_断开终端 零改动。
+
+    区别：
+      - 不保持 PTY/工作目录/环境变量，每条命令独立 `adb -s serial shell <cmd>`
+      - 无设备端回显，命令由 GUI 本地回显（`$ cmd`）
+      - on_close 不会主动触发（无持久进程）；设备掉线时下一条命令报错
+    """
+
+    def __init__(self, adb_helper, serial, on_output, on_close):
+        self._adb = adb_helper
+        self._serial = serial
+        self.on_output = on_output
+        self.on_close = on_close
+        self.已关闭 = False
+
+    def 启动(self):
+        """行模式无需预连接，立即就绪。"""
+
+    def 发送输入(self, data):
+        if self.已关闭:
+            return
+        if isinstance(data, bytes):
+            text = data.decode('utf-8', 'replace')
+        else:
+            text = data
+        text = text.strip()
+        if not text:
+            return
+        # 本地回显（无 PTY，设备端不回显命令）
+        try:
+            self.on_output(f'$ {text}\n'.encode('utf-8'))
+        except Exception:
+            pass
+        import threading
+        threading.Thread(target=self._执行, args=(text,), daemon=True).start()
+
+    def _执行(self, cmd):
+        try:
+            out = self._adb.执行shell(self._serial, cmd, timeout=30)
+            if out:
+                if not out.endswith('\n'):
+                    out += '\n'
+                self.on_output(out.encode('utf-8', 'replace'))
+        except Exception as e:
+            try:
+                self.on_output(f'[错误] {e}\n'.encode('utf-8'))
+            except Exception:
+                pass
+
+    def 关闭(self):
+        self.已关闭 = True
 
 
 class ADB终端对话框(QDialog):
@@ -418,17 +479,21 @@ class ADB终端对话框(QDialog):
         import threading
         def _do_connect():
             try:
-                连接源 = self._adb._获取自研adb(serial)
-                if 连接源 is None:
-                    self._信号桥.连接完成.emit(
-                        None, '自研 ADB 客户端不可用', serial, 代际)
-                    return
-                from 工具.android调试工具.自研adb.自研adb客户端 import 交互式Shell
-                shell = 交互式Shell(
-                    连接源,
-                    on_output=lambda data: self._信号桥.输出.emit(data),
-                    on_close=lambda: self._信号桥.关闭.emit(),
-                )
+                on_out = lambda data: self._信号桥.输出.emit(data)
+                on_close = lambda: self._信号桥.关闭.emit()
+                if getattr(self._adb, '_用自研adb', False):
+                    连接源 = self._adb._获取自研adb(serial)
+                    if 连接源 is None:
+                        self._信号桥.连接完成.emit(
+                            None, '自研 ADB 客户端不可用', serial, 代际)
+                        return
+                    from 工具.android调试工具.自研adb.自研adb客户端 import 交互式Shell
+                    shell = 交互式Shell(连接源, on_output=on_out, on_close=on_close)
+                else:
+                    # 非自研模式：行模式会话（每条命令独立 adb shell subprocess，
+                    # 不依赖自研客户端，也不会去抢设备 5555 槽位）
+                    shell = _AdbShell行会话(self._adb, serial,
+                                            on_output=on_out, on_close=on_close)
                 shell.启动()
                 self._信号桥.连接完成.emit(shell, '', serial, 代际)
             except Exception as e:
@@ -945,19 +1010,33 @@ class ADB终端对话框(QDialog):
     def showEvent(self, event):
         """窗口显示时异步加载设备列表（不阻塞UI，避免弹窗延迟出现）。"""
         super().showEvent(event)
-        # 直接用主窗口已加载好的设备列表，不需要重新扫描
+        # 直接用主窗口已加载好的设备列表，不需要重新扫描。
+        # 注意：主窗口 deviceCombo 的 itemData 只存 serial，型号在 itemText（"型号  [serial]"）
+        # 和 adb._设备名缓存 里；只取 serial 重建会让标签退化成 "serial [serial]"。
         try:
             devices = []
             combo = getattr(self._主窗口, 'deviceCombo', None)
             if combo:
+                缓存 = getattr(getattr(self._主窗口, 'adb', None), '_设备名缓存', None) or {}
                 for i in range(combo.count()):
                     serial = combo.itemData(i)
                     if serial:
-                        devices.append({'serial': serial, 'model': '', 'state': 'device'})
+                        型号 = 缓存.get(serial) or self._从标签取型号(combo.itemText(i), serial)
+                        devices.append({'serial': serial, 'model': 型号, 'state': 'device'})
             current = self._主窗口.当前序列号()
             self._设备列表已加载.emit(devices, current or '')
         except Exception:
             pass
+
+    @staticmethod
+    def _从标签取型号(标签, serial):
+        """从 "型号  [serial]" 形式的标签反解型号；取不到（标签就是 serial）返回空串。"""
+        标签 = 标签 or ''
+        尾部 = f'[{serial}]'
+        if serial and 标签.endswith(尾部):
+            型号 = 标签[:-len(尾部)].strip()
+            return '' if 型号 == serial else 型号
+        return '' if 标签 == serial else 标签
 
     def _设备列表加载完成(self, devices, current):
         """后台线程加载完成 → 主线程更新下拉框。"""

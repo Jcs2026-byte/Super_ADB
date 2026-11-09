@@ -18,6 +18,7 @@ import re
 import socket
 import sys
 import time
+import warnings
 import threading as _th
 
 from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer
@@ -193,6 +194,9 @@ class WiFi配对对话框(QDialog):
         self._reconnect_entry = None
         self._paired = []
         self._closing = False
+        # 退役池：关闭时未能立即结束的线程移入此处持有引用，等 finished
+        # 信号触发后再 deleteLater，杜绝 QThread 运行中被析构的原生崩溃。
+        self._retired_threads = []    # list[(QThread, QObject)]
         self._connect_enabled = False   # 配对成功后才允许 connect
         self._embedded = False          # 被统一无线调试面板嵌入时设为 True
 
@@ -445,6 +449,8 @@ class WiFi配对对话框(QDialog):
         self._pair_thread.start()
 
     def _on_pair_done(self, ok, msg):
+        if getattr(self, '_closing', False):
+            return
         self._set_buttons_busy(False)
         self._log(msg)
         self._add_history('配对', f"{self.ip_edit.text().strip()}:{self.port_edit.text().strip()}", ok, msg)
@@ -552,6 +558,8 @@ class WiFi配对对话框(QDialog):
         self._connect_thread.start()
 
     def _on_connect_done(self, ok, msg, tried_ports):
+        if getattr(self, '_closing', False):
+            return
         self._set_buttons_busy(False)
         self._log(msg)
         target = (f"{self.ip_edit.text().strip()}:{tried_ports[-1]}"
@@ -710,6 +718,8 @@ class WiFi配对对话框(QDialog):
         self._paired = paired
 
     def _on_reconnect_done(self, ok, msg, tried_ports):
+        if getattr(self, '_closing', False):
+            return
         self._set_buttons_busy(False)
         self._log(msg)
         target = getattr(self, '_reconnect_target', '')
@@ -827,19 +837,111 @@ class WiFi配对对话框(QDialog):
         dlg = WifiHistoryDialog(self)
         dlg.exec()
 
-    def 清理(self):
-        """停止所有后台线程，供嵌入统一面板时由父窗口调用。"""
-        self._closing = True
-        for w in (self._pair_worker, self._connect_worker, self._reconnect_worker):
-            if w is not None:
+    # ── 线程退役回收（非阻塞，防运行中析构崩溃） ──
+
+    def _retire_thread(self, thread, worker=None):
+        """把线程移入退役池并登记 finished 回收，主线程不长时间等待。
+
+        worker 经 started.connect(run) 直跑，可能正阻塞在 socket 握手 /
+        subprocess 等待里，quit() 无法中断 run。主线程同步 wait 会卡住界面；
+        线程未结束就 deleteLater 会触发「QThread 运行中被销毁」原生崩溃。
+        这里先断开信号、置取消标志、请求退出事件循环；能立即结束就直接
+        释放，否则保留引用挂退役池，等 finished 信号自然回收。
+        """
+        if thread is None:
+            return
+        if worker is not None:
+            for sig_name in ('done', 'log'):
+                sig = getattr(worker, sig_name, None)
+                if sig is not None:
+                    try:
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore", RuntimeWarning)
+                            sig.disconnect()
+                    except Exception:
+                        pass
+            try:
+                worker.cancel()
+            except Exception:
+                pass
+        try:
+            thread.quit()
+        except Exception:
+            pass
+        try:
+            already_finished = thread.isFinished()
+        except Exception:
+            already_finished = True
+        if already_finished:
+            try:
+                thread.deleteLater()
+            except Exception:
+                pass
+            if worker is not None:
                 try:
-                    w.cancel()
+                    worker.deleteLater()
                 except Exception:
                     pass
-        for t in (self._pair_thread, self._connect_thread, self._reconnect_thread):
-            if t is not None and t.isRunning():
-                t.quit()
-                t.wait(2000)
+            return
+        if (thread, worker) not in self._retired_threads:
+            self._retired_threads.append((thread, worker))
+        try:
+            thread.finished.connect(
+                lambda th=thread, w=worker: self._drop_retired(th, w))
+        except Exception:
+            pass
+
+    def _drop_retired(self, thread, worker=None):
+        """线程自然结束后从退役池移除并释放（幂等）。"""
+        try:
+            self._retired_threads = [
+                (t, w) for (t, w) in self._retired_threads if t is not thread]
+        except Exception:
+            pass
+        try:
+            thread.deleteLater()
+        except Exception:
+            pass
+        if worker is not None:
+            try:
+                worker.deleteLater()
+            except Exception:
+                pass
+
+    def 清理(self):
+        """停止所有后台线程，供嵌入统一面板时由父窗口调用。
+
+        回收策略：断开信号 → 取消 → quit；连接/配对/重连线程一律走退役池
+        非阻塞回收，主线程不长时间 wait；关闭路径只做一次有总预算的轻量
+        轮询，未结束的线程留退役池由 finished 信号兜底回收。
+        """
+        self._closing = True
+        配对项 = (
+            (self._pair_thread, self._pair_worker),
+            (self._connect_thread, self._connect_worker),
+            (self._reconnect_thread, self._reconnect_worker),
+        )
+        for t, w in 配对项:
+            self._retire_thread(t, w)
+        self._pair_thread = self._pair_worker = None
+        self._connect_thread = self._connect_worker = None
+        self._reconnect_thread = self._reconnect_worker = None
+
+        # 关闭路径轻量收尾：总预算 1.0s，轮询释放已结束的退役线程；
+        # 超时未结束的留在退役池，由 finished 信号兜底回收。
+        _deadline = time.monotonic() + 1.0
+        while self._retired_threads and time.monotonic() < _deadline:
+            for t, w in list(self._retired_threads):
+                try:
+                    if t.isFinished():
+                        self._drop_retired(t, w)
+                except Exception:
+                    self._retired_threads = [
+                        (x, y) for (x, y) in self._retired_threads if x is not t]
+            if any(not t.isFinished() for t, _ in self._retired_threads):
+                time.sleep(0.03)
+            else:
+                break
 
     def closeEvent(self, event):
         self.清理()

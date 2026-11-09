@@ -13,6 +13,7 @@ import ipaddress
 import socket
 import subprocess
 import time
+import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import shiboken6
@@ -356,6 +357,10 @@ class 局域网扫描对话框(QDialog):
         # 追踪正在运行的连接/回填后台线程，避免关闭窗口时悬挂
         self._connect_threads = []   # list[(QThread, _ConnectWorker)]
         self._enrich_threads = []    # list[(QThread, _EnrichWorker)]
+        # 退役池：关闭/重建时未能立即结束的线程移入此处持有引用，
+        # 等其 run 自然返回、finished 信号触发后再 deleteLater 释放，
+        # 杜绝「QThread 运行中被销毁」导致的原生崩溃。
+        self._retired_threads = []    # list[(QThread, QObject)]
         # 处于「正在连接」的按钮映射 ip→btn（点击后改文字/禁用，回调后再恢复）
         self._busy_buttons = {}
         # 发现的 IP 列表（_on_device_found 中填充,_connect_all_found/_copy_all_ips 读）
@@ -815,6 +820,79 @@ class 局域网扫描对话框(QDialog):
             self._scan_thread = None
         self._worker = None
 
+    # ── 线程退役回收（非阻塞，防运行中析构崩溃） ──
+
+    def _retire_thread(self, thread, worker=None):
+        """把线程移入退役池并登记 finished 回收，主线程不长时间等待。
+
+        背景：worker 经 started.connect(run) 直跑，可能正阻塞在 subprocess.run /
+        自研握手 / 类级锁等待里，quit() 无法中断 run。若在主线程同步 wait 会卡住
+        界面；若线程未结束就 deleteLater，QThread 运行中被析构会触发原生崩溃。
+        这里先断开信号、置取消标志、请求退出事件循环；能立即结束就直接释放，
+        否则保留引用挂到退役池，等 finished 信号自然回收。
+        """
+        if thread is None:
+            return
+        # 1) 断开 worker 信号，防止已排队的槽在控件销毁后访问失效对象
+        if worker is not None:
+            for sig_name in ('done', 'found', 'progress', 'finished', 'stopped'):
+                sig = getattr(worker, sig_name, None)
+                if sig is not None:
+                    try:
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore", RuntimeWarning)
+                            sig.disconnect()
+                    except Exception:
+                        pass
+            try:
+                worker.cancel()
+            except Exception:
+                pass
+        # 2) 请求退出线程事件循环（run 返回后线程才会真正结束）
+        try:
+            thread.quit()
+        except Exception:
+            pass
+        # 3) 已结束 → 直接释放；未结束 → 进退役池，finished 后再回收
+        try:
+            already_finished = thread.isFinished()
+        except Exception:
+            already_finished = True
+        if already_finished:
+            try:
+                thread.deleteLater()
+            except Exception:
+                pass
+            if worker is not None:
+                try:
+                    worker.deleteLater()
+                except Exception:
+                    pass
+            return
+        if (thread, worker) not in self._retired_threads:
+            self._retired_threads.append((thread, worker))
+        try:
+            thread.finished.connect(lambda th=thread, w=worker: self._drop_retired(th, w))
+        except Exception:
+            pass
+
+    def _drop_retired(self, thread, worker=None):
+        """线程自然结束后从退役池移除并释放（幂等）。"""
+        try:
+            self._retired_threads = [
+                (t, w) for (t, w) in self._retired_threads if t is not thread]
+        except Exception:
+            pass
+        try:
+            thread.deleteLater()
+        except Exception:
+            pass
+        if worker is not None:
+            try:
+                worker.deleteLater()
+            except Exception:
+                pass
+
     # ── 操作方法 ──
 
     def _find_btn_for_ip(self, ip):
@@ -933,18 +1011,28 @@ class 局域网扫描对话框(QDialog):
                     pass
 
     def _cleanup_worker_list(self, lst, ip):
-        """从 (QThread, worker) 列表移除并清理对应条目（兼容 addr/host）。"""
+        """从 (QThread, worker) 列表移除并清理对应条目（兼容 addr/host）。
+
+        done 槽执行时 worker.run 通常已返回；若线程尚未完全结束，移入
+        退役池等 finished 回收，避免运行中 deleteLater 触发崩溃。
+        """
         kept = []
         for t, w in lst:
             if getattr(w, '_addr', None) == ip or getattr(w, '_ip', None) == ip:
                 try:
                     if t.isRunning():
-                        t.quit()
-                        t.wait(2000)
+                        self._retire_thread(t, w)
+                    else:
+                        try:
+                            w.deleteLater()
+                        except Exception:
+                            pass
+                        try:
+                            t.deleteLater()
+                        except Exception:
+                            pass
                 except Exception:
                     pass
-                w.deleteLater()
-                t.deleteLater()
             else:
                 kept.append((t, w))
         lst.clear()
@@ -955,22 +1043,11 @@ class 局域网扫描对话框(QDialog):
 
         在重新扫描/排序重建等会销毁表格行（及其中按钮）的操作前必须调用，
         否则后台回调会访问已删除的 QPushButton 导致 RuntimeError。
+        未结束的线程移入退役池自然回收，不在此同步 wait 阻塞 UI，也不在
+        线程运行中 deleteLater（避免 QThread 运行中析构的原生崩溃）。
         """
         for t, w in list(self._connect_threads):
-            try:
-                # 先断开 done 信号，防止已排队的信号在 wait 后触发回调
-                try:
-                    w.done.disconnect()
-                except Exception:
-                    pass
-                w.cancel()
-                if t.isRunning():
-                    t.quit()
-                    t.wait(2000)
-                w.deleteLater()
-                t.deleteLater()
-            except Exception:
-                pass
+            self._retire_thread(t, w)
         self._connect_threads.clear()
         self._busy_buttons.clear()
 
@@ -1245,57 +1322,67 @@ class 局域网扫描对话框(QDialog):
 
         从 closeEvent 抽取出来，供嵌入到统一无线调试面板时由父窗口调用
         （嵌入后本对话框不再是顶层窗口，closeEvent 不会触发）。
+
+        回收策略（避免关闭时卡顿 / 闪退）：
+          - 先置 _closing 护栏，断开信号、置取消标志、请求退出事件循环；
+          - 扫描线程给一次短 wait 收尾；连接 / 回填线程一律走退役池，
+            不在主线程同步等待；
+          - 关闭路径只做一次有总预算的轻量轮询，把已结束的线程立即释放，
+            未结束的留在退役池，等 finished 信号自然回收，杜绝
+            「QThread 运行中被销毁」的原生崩溃。
         """
         self._closing = True
-        # 扫描线程
-        if self._scan_thread and self._scan_thread.isRunning():
-            if self._worker:
-                # 先断开信号，防止已排队的信号在窗口销毁后触发回调
+
+        # ── 扫描线程：断开信号 → 取消 → quit，短 wait 收尾 ──
+        if self._scan_thread is not None:
+            if self._worker is not None:
                 try:
-                    self._worker.found.disconnect()
-                    self._worker.progress.disconnect()
-                    self._worker.finished.disconnect()
-                    self._worker.stopped.disconnect()
+                    for sig_name in ('found', 'progress', 'finished', 'stopped'):
+                        sig = getattr(self._worker, sig_name, None)
+                        if sig is not None:
+                            try:
+                                sig.disconnect()
+                            except Exception:
+                                pass
+                    self._worker.cancel()
                 except Exception:
                     pass
-                self._worker.cancel()
-            self._scan_thread.quit()
-            self._scan_thread.wait(2000)
+            try:
+                self._scan_thread.quit()
+                # 短等待（最多 600ms），不等满旧版的 2000/3000ms
+                if not self._scan_thread.wait(600):
+                    self._retire_thread(self._scan_thread, self._worker)
+            except Exception:
+                pass
             self._scan_thread = None
             self._worker = None
-        # 连接 worker 线程：先断开信号 → cancel → quit+wait(短超时)
+
+        # ── 连接线程：退役池非阻塞回收 ──
         for t, w in list(self._connect_threads):
-            try:
-                try:
-                    w.done.disconnect()
-                except Exception:
-                    pass
-                w.cancel()
-                if t.isRunning():
-                    t.quit()
-                    t.wait(2000)
-                w.deleteLater()
-                t.deleteLater()
-            except Exception:
-                pass
+            self._retire_thread(t, w)
         self._connect_threads.clear()
         self._busy_buttons.clear()
-        # 机型回填 worker 线程
+
+        # ── 机型回填线程：退役池非阻塞回收 ──
         for t, w in list(self._enrich_threads):
-            try:
-                try:
-                    w.done.disconnect()
-                except Exception:
-                    pass
-                w.cancel()
-                if t.isRunning():
-                    t.quit()
-                    t.wait(1500)
-                w.deleteLater()
-                t.deleteLater()
-            except Exception:
-                pass
+            self._retire_thread(t, w)
         self._enrich_threads.clear()
+
+        # 关闭路径轻量收尾：总预算 1.2s，轮询释放已结束的退役线程；
+        # 超时未结束的留在退役池，由 finished 信号兜底回收。
+        _deadline = time.monotonic() + 1.2
+        while self._retired_threads and time.monotonic() < _deadline:
+            for t, w in list(self._retired_threads):
+                try:
+                    if t.isFinished():
+                        self._drop_retired(t, w)
+                except Exception:
+                    self._retired_threads = [
+                        (x, y) for (x, y) in self._retired_threads if x is not t]
+            if any(not t.isFinished() for t, _ in self._retired_threads):
+                time.sleep(0.03)
+            else:
+                break
 
     def closeEvent(self, event):
         """关闭窗口时停止所有后台线程（扫描 + 连接 + 回填），绝不留悬挂进程。"""

@@ -112,6 +112,12 @@ class 设备管理Mixin:
                 if old_text != new_text:
                     self.deviceCombo.setItemText(i, new_text)
                     updated = True
+                    # 同步回 _last_online_devs，否则后续 sync_devices 用空型号覆盖
+                    # 文件管理/日志/终端三个下拉框，标签又退回 "serial [serial]"
+                    for _d in (self._last_online_devs or []):
+                        if _d.get('serial') == serial:
+                            _d['model'] = model
+                            break
                     # 从待获取列表中移除
                     if serial in self._待获取型号的设备:
                         self._待获取型号的设备.remove(serial)
@@ -127,6 +133,10 @@ class 设备管理Mixin:
                         self.file_mgr.sync_devices(self._last_online_devs or [], cur_serial)
                     if self.log_viewer:
                         self.log_viewer.sync_devices(self._last_online_devs or [], cur_serial)
+                    if (getattr(self, '_adb_终端_dialog', None) is not None
+                            and self._adb_终端_dialog.isVisible()):
+                        # 终端弹窗打开时型号才异步到齐 → 同步一次，标签从 serial 变成型号
+                        self._adb_终端_dialog.sync_devices(self._last_online_devs or [], cur_serial)
                 except Exception:
                     pass
 

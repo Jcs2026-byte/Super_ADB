@@ -1,6 +1,9 @@
 """历史连接设备对话框：展示历史连接过的设备，支持重连和删除。"""
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QWidget
+    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QWidget,
+    QScrollArea, QFrame, QSizePolicy
 )
 from 工具.android调试工具.ADB工具 import 加载json配置, 保存json配置
 
@@ -104,15 +107,58 @@ class 历史连接设备对话框(QDialog):
         hint.setStyleSheet("font-size: 11px; color: #888;")
         hint.setWordWrap(True)
         title_row.addWidget(hint)
+        self._title_row = title_row
         root.addLayout(title_row)
 
         self._list_layout = QVBoxLayout()
         self._list_layout.setSpacing(4)
-        list_widget = QWidget()
-        list_widget.setLayout(self._list_layout)
-        root.addWidget(list_widget, 1)
 
-        root.addStretch()
+        # 设备列表放进竖向滚动区：条目多时出现滚动条，弹窗高度不再被撑长
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.NoFrame)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self._scroll.setStyleSheet(
+            'QScrollArea { background: transparent; border: none; }'
+        )
+        list_widget = QWidget()
+        list_widget.setObjectName('historyListHost')
+        list_widget.setStyleSheet(
+            'QWidget#historyListHost { background: transparent; }'
+        )
+        self._list_layout.setContentsMargins(0, 0, 8, 0)  # 右侧留出滚动条空间
+        list_widget.setLayout(self._list_layout)
+        self._scroll.setWidget(list_widget)
+        root.addWidget(self._scroll, 1)
+
+        self._apply_max_height()
+
+    def _apply_max_height(self):
+        """限制弹窗最大高度为屏幕可用高度的 72%，超出部分交给滚动区。"""
+        try:
+            screen = self.screen() or QGuiApplication.primaryScreen()
+            avail = screen.availableGeometry().height() if screen else 900
+        except Exception:
+            avail = 900
+        self._max_height = max(int(avail * 0.72), self.minimumHeight())
+        self.setMaximumHeight(self._max_height)
+
+    def _fit_height(self):
+        """按条目数调整弹窗高度：条目少时贴合内容，条目多时封顶并出现滚动条。"""
+        max_h = getattr(self, '_max_height', 0)
+        host = self._scroll.widget() if hasattr(self, '_scroll') else None
+        if not max_h or host is None:
+            return
+        # 弹窗除列表外的固定开销：内外边距 + 标题行 + 间距
+        root = self.card.layout()
+        inner = root.contentsMargins()
+        outer = self.layout().contentsMargins()
+        chrome = (inner.top() + inner.bottom() + outer.top() + outer.bottom()
+                  + root.spacing() + self._title_row.sizeHint().height()
+                  + self._scroll.frameWidth() * 2)
+        want = host.sizeHint().height() + chrome
+        self.resize(self.width(), min(max(want, self.minimumHeight()), max_h))
 
     def _refresh_list(self):
         # 清空旧列表
@@ -127,6 +173,8 @@ class 历史连接设备对话框(QDialog):
             lbl = QLabel("暂无历史连接记录")
             lbl.setStyleSheet("color: #888;")
             self._list_layout.addWidget(lbl)
+            self._list_layout.addStretch()
+            self._fit_height()
             return
 
         for entry in self._devices:
@@ -155,8 +203,11 @@ class 历史连接设备对话框(QDialog):
                 label_text += f" [Android {system_version}]"
             label_text += f"  [{ip}:{port}]"
             label = QLabel(label_text)
-            row.addWidget(label)
-            row.addStretch()
+            # 名称过长时截断显示，避免把「重连/删除」按钮挤出可视区
+            label.setToolTip(label_text)
+            label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            label.setMinimumWidth(0)
+            row.addWidget(label, 1)
 
             # 重连按钮
             btn_re = QPushButton("重连")
@@ -173,6 +224,10 @@ class 历史连接设备对话框(QDialog):
             container = QWidget()
             container.setLayout(row)
             self._list_layout.addWidget(container)
+
+        # 末尾留白：条目较少时向上对齐，超出时由滚动区接管
+        self._list_layout.addStretch()
+        self._fit_height()
 
     def _reconnect(self, entry):
         """重连设备。"""

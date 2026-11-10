@@ -7,7 +7,7 @@
 #   - 打包时额外需要 pyinstaller
 
 # === 核心 GUI ===
-PySide6>=6.11.2
+PySide6>=6.11.1,<6.12
 
 # === 图片处理 ===
 Pillow>=12.3.0
@@ -17,12 +17,14 @@ segno>=1.6.6          # 二维码生成
 pyzbar>=0.1.9         # 二维码扫码解码（需系统 libzbar0）
 
 # === 网络 / 局域网扫描 ===
-zeroconf>=0.151.3      # mDNS 服务发现
+zeroconf==0.150.0      # mDNS 服务发现
 ifaddr>=0.2.0         # 网络接口枚举
 
 # === 自研 ADB（无线配对 / USB 直连） ===
-cryptography>=42.0.0   # 无线配对 SPAKE2/TLS 链路（配对客户端顶层 import，缺失则扫码后一直转圈）
+# 锁定 50.0.0：3.14 标准 abi3 wheel（_rust.pyd 链接稳定 stub python3.dll）；
+# 3.15 上游仅发 free-threaded(abi3t) wheel，与标准 GIL 解释器混载会 access violation。
+cryptography==50.0.0   # 无线配对 SPAKE2/TLS 链路（配对客户端顶层 import，缺失则扫码后一直转圈）
 pyusb>=1.2.1           # USB 直连（pyusb/libusb 后端，需系统安装 libusb-1.0）
 
 # === 打包工具（仅打包时需要）===
-pyinstaller==6.22.2
+pyinstaller==6.21.0

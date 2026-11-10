@@ -89,7 +89,10 @@ def _定位密钥路径():
             candidates = [
                 # 旧打包版路径：_internal/配置/（__file__ 推导）
                 os.path.join(getattr(sys, '_MEIPASS', ''), '配置', fname),
-                # 开发机：exe 在源码树内（平台根/打包/dist/Super_ADB）→ 上溯 3 级到平台根 配置/
+                # 开发机：exe 在源码树内（平台根/打包/dist/Super_ADB）→ 上溯 3 级到平台根，
+                # 源码密钥实际在 平台根/工具/配置/（与源码模式 _项目根/配置/ 一致）
+                os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(base))), '工具', '配置', fname),
+                # 历史兜底：早期版本曾把密钥放在 平台根/配置/
                 os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(base))), '配置', fname),
             ]
             for old in candidates:

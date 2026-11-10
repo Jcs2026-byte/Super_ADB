@@ -294,6 +294,40 @@ def 查找内置adb路径():
     return None
 
 
+# scrcpy 输出中代表失败的关键字（大小写不敏感匹配）
+_投屏错误关键字 = ('error', 'exception', 'killed', 'disconnected', 'illegalargument',
+                  'capture/encoding', 'demuxer', 'failed')
+
+
+def _F是否投屏错误行(文本: str) -> bool:
+    """判断一行 scrcpy 输出是否属于报错/异常信息。"""
+    小 = 文本.lower()
+    return any(k in 小 for k in _投屏错误关键字)
+
+
+def _F提取投屏错误摘要(输出行列表, 返回码):
+    """从 scrcpy 尾部输出里挑出最能说明问题的错误行，拼成简短摘要。"""
+    错误行 = [行.strip() for 行 in 输出行列表 if _F是否投屏错误行(行)]
+    if not 错误行:
+        return ''
+    去重 = []
+    for 行 in 错误行:
+        if 行 not in 去重:
+            去重.append(行)
+    # 高价值信号：编码器/参数异常类报错优先保留，避免被尾部行数挤出摘要
+    V高价值关键字 = ('capture/encoding', 'illegalargument', 'mediacodec', 'exception', 'killed')
+    V高价值 = []
+    V普通 = []
+    for 行 in 去重:
+        小 = 行.lower()
+        if any(k in 小 for k in V高价值关键字):
+            V高价值.append(行)
+        else:
+            V普通.append(行)
+    关键 = (V高价值 + V普通)[:5]
+    return '；'.join(关键)
+
+
 class AdbHelper:
     """ADB 命令辅助类：提供设备扫描、命令执行、常用信息获取等能力。
 
@@ -2580,26 +2614,89 @@ echo "___END___"'''
             except Exception:
                 pass
 
-        # 启动 scrcpy: 用 CREATE_NO_WINDOW 隐藏控制台黑框
+        # 启动 scrcpy：捕获其标准输出/错误，把启动失败原因回传到主界面日志。
+        # 旧实现 Popen 后立即返回“投屏已启动”，scrcpy 在独立窗口崩溃时主界面无任何报错。
         popen_kwargs = {}
         if sys.platform == 'win32':
             popen_kwargs['creationflags'] = CREATE_NO_WINDOW
         if cwd:
             popen_kwargs['cwd'] = cwd
+        popen_kwargs['stdout'] = subprocess.PIPE
+        popen_kwargs['stderr'] = subprocess.STDOUT
         try:
             proc = subprocess.Popen(cmd, **popen_kwargs)
         except Exception as e:
             raise RuntimeError(f'启动 scrcpy 失败: {e}')
 
-        # 如果断开了自研直连，后台监控 scrcpy 退出后杀掉 adb server，释放槽位
-        if 需断开自研:
-            def _监控scrcpy退出():
-                try:
-                    proc.wait()
-                except Exception:
-                    pass
+        V输出缓冲 = []
+        V缓冲锁 = threading.Lock()
+
+        def _F读取投屏输出():
+            """后台持续读取 scrcpy 输出并累积；错误行实时回传日志。"""
+            try:
+                for 行 in iter(proc.stdout.readline, b''):
+                    文本 = 行.decode('utf-8', errors='ignore').rstrip()
+                    if not 文本:
+                        continue
+                    with V缓冲锁:
+                        V输出缓冲.append(文本)
+                        # 仅保留尾部 80 行，避免长时间投屏撑爆内存
+                        if len(V输出缓冲) > 80:
+                            del V输出缓冲[:-80]
+                    if _F是否投屏错误行(文本) and self.log_callback:
+                        try:
+                            self.log_callback(f'[投屏] {文本}')
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+        threading.Thread(target=_F读取投屏输出, daemon=True).start()
+
+        # 观察窗口：scrcpy 若在启动阶段就崩溃（如设备编码器 MediaCodec 不支持），
+        # 会在几秒内退出。此窗口内退出即判定为启动失败并回传原因。
+        V观察秒数 = 5.0
+        V截止时间 = time.monotonic() + V观察秒数
+        while time.monotonic() < V截止时间:
+            if proc.poll() is not None:
+                break
+            time.sleep(0.3)
+
+        V返回码 = proc.poll()
+        if V返回码 is not None:
+            # 进程在观察期内已退出 → 判定为启动失败
+            with V缓冲锁:
+                V尾部输出 = list(V输出缓冲)
+            V摘要 = _F提取投屏错误摘要(V尾部输出, V返回码)
+            if self.log_callback:
+                self.log_callback(f'[投屏] scrcpy 已退出（返回码 {V返回码}）')
+                if V摘要:
+                    self.log_callback(f'[投屏] 失败原因：{V摘要}')
+            raise RuntimeError(
+                f'scrcpy 启动失败（返回码 {V返回码}）。'
+                + (f'原因：{V摘要}' if V摘要 else '请查看 scrcpy 输出日志。'))
+
+        # 观察期内进程仍在运行，视为投屏成功；后台监控后续异常退出并回传错误。
+        def _F监控投屏退出():
+            try:
+                proc.wait()
+            except Exception:
+                pass
+            V退出码 = proc.returncode
+            # 非零退出或退出输出含错误 → 回传失败原因；正常关闭（返回码 0）不打扰。
+            if V退出码 not in (0, None):
+                with V缓冲锁:
+                    V尾部 = list(V输出缓冲)
+                V原因 = _F提取投屏错误摘要(V尾部, V退出码)
+                if self.log_callback:
+                    self.log_callback(f'[投屏] scrcpy 异常退出（返回码 {V退出码}）')
+                    if V原因:
+                        self.log_callback(f'[投屏] 失败原因：{V原因}')
+            if 需断开自研:
                 self._清理残留adb()
-            threading.Thread(target=_监控scrcpy退出, daemon=True).start()
+
+        threading.Thread(target=_F监控投屏退出, daemon=True).start()
+        if 需断开自研:
             return '投屏已启动（单客户模式，关闭后请刷新设备重连）'
         return '投屏已启动'
 

@@ -92,6 +92,8 @@ class _AdbShell行会话:
         self.on_output = on_output
         self.on_close = on_close
         self.已关闭 = False
+        # 行模式无 PTY：stty 依赖 TTY 调用 tcgetattr，终端初始化需跳过宽度设置
+        self.是行模式 = True
 
     def 启动(self):
         """行模式无需预连接，立即就绪。"""
@@ -538,6 +540,10 @@ class ADB终端对话框(QDialog):
         """
         if not self._shell or self._shell.已关闭:
             return
+        # 行模式会话无 PTY：stty 对非 TTY 调用 tcgetattr 会报
+        # "Inappropriate ioctl for device"，直接跳过宽度设置。
+        if getattr(self._shell, '是行模式', False):
+            return
         # 发送 stty 命令设置宽度（toybox 自带，绝大多数 Android 设备可用）
         self._shell.发送输入(f'stty cols {cols}\n')
         # 等 stty 执行完，清掉它自己产生的回显行（只清这些行，不动真实输出）。
@@ -557,9 +563,10 @@ class ADB终端对话框(QDialog):
         if doc.blockCount() <= 1:
             return
         待删 = []
+        V噪声关键字 = ('stty cols', 'tcgetattr', 'Inappropriate ioctl')
         block = doc.firstBlock()
         while block.isValid():
-            if 'stty cols' in block.text():
+            if any(k in block.text() for k in V噪声关键字):
                 待删.append(block.blockNumber())
             block = block.next()
         if not 待删:

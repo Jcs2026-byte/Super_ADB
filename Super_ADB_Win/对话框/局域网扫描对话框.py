@@ -44,6 +44,37 @@ def _is_valid(obj):
     return obj is not None and shiboken6.isValid(obj)
 
 
+def _F复核设备状态(adb_path, target, timeout=3):
+    """跑 adb devices 复核 target 在 server 侧的真实状态。
+
+    返回 (state, raw_line)；查不到 / 异常时返回 ('', '')。
+    state 取值：device / unauthorized / offline / ''。
+    背景：adb connect 只是 client 与 server 的一次交互，慢授权、server 冷启动、
+    单槽位排队时回包会滞后；常驻 server 可能在 client 超时后仍把握手跑完，
+    因此成败必须以 devices 里的真实状态为准，不能只看 connect 回包或超时。
+    """
+    V_creationflags = 0
+    try:
+        from 工具.android调试工具.ADB工具 import CREATE_NO_WINDOW  # type: ignore
+        V_creationflags = CREATE_NO_WINDOW
+    except Exception:
+        pass
+    try:
+        V_proc = subprocess.run(
+            [adb_path, 'devices'],
+            capture_output=True, text=True,
+            encoding='utf-8', errors='replace',
+            timeout=timeout, creationflags=V_creationflags, shell=False,
+        )
+        for V_行 in (V_proc.stdout or '').splitlines():
+            V_片段 = V_行.split()
+            if len(V_片段) >= 2 and V_片段[0] == target:
+                return V_片段[1], V_行.strip()
+    except Exception:
+        pass
+    return '', ''
+
+
 class _ScanWorker(QObject):
     """后台扫描线程：遍历 IP 列表，逐个探测 ADB 端口。"""
 
@@ -130,6 +161,27 @@ class _ConnectWorker(QObject):
     def cancel(self):
         self._cancelled = True
 
+    def _F复核设备状态(self, helper, target):
+        """实例封装：转调模块级复核函数（保留 run 内现有调用写法）。"""
+        return _F复核设备状态(helper.adb_path, target)
+
+    def _F轮询复核(self, helper, target, 最长秒数=6.0, 间隔=1.0):
+        """短轮询 adb devices，等待设备进入 device / unauthorized。
+
+        慢授权、单槽位排队、server 冷启动时，设备不会在 connect 返回的瞬间就
+        出现在 devices 里；只查一两次容易把"正在后台握手"误判成失败。命中即
+        返回该状态，到期仍未就绪则返回最后一次状态（可能为 ''）。
+        """
+        V截止 = time.monotonic() + 最长秒数
+        V状态 = ''
+        while True:
+            V状态, _ = self._F复核设备状态(helper, target)
+            if V状态 in ('device', 'unauthorized'):
+                return V状态
+            if time.monotonic() >= V截止:
+                return V状态
+            time.sleep(间隔)
+
     def run(self):
         # 调用前先检查：被取消就不再起 adb 进程（节省资源）
         if self._cancelled:
@@ -169,10 +221,13 @@ class _ConnectWorker(QObject):
                     if client is not None:
                         _emit(True, f"connected to {target}")
                     else:
-                        # _获取自研adb 失败返回 None，具体原因已打印在控制台
-                        _emit(
-                            False,
-                            "连接失败：设备未授权或未响应，请在设备上确认调试授权弹窗")
+                        # 真实原因优先取 AdbHelper 保存的最后连接错误；
+                        # 未授权只是其中一种，不能把拒绝/超时/探活失败也笼统报成「未授权」。
+                        _detail = getattr(helper, '_最后连接错误', '') or ''
+                        if _detail:
+                            _emit(False, f"连接失败：{_detail}")
+                        else:
+                            _emit(False, f"连接失败：{target} 未响应或不可达，请确认设备已开启无线调试")
                     return
                 except Exception as e:
                     _emit(False, f"❌ 连接失败：{e}")
@@ -188,24 +243,44 @@ class _ConnectWorker(QObject):
                 creationflags = CREATE_NO_WINDOW
             except Exception:
                 pass
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                encoding='utf-8',
-                errors='replace',
-                timeout=self._timeout,
-                creationflags=creationflags,
-                shell=False,
-            )
-            result = (proc.stdout or proc.stderr or '').strip()
-            # adb connect 成功返回类似 "connected to 1.2.3.4:5555"
-            ok = ('connected' in result.lower()
-                  or 'already' in result.lower())
-            _emit(ok, result or '无返回')
-        except subprocess.TimeoutExpired:
-            # 10s 仍未返回 → 视为失败(用户看到的就是失败提示,而非「未响应」)
-            _emit(False, f"连接超时 ({self._timeout}s)，请检查目标设备是否开启无线调试")
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    timeout=self._timeout,
+                    creationflags=creationflags,
+                    shell=False,
+                )
+                result = (proc.stdout or proc.stderr or '').strip()
+                # adb connect 成功返回类似 "connected to 1.2.3.4:5555"
+                回包成功 = ('connected' in result.lower()
+                            or 'already' in result.lower())
+                # 以 adb devices 复核到的真实状态为准：回包只反映 client 一次交互，
+                # 慢授权 / server 冷启动 / 单槽位排队时会滞后，短轮询等待设备就绪。
+                V状态 = self._F轮询复核(helper, target, 最长秒数=6.0)
+                if V状态 == 'device':
+                    _emit(True, result or f"connected to {target}")
+                elif V状态 == 'unauthorized':
+                    _emit(True, f"已连接 {target}，请在设备上确认调试授权弹窗")
+                elif 回包成功:
+                    # 复核尚未就绪但回包明确成功：按成功上报，主界面刷新时会再校验活性
+                    _emit(True, result)
+                else:
+                    _emit(False, result or '连接失败')
+            except subprocess.TimeoutExpired:
+                # client 超时被杀，但常驻的 adb server 可能在后台继续完成握手，
+                # 必须复核真实状态，不能仅凭超时就判失败（否则会出现"设备已在线、
+                # 弹窗却标离线/失败"的误判）。短轮询等待后台握手落定。
+                V状态 = self._F轮询复核(helper, target, 最长秒数=6.0)
+                if V状态 == 'device':
+                    _emit(True, f"connected to {target}（握手较慢，已复核在线）")
+                elif V状态 == 'unauthorized':
+                    _emit(True, f"已连接 {target}，请在设备上确认调试授权弹窗")
+                else:
+                    _emit(False, f"连接超时 ({self._timeout}s)，请检查目标设备是否开启无线调试")
         except Exception as e:
             # 超时 / 进程卡死 / 任何异常都汇报错误而非让 UI 永久挂着
             _emit(False, f"❌ 连接失败：{e}")
@@ -1178,6 +1253,12 @@ class 局域网扫描对话框(QDialog):
         #   信号连接到它时按 worker 所在线程排队，而 worker 线程没有事件循环
         #   （thread.started.connect(worker.run) 直跑 run），跨线程 emit 会
         #   永久排队不执行，护栏就失效了。主线程同步调用 _done 才可靠。
+        # 护栏预算（秒）：connect 超时 + 轮询复核 + 进程/握手余量
+        V护栏秒数 = worker._timeout + 14
+        # ★ QTimer.singleShot 单位是毫秒，必须 ×1000；旧版直接传秒值，
+        #   护栏在几十毫秒内就触发（connect 尚未返回），把实际在线的设备误判失败。
+        V护栏毫秒 = V护栏秒数 * 1000
+
         def _guard():
             if getattr(worker, '_已结束', False):
                 return  # run 已正常收尾，不重复汇报
@@ -1185,9 +1266,22 @@ class 局域网扫描对话框(QDialog):
             已汇报 = getattr(worker, '_已汇报done', None)
             if 已汇报 is not None:
                 已汇报['done'] = True
-            _done(False, f"连接超时（超过 {worker._timeout + 7}s 未完成），已跳过")
+            # 护栏到点先复核真实状态：常驻 server 可能在后台已把握手跑完，
+            # 不能仅凭超时就把实际在线的设备判成离线/失败（批量误判主因）。
+            V状态 = ''
+            try:
+                from 工具.android调试工具.ADB工具 import AdbHelper
+                V状态, _ = _F复核设备状态(AdbHelper().adb_path, ip, timeout=2.5)
+            except Exception:
+                pass
+            if V状态 == 'device':
+                _done(True, f"connected to {ip}（握手较慢，已复核在线）")
+            elif V状态 == 'unauthorized':
+                _done(True, f"已连接 {ip}，请在设备上确认调试授权弹窗")
+            else:
+                _done(False, f"连接超时（超过 {V护栏秒数}s 未完成），已跳过")
 
-        QTimer.singleShot(worker._timeout + 7, _guard)
+        QTimer.singleShot(V护栏毫秒, _guard)
         # 跟踪并清理
         self._connect_threads.append((thread, worker))
         thread.start()

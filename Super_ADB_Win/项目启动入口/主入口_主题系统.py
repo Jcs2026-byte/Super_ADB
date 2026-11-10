@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QMenu
 
 from 项目UI.界面样式 import (
     THEMES, DEFAULT_THEME, get_stylesheet, get_theme_ids, get_theme_name, FONT_FAMILY,
-    生成旋转图标像素图,
+    生成窗口控制图标像素图,
 )
 from 工具.android调试工具.ADB工具 import 加载json配置, 保存json配置
 
@@ -96,12 +96,13 @@ class 主题系统Mixin:
             act.setChecked(tid == self._current_theme)
 
     def 刷新标题栏按钮样式(self):
-        """统一刷新标题栏所有按钮的局部样式（关于/环境配置/主题/隐藏/退出/品牌文字）。"""
+        """统一刷新标题栏所有按钮的局部样式（关于/环境配置/主题/最小化/最大化/退出/品牌文字）。"""
         for btn, style_fn in (
             (getattr(self, '_btn_about', None), self._关于按钮样式),
             (getattr(self, '_btn_env', None), self._环境配置按钮样式),
             (getattr(self, '_btn_theme', None), self._主题按钮样式),
-            (getattr(self, '_btn_close', None), lambda: self._窗口按钮样式(False)),
+            (getattr(self, '_btn_min', None), lambda: self._窗口按钮样式(False)),
+            (getattr(self, '_btn_max', None), lambda: self._窗口按钮样式(False)),
             (getattr(self, '_btn_exit', None), lambda: self._窗口按钮样式(True)),
             (getattr(self, 'brandText', None), self._品牌文字样式),
                     ):
@@ -110,13 +111,14 @@ class 主题系统Mixin:
                     btn.setStyleSheet(style_fn())
                 except Exception as e:
                     print(f'[主题] 标题栏按钮样式刷新失败: {e!r}')
-        # 隐藏到托盘按钮图标随主题刷新（系统图标在浅色主题下为白色不可见）
-        btn_close = getattr(self, '_btn_close', None)
-        if btn_close is not None:
+        # 最小化 / 最大化-还原按钮图标随主题刷新（系统图标在浅色主题下可能不可见）
+        btn_min = getattr(self, '_btn_min', None)
+        if btn_min is not None:
             try:
-                btn_close.setIcon(self._隐藏按钮图标())
+                btn_min.setIcon(self._窗口控制按钮图标('min'))
             except Exception as e:
-                print(f'[主题] 隐藏按钮图标刷新失败: {e!r}')
+                print(f'[主题] 最小化按钮图标刷新失败: {e!r}')
+        self._F刷新最大化按钮图标()
 
     def _切换主题(self, theme_id):
         """切换主题：setStyleSheet + 重应用标题栏按钮局部样式 + 持久化。"""
@@ -264,14 +266,25 @@ class 主题系统Mixin:
                 f"QPushButton:hover{{background:rgba({r},{g},{b},35);color:#ffffff;}}"
                 f"QPushButton:pressed{{background:rgba({r},{g},{b},60);color:#ffffff;}}")
 
-    def _隐藏按钮图标(self):
-        """生成隐藏到托盘按钮的旋转箭头图标，颜色随主题背景自适应。
+    def _窗口控制按钮图标(self, kind):
+        """生成标题栏「最小化 / 最大化 / 还原」按钮图标，颜色随主题背景自适应。
 
         深色标题栏用浅灰图标、浅色标题栏用深灰图标，保证所有主题下都可见。
         """
         t = THEMES.get(self._current_theme, THEMES[DEFAULT_THEME])
         glyph = '#cccccc' if self._背景是否深色(t['bg_window']) else '#4a4a4a'
-        return QIcon(生成旋转图标像素图(glyph))
+        return QIcon(生成窗口控制图标像素图(kind, glyph, 16))
+
+    def _F刷新最大化按钮图标(self):
+        """按当前窗口状态切换「最大化 / 还原」图标（最大化时显示还原样式）。"""
+        btn = getattr(self, '_btn_max', None)
+        if btn is None:
+            return
+        try:
+            btn.setIcon(self._窗口控制按钮图标(
+                'restore' if self.isMaximized() else 'max'))
+        except Exception as e:
+            print(f'[主题] 最大化按钮图标刷新失败: {e!r}')
 
     def _窗口按钮样式(self, is_close=True):
         """生成标题栏「隐藏/关闭」按钮的局部样式表。hover 为红色（Windows 风格）。

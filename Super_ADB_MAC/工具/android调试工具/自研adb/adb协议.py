@@ -544,7 +544,7 @@ class _连接池:
                 pass
             raise RuntimeError(f"ADB 连接失败: {host}:{port} ({e})") from e
         if not ok:
-            原因 = conn._认证失败原因 or '认证未通过'
+            原因 = conn._认证失败原因 or conn.最后错误 or '认证未通过'
             try:
                 conn.关闭()      # 同上：认证未通过也要释放 socket
             except Exception:
@@ -750,6 +750,7 @@ class AdbConnection:
         self._burst = burst         # 连接模式请求：None=自动 / True=强制burst / False=强制传统
         self._流ASB = 0             # 当前流可用发送额度（delayed_ack 窗口记账）
         self._认证失败原因 = ''   # 认证未通过时的具体原因，供上层错误消息展示
+        self.最后错误 = ''        # 连接阶段（TCP/握手/协议）的具体原因，供上层错误消息展示
         self.log_callback = None  # 授权等关键事件回调到主窗口输出栏
         if key_path:
             self._key_path = key_path
@@ -922,7 +923,20 @@ class AdbConnection:
             print(f'[自研adb] WSAIoctl(SIO_KEEPALIVE_VALS) 失败, WSAError={err}')
 
     def 连接(self) -> bool:
-        self.sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        # ★ TCP 建连单独分类：拒绝/不可达/超时与 AUTH 未授权是两类故障，
+        #   旧实现把它们混在「期望 CNXN/AUTH」或笼统的未授权提示里，
+        #   导致已授权设备连不上时也被误报成「设备未授权」。
+        try:
+            self.sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        except ConnectionRefusedError:
+            self.最后错误 = f'端口 {self.port} 拒绝连接（设备未开启无线调试或端口不对）'
+            raise RuntimeError(self.最后错误)
+        except socket.timeout:
+            self.最后错误 = f'连接 {self.host}:{self.port} 超时（设备不可达或网络不通）'
+            raise RuntimeError(self.最后错误)
+        except OSError as e:
+            self.最后错误 = f'网络不可达或地址错误: {e}'
+            raise RuntimeError(self.最后错误)
         self.sock.settimeout(self.timeout)
         try:
             self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -937,7 +951,14 @@ class AdbConnection:
         banner = (b'host::features=shell_v2,cmd,stat_v2,ls_v2,fixed_push_mkdir,apex,abb,abb_exec,fixed_push_symlink_timestamp,app_process_install_32bit_override,hires_shell_v2,remount_shell,track_app,sendrecv_v2,sendrecv_v2_brotli,sendrecv_v2_lz4,sendrecv_v2_zstd,list_v2'
                      + (b',delayed_ack' if _启用延迟ack else b''))
         self._发送(AdbMessage(CMD_CNXN, ADB_VERSION, ADB_MAX_PAYLOAD, banner))
-        msg = self._接收消息()
+        try:
+            msg = self._接收消息()
+        except socket.timeout:
+            self.最后错误 = f'握手超时({self.timeout}s)：设备未响应 CNXN/AUTH'
+            raise RuntimeError(self.最后错误)
+        except Exception as e:
+            self.最后错误 = f'握手过程中连接中断（{e}）'
+            raise RuntimeError(self.最后错误) from e
         if msg.command == CMD_CNXN:
             self._设备版本 = msg.arg0
             self._跳过校验和 = (msg.arg0 >= A_VERSION_SKIP_CHECKSUM)

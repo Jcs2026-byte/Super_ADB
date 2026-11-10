@@ -346,6 +346,10 @@ class AdbHelper:
     _类级_最近重连时间: dict = {}      # serial -> time.time()，5秒冷却期内不再自动重连，防雪崩
     _类级_自研adb锁 = None             # 在首次使用前按需创建（避免 import 时引入 threading 副作用）
     _最近断开的设备: dict = {}          # serial -> 断开时间戳，10秒冷却期内不显示在设备列表中
+    # 自研 TCP 建连 + 首包握手预算（秒）。批量连接串行队列里单台不能拖太久，
+    # 否则后续设备全部排队、界面表现为「未响应」；已发公钥等用户授权的长等待
+    # 由协议层内部控制，不受此值限制。
+    _自研连接超时秒 = 6.0
     # 缓存回写日志回调：首个缓存成功的实例会保存 log_callback，
     # 后续其它实例首次调用时若 client 已就绪，同步把新回调写入 client
     # （确保每个对话框窗口里的输出面板也能看到日志）。
@@ -394,6 +398,8 @@ class AdbHelper:
         self._自研adb锁 = AdbHelper._类级_自研adb锁
         # 设备名缓存：serial -> model，连接成功后异步获取
         self._设备名缓存 = {}
+        # 最近一次自研连接失败的具体原因，供扫描弹窗/连接结果回传真实报错
+        self._最后连接错误 = ''
         # 读取 ADB 配置（环境配置对话框保存到 配置/Super_ADB配置.json）
         try:
             cfg = 加载json配置('配置/Super_ADB配置.json')
@@ -710,10 +716,11 @@ class AdbHelper:
                     print(f'[自研adb] 尝试连接 {host}:{port}...')
                     client = 自研adb客户端(host, port)
                     client.log_callback = self.log_callback
-                    ok = client.连接()
+                    ok = client.连接(timeout=self._自研连接超时秒)
                     if ok:
                         print(f'[自研adb] 连接成功，状态={client._conn.state if client._conn else "None"}')
                         self._自研adb缓存[serial] = client
+                        self._最后连接错误 = ''
                         try:
                             AdbHelper._最近断开的设备.pop(serial, None)
                         except Exception:
@@ -726,6 +733,7 @@ class AdbHelper:
                         return client
                     else:
                         _err = getattr(client, '最后错误', '') or '未知原因'
+                        self._最后连接错误 = _err
                         print(f'[自研adb] 首次连接失败，原因: {_err}')
                         try:
                             client.关闭()
@@ -734,6 +742,7 @@ class AdbHelper:
                 except Exception as e:
                     print(f'[自研adb] 连接异常 {serial}: {e}')
                     _err = str(e)
+                    self._最后连接错误 = _err
 
                 if 跳过诊断:
                     # 批量连接等场景：失败直接返回，不做 ping/杀 adb/sleep/重试，
@@ -771,10 +780,11 @@ class AdbHelper:
                     print(f'[自研adb] 清理后重试连接 {host}:{port}...')
                     client = 自研adb客户端(host, port)
                     client.log_callback = self.log_callback
-                    ok = client.连接()
+                    ok = client.连接(timeout=self._自研连接超时秒)
                     if ok:
                         print(f'[自研adb] 重试连接成功')
                         self._自研adb缓存[serial] = client
+                        self._最后连接错误 = ''
                         try:
                             AdbHelper._最近断开的设备.pop(serial, None)
                         except Exception:
@@ -782,6 +792,7 @@ class AdbHelper:
                         return client
                     else:
                         _err = getattr(client, '最后错误', '') or '未知原因'
+                        self._最后连接错误 = _err
                         print(f'[自研adb] 重试仍失败: {_err}')
                         try:
                             client.关闭()
@@ -789,6 +800,7 @@ class AdbHelper:
                             pass
                 except Exception as e:
                     print(f'[自研adb] 重试连接异常: {e}')
+                    self._最后连接错误 = str(e)
 
             else:
                 # 不含冒号 → 尝试 USB 设备连接

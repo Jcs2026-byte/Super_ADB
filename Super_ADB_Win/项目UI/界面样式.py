@@ -347,7 +347,8 @@ def _arrow_icon_path(theme_id):
 
 
 def 生成旋转图标像素图(color_str, size=18):
-    """程序化生成「旋转箭头」图标（隐藏到托盘按钮 winBtnClose 用）。
+    """程序化生成「旋转箭头」图标（原「隐藏到托盘」按钮使用，该按钮已取消，
+    函数保留供其它场景复用）。
 
     颜色由调用方按主题传入（深色标题栏传浅色、浅色标题栏传深色），
     避免依赖系统主题图标：Windows 上 ObjectRotateRight 解析为白色图标，
@@ -378,6 +379,41 @@ def 生成旋转图标像素图(color_str, size=18):
         x = ex + tip * math.cos(tang + da)
         y = ey + tip * math.sin(tang + da)
         p.drawLine(QPointF(ex, ey), QPointF(x, y))
+    p.end()
+    return QPixmap.fromImage(img)
+
+
+def 生成窗口控制图标像素图(kind='min', color_str='#cccccc', size=16):
+    """程序化生成标题栏「最小化 / 最大化 / 还原」按钮图标。
+
+    kind:
+      ``min``      —— 一条水平短线（最小化到任务栏）
+      ``max``      —— 空心方框（最大化）
+      ``restore``  —— 前后叠放的两个方框（还原）
+
+    与 ``生成旋转图标像素图`` 一样由调用方按主题传颜色，避免系统图标
+    在浅色标题栏上不可见。
+    """
+    img = QImage(size, size, QImage.Format_ARGB32)
+    img.fill(0x00000000)
+    p = QPainter(img)
+    p.setRenderHint(QPainter.Antialiasing, True)
+    pen = QPen(QColor(color_str), max(1.2, size / 11.0))
+    pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+    p.setPen(pen)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    # 图标安全边距：方框别顶到图标边界，否则看起来脏
+    m = size * 0.24
+    if kind == 'min':
+        y = size * 0.52
+        p.drawLine(QPointF(m, y), QPointF(size - m, y))
+    elif kind == 'max':
+        p.drawRect(QRectF(m, m, size - 2 * m, size - 2 * m))
+    else:  # restore：前方方框 + 后方方框露出的上/右两条边
+        inset = size * 0.32
+        p.drawRect(QRectF(m, inset, size - m - inset, size - inset - m))
+        p.drawLine(QPointF(inset, m), QPointF(size - m, m))
+        p.drawLine(QPointF(size - m, m), QPointF(size - m, size - inset))
     p.end()
     return QPixmap.fromImage(img)
 

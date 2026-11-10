@@ -458,12 +458,21 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             except Exception:
                 pass
         self._设置列表背景色(self._current_theme)
-        # 无边框窗口标题栏按钮：关闭/隐藏按钮由 .ui 定义；关于/主题在 __init__ 上方代码创建
+        # 无边框窗口标题栏按钮：最小化/最大化-还原/关闭按钮由 .ui 定义；关于/主题在 __init__ 上方代码创建
         self._no_track = set()
-        self._btn_close = self.winBtnClose  # 隐藏到托盘按钮（旋转图标）
-        self._btn_close.setStyleSheet(self._窗口按钮样式(False))
-        self._btn_close.setIcon(self._隐藏按钮图标())  # 图标随主题自适应，浅色主题不再隐身
-        self._no_track.add(self._btn_close)
+        # 标题栏「最小化」按钮：收进任务栏（点托盘图标可恢复）
+        self._btn_min = self.winBtnMinimize
+        self._btn_min.setStyleSheet(self._窗口按钮样式(False))
+        self._btn_min.setIcon(self._窗口控制按钮图标('min'))
+        self._btn_min.clicked.connect(self.showMinimized)
+        self._no_track.add(self._btn_min)
+
+        # 标题栏「最大化 / 还原」按钮：图标按窗口状态切换
+        self._btn_max = self.winBtnMaximize
+        self._btn_max.setStyleSheet(self._窗口按钮样式(False))
+        self._btn_max.setIcon(self._窗口控制按钮图标('max'))
+        self._btn_max.clicked.connect(self._切换最大化)
+        self._no_track.add(self._btn_max)
 
         # 右上角 X 关闭程序按钮（由 ui 文件定义，点击弹确认框，防止误关）
         self._btn_exit = self.winBtnExit
@@ -2007,6 +2016,8 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         super().changeEvent(ev)
         if ev.type() == QEvent.Type.WindowStateChange:
             self._防抖保存几何()
+            # 最大化 ↔ 还原时切换按钮图标（方框 ↔ 双方框）
+            self._F刷新最大化按钮图标()
 
     def moveEvent(self, ev):
         super().moveEvent(ev)
@@ -2587,6 +2598,19 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
     def _重定位窗口按钮(self):
         """标题栏按钮已由 ui 布局自动定位，此方法保留以兼容调用，无需手动移动。"""
         pass
+
+    def _切换最大化(self):
+        """标题栏「最大化 / 还原」按钮：在最大化与还原之间切换。
+
+        无边框窗口最大化由 Qt 处理（贴屏幕可用区域，不盖任务栏）；
+        还原回到最大化前的几何尺寸（Qt 自带记忆）。
+        """
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+        # 图标立即跟随状态切换；changeEvent 也会再刷一次（幂等）
+        self._F刷新最大化按钮图标()
 
     def mousePressEvent(self, event):
         """边缘区域进入缩放模式，其余区域进入拖拽模式。"""

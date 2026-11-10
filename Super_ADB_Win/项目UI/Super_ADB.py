@@ -85,15 +85,24 @@ class Ui_MainWindow(object):
 
         self.horizontalLayout_4.addItem(self.horizontalSpacer_7)
 
-        self.winBtnClose = QPushButton(MainWindow)
-        self.winBtnClose.setObjectName(u"winBtnClose")
-        self.winBtnClose.setMinimumSize(QSize(34, 26))
-        self.winBtnClose.setMaximumSize(QSize(34, 26))
-        self.winBtnClose.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        icon = QIcon(QIcon.fromTheme(QIcon.ThemeIcon.ObjectRotateRight))
-        self.winBtnClose.setIcon(icon)
+        # 标题栏窗口控制按钮：「最小化」+「最大化/还原」
+        # （原「隐藏到托盘」旋转按钮已取消；仍可通过右上角 ✕ 的确认框选「否」
+        #   或托盘右键菜单隐藏到托盘）
+        self.winBtnMinimize = QPushButton(MainWindow)
+        self.winBtnMinimize.setObjectName(u"winBtnMinimize")
+        self.winBtnMinimize.setMinimumSize(QSize(34, 26))
+        self.winBtnMinimize.setMaximumSize(QSize(34, 26))
+        self.winBtnMinimize.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
-        self.horizontalLayout_4.addWidget(self.winBtnClose)
+        self.horizontalLayout_4.addWidget(self.winBtnMinimize)
+
+        self.winBtnMaximize = QPushButton(MainWindow)
+        self.winBtnMaximize.setObjectName(u"winBtnMaximize")
+        self.winBtnMaximize.setMinimumSize(QSize(34, 26))
+        self.winBtnMaximize.setMaximumSize(QSize(34, 26))
+        self.winBtnMaximize.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+
+        self.horizontalLayout_4.addWidget(self.winBtnMaximize)
 
         self.winBtnExit = QPushButton(MainWindow)
         self.winBtnExit.setObjectName(u"winBtnExit")
@@ -878,7 +887,6 @@ class Ui_MainWindow(object):
 
 
         self.retranslateUi(MainWindow)
-        self.winBtnClose.clicked.connect(MainWindow.hide)
 
         self.tabWidget.setCurrentIndex(0)
         self.tabWidget_2.setCurrentIndex(0)
@@ -897,9 +905,13 @@ class Ui_MainWindow(object):
         self.btnEnvConfig.setText(QCoreApplication.translate("MainWindow", u"\u73af\u5883\u914d\u7f6e", None))
         self.btnTheme.setText(QCoreApplication.translate("MainWindow", u"\u4e3b\u9898\u25bc", None))
 #if QT_CONFIG(tooltip)
-        self.winBtnClose.setToolTip(QCoreApplication.translate("MainWindow", u"\u9690\u85cf\u5230\u7cfb\u7edf\u6258\u76d8", None))
+        self.winBtnMinimize.setToolTip(QCoreApplication.translate("MainWindow", u"\u6700\u5c0f\u5316\u5230\u4efb\u52a1\u680f", None))
 #endif // QT_CONFIG(tooltip)
-        self.winBtnClose.setText("")
+        self.winBtnMinimize.setText("")
+#if QT_CONFIG(tooltip)
+        self.winBtnMaximize.setToolTip(QCoreApplication.translate("MainWindow", u"\u6700\u5927\u5316 / \u8fd8\u539f", None))
+#endif // QT_CONFIG(tooltip)
+        self.winBtnMaximize.setText("")
 #if QT_CONFIG(tooltip)
         self.winBtnExit.setToolTip(QCoreApplication.translate("MainWindow", u"\u5173\u95ed\u7a0b\u5e8f", None))
 #endif // QT_CONFIG(tooltip)

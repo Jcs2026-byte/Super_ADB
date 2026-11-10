@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import os
+from PyInstaller.utils.hooks import collect_all
 
 # 打包目录 = 本 spec 所在目录；项目根 = 打包目录的上一级
 # （2026-09 适配 CI：原先硬编码本机绝对路径，
@@ -10,14 +11,20 @@ import os
 _打包目录 = os.path.dirname(os.path.abspath(SPEC))
 _项目根 = os.path.dirname(_打包目录)
 
+# pywinpty 含原生 pyd / dll / exe（conpty.dll、winpty.dll、winpty-agent.exe 等），
+# 需 collect_all 一并收集；未安装时降级为空，不阻断打包（终端回退行模式）。
+try:
+    _Vwinpty_bin, _Vwinpty_data, _Vwinpty_hidden = collect_all('winpty')
+except Exception:
+    _Vwinpty_bin, _Vwinpty_data, _Vwinpty_hidden = [], [], []
 
 
 a = Analysis(
     [os.path.join(_项目根, '项目启动入口', 'Super_ADB_主入口.py')],
     pathex=[_项目根, os.path.join(_项目根, '项目UI')],
-    binaries=[],
-    datas=[(os.path.join(_项目根, '资源'), '资源'), (os.path.join(_项目根, '外部扩展'), '外部扩展')],
-    hiddenimports=['segno', 'segno.helpers', 'zeroconf', 'ifaddr', 'pyzbar', '工具.android调试工具.收藏下拉框', 'png_rc', '项目UI.png_rc', 'cryptography', 'cryptography.hazmat', 'cryptography.hazmat.primitives', 'cryptography.hazmat.primitives.asymmetric', 'cryptography.hazmat.primitives.asymmetric.rsa', 'cryptography.hazmat.primitives.asymmetric.padding', 'cryptography.hazmat.primitives.serialization', 'cryptography.hazmat.primitives.hashes', 'cryptography.hazmat.backends', '工具.android调试工具.自研adb.mdns发现', '工具.android调试工具.自研adb.adb协议', 'usb', 'usb.core', 'usb.util', 'usb.backend.libusb1', 'brotli'],
+    binaries=_Vwinpty_bin,
+    datas=[(os.path.join(_项目根, '资源'), '资源'), (os.path.join(_项目根, '外部扩展'), '外部扩展')] + _Vwinpty_data,
+    hiddenimports=['segno', 'segno.helpers', 'zeroconf', 'ifaddr', 'pyzbar', '工具.android调试工具.收藏下拉框', 'png_rc', '项目UI.png_rc', 'cryptography', 'cryptography.hazmat', 'cryptography.hazmat.primitives', 'cryptography.hazmat.primitives.asymmetric', 'cryptography.hazmat.primitives.asymmetric.rsa', 'cryptography.hazmat.primitives.asymmetric.padding', 'cryptography.hazmat.primitives.serialization', 'cryptography.hazmat.primitives.hashes', 'cryptography.hazmat.backends', '工具.android调试工具.自研adb.mdns发现', '工具.android调试工具.自研adb.adb协议', 'usb', 'usb.core', 'usb.util', 'usb.backend.libusb1', 'brotli'] + _Vwinpty_hidden,
     hookspath=[os.path.join(_打包目录, 'hooks')],
     hooksconfig={},
     runtime_hooks=[os.path.join(_打包目录, 'hooks', 'runtime_pyzbar.py'),

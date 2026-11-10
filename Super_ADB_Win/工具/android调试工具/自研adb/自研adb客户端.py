@@ -114,7 +114,12 @@ class 自研adb客户端:
     # ── 连接管理 ──
 
     def 连接(self, timeout: float = 5.0) -> bool:
-        """建立首次连接（触发认证），预热池。已有连接时静默复用。"""
+        """建立首次连接（触发认证），预热池。已有连接时静默复用。
+
+        timeout：TCP 建连 + CNXN/AUTH 首包的等待预算（秒）。已发公钥等待用户
+        授权的 60s 等待由协议层内部控制，不受此值限制；但批量连接场景传入较短
+        超时，避免单台设备把串行队列拖成「界面未响应」。
+        """
         # 快速路径：已有主连接，直接复用
         with self._主连接锁:
             if self._主连接 and self._主连接.state == STATE_DEVICE:
@@ -156,7 +161,7 @@ class 自研adb客户端:
                 #   （单客户端机顶盒被 adb server 抢占槽位）的场景，吞掉后返回
                 #   True 会误报连接成功，后续所有命令才报「连接断开」。
                 try:
-                    conn.执行shell('echo __ok__', timeout=3)
+                    conn.执行shell('echo __ok__', timeout=min(timeout, 3))
                 except Exception as e:
                     # 探活失败：清掉该设备全部池连接（含借出/空闲/线程绑定），
                     # 避免坏连接残留被后续借用复用（本连接尚未 _池剥离）
@@ -200,14 +205,19 @@ class 自研adb客户端:
 
     def _诊断被adb占用(self, err: Exception) -> None:
         """连接失败时诊断：若官方 adb server 正占用该设备（单客户端机顶盒
-        adbd 只允许 1 个 TCP 客户端），改写 最后错误 为可操作提示。
+        adbd 只允许 1 个 TCP 客户端），在原始原因后追加可操作提示。
 
         通过 socket 探测 127.0.0.1:5037 端口判断是否有官方 adb server 运行。
         ★ 严禁执行 `adb devices` 命令——那会拉起新的 adb server 进程，
         反而抢占单客户设备的唯一槽位，形成恶性循环。
+        ★ 只追加、不覆盖原始原因：TCP 拒绝/不可达/网络层超时属于主机级故障，
+        与本机 5037 是否占用无关，覆盖掉原始原因会把这些故障误判成「被占用」。
         """
         msg = str(err).lower()
         if not any(k in msg for k in self._占用诊断触发):
+            return
+        # 主机级 TCP 故障：官方 server 不可能占用一台不可达/拒绝连接的设备
+        if any(k in msg for k in ('拒绝连接', '不可达', '地址错误', '端口 ')):
             return
         target = f'{self.host}:{self.port}'
         try:
@@ -215,11 +225,12 @@ class 自研adb客户端:
             # 仅通过 socket 探测 5037 端口，不执行任何 adb 命令
             s = _sock.create_connection(('127.0.0.1', 5037), timeout=0.5)
             s.close()
-            # 能连上说明有官方 adb server 在运行
+            # 能连上说明有官方 adb server 在运行；原始原因保留，占用提示作为后缀
+            V原始原因 = self.最后错误 or str(err)
             self.最后错误 = (
-                f'设备 {target} 连接失败。检测到本机有官方 adb server 在运行（端口5037），'
-                f'单客户端机顶盒 adbd 仅支持单连接，可能被官方通道占用。'
-                f'请先执行 adb disconnect {target} 后重试，或关闭官方 adb 进程。')
+                f'{V原始原因}；检测到本机有官方 adb server（端口5037），'
+                f'单客户端机顶盒 adbd 仅支持单连接，可能被官方通道占用，'
+                f'可尝试 adb disconnect {target} 后重试或关闭官方 adb 进程。')
             self._日志(f'[自研adb] 诊断: {self.最后错误}')
         except (ConnectionRefusedError, OSError):
             # 5037 端口没人监听 → 没有官方 adb server，是其他原因导致的连接失败
@@ -525,8 +536,15 @@ class 自研adb客户端:
             raise
 
     def 执行shell(self, command: str, timeout: float = 30.0) -> str:
-        """短操作：使用主连接，加锁串行，避免多次授权弹窗。"""
-        with self._主连接锁:
+        """短操作：使用主连接，加锁串行，避免多次授权弹窗。
+
+        单客户端盒子上交互式 shell 会话会整段持有主连接锁直到关闭；此处用
+        非阻塞 acquire，拿不到锁说明主连接正被会话独占，直接返回空串，
+        避免后台补全/探测线程跨线程阻塞在 RLock 上永久卡死、daemon 线程累加。
+        """
+        if not self._主连接锁.acquire(blocking=False):
+            return ''
+        try:
             conn = self._获取主连接(timeout)
             try:
                 result = conn.执行shell(command, timeout)
@@ -556,6 +574,8 @@ class 自研adb客户端:
                         pass
                     self._主连接 = None
                 raise
+        finally:
+            self._主连接锁.release()
 
     def shell流(self, command: str, on_data, stop_event, open_timeout: float = 10.0,
                 service: str = 'shell', on_exit=None):

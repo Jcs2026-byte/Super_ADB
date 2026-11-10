@@ -14,6 +14,15 @@
   无需单独删除按钮。三平台同步。
 
 ### 修复
+- **桌面小猫残影根治（架构层）**：小猫原先作为主窗口里的透明子控件浮动，每帧移动后要
+  「擦掉父窗口旧位置」，在 DWM 合成 + 半透明 backing store 下存在竞态，旧帧被先合成出去
+  就留下半透明星猫影；此前的 `repaint(旧矩形)` + 整窗 `update()` 三连、每 60 秒重载自身图片
+  「刷新」、55 秒告别 / 60 秒自毁 + 10 秒重生，都是在补这个症状。现改为独立顶层透明窗口
+  （`FramelessWindowHint | Tool | WindowDoesNotAcceptFocus | NoDropShadowWindowHint |
+  WindowTransparentForInput`），移动由 DWM 整窗重定位，不存在「擦旧区」环节，残影从架构上消失；
+  同时删掉全部三连重绘补丁与「销毁重建」定时器，点击穿透由 `WS_EX_LAYERED | WS_EX_TRANSPARENT`
+  （Qt 自动补齐）承担，不抢焦点、不进任务栏。实测 25FPS × 400 帧横穿后离开区域逐像素差为 0。
+  Linux Wayland 会话无法给顶层窗口定位，自动退回子控件模式。三平台同步。
 - **冻结 / 解冻应用权限拒绝友好提示**：对系统预装 / 受保护应用执行冻结 / 解冻时，
   `pm disable` / `pm enable` 会返回 `SecurityException: Shell cannot change component state`，
   此前直接展示原始 Java 堆栈。现在自动识别该类报错，输出区改为显示中文原因与

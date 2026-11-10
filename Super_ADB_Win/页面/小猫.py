@@ -4,9 +4,21 @@
 ============================
 在 Super_ADB 主窗口里养一只会玩耍、会躲避鼠标的小猫。
 
-特性
+架构
 ----
-* 作为父窗口的普通子控件浮动，透明背景，鼠标点击击穿
+* 独立顶层透明窗口（FramelessWindowHint | Tool | WindowDoesNotAcceptFocus
+  | WindowTransparentForInput），而不是主窗口里的子控件。
+* 为什么必须是顶层窗口：半透明无边框主窗口上的透明子控件，每帧 move 后
+  要"擦掉父窗口旧区域"，而父窗口的 backing store 合成与 DWM 帧调度存在
+  竞态——旧帧被 DWM 先合成出去就留下猫影，只能靠 repaint/整窗 update/
+  定时重建堆补丁，越补越乱。顶层窗口的移动由 DWM 整窗重定位，不存在
+  "擦旧区"这一步，残影从根上消失。
+* 位置用父窗口局部坐标维护（跟随主窗口移动/缩放），真正 move 时换算成
+  屏幕坐标。
+* 点击穿透靠 WindowTransparentForInput（Windows 下即
+  WS_EX_LAYERED | WS_EX_TRANSPARENT），不抢焦点。
+* 唯一例外：Linux Wayland 会话不允许客户端给顶层窗口定位，此时自动退回
+  父窗口子控件模式（`_F可创建顶层窗口`），Windows / macOS / X11 均走顶层窗口。
 * 状态机：待机 / 走动 / 奔跑 / 玩耍 / 睡觉
 * 鼠标进入警戒范围自动逃跑
 * 气泡文字互动
@@ -19,6 +31,7 @@
 import math
 import random
 import os
+import sys
 
 from PySide6.QtCore import (
     Qt, QTimer, QPoint, QRect, QSize
@@ -53,11 +66,31 @@ class DeskCatWidget(QWidget):
     # 小猫相对于主窗口的默认停靠位置（右下角留白）
     DEFAULT_OFFSET = QPoint(40, 60)
 
+    # 顶层窗口标志。
+    # ★ 不加 WindowStaysOnTopHint：Qt::Tool 带父窗口时已经有 owner 关系，
+    #   始终压在主窗口之上；再加 StaysOnTop 会让小猫飘到别的应用窗口上面。
+    # ★ WindowTransparentForInput：鼠标点击击穿到下层窗口（Windows 下由 Qt
+    #   补上 WS_EX_LAYERED | WS_EX_TRANSPARENT），不抢焦点、不进任务栏。
+    _顶层窗口标志 = (
+        Qt.WindowType.FramelessWindowHint
+        | Qt.WindowType.Tool
+        | Qt.WindowType.WindowDoesNotAcceptFocus
+        | Qt.WindowType.NoDropShadowWindowHint
+        | Qt.WindowType.WindowTransparentForInput
+    )
+
     def __init__(self, parent=None, image_path=None, size=85):
-        super().__init__(parent)
+        # parent 只作为「归属窗口」传入：顶层窗口会绑定到 parent 的 HWND，
+        # 生命周期跟着主窗口走，同时保持独立原生窗口（DWM 整窗重定位）。
+        # Linux Wayland 会话下客户端无权给顶层窗口定位，只能退回子控件模式。
+        self._有顶层窗口 = self._F可创建顶层窗口()
+        if self._有顶层窗口:
+            super().__init__(parent, self._顶层窗口标志)
+        else:
+            super().__init__(parent)
         self._parent = parent
-        self._image_path = image_path  # 保存图片路径，供 60 秒残影刷新时重新加载
-        self._cat_size = QSize(int(size * 1.8), int(size * 1.6))  # widget 贴近小猫图片，透明区域小，DWM 残影不明显
+        self._image_path = image_path  # 保留图片路径，便于需要时重新加载
+        self._cat_size = QSize(int(size * 1.8), int(size * 1.6))  # 窗口略大于猫图，留出阴影和留白
         self._cat_display_size = QSize(int(size * 1.6), int(size * 1.4))  # 小猫图片实际显示大小
         self._placed = False  # 是否已完成首次随机落位
         self._state = self.STATE_IDLE
@@ -65,6 +98,9 @@ class DeskCatWidget(QWidget):
         self._frame = 0
         self._paused = False
         self._hidden_by_user = False
+        # 隐藏后 20 秒是否自动回来；由主入口按开关状态控制，
+        # _do_hide 不再重置本标志（否则取消勾选置的 False 会被覆盖）
+        self._should_come_back = True
 
         # 移动相关
         self._pos = QPoint(0, 0)
@@ -88,11 +124,9 @@ class DeskCatWidget(QWidget):
         self._mouse_still_threshold = 5  # 约 200ms 鼠标没动才算静止
 
         # 配置窗口属性
-        # 作为父窗口的普通子控件浮动，不使用独立 Tool 窗口，避免与主界面控件
-        # 产生事件/重绘冲突（之前独立窗口导致卡死）。
+        # 顶层窗口 + 透明背景：DWM 直接合成整窗，配 WindowTransparentForInput
+        # 后鼠标事件穿透到下面的窗口。
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        # 鼠标点击击穿：小猫只是装饰层，不拦截/消耗鼠标事件，
-        # 点击会落到下方的控件上（躲避鼠标仍靠全局 QCursor 检测，不受影响）
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setFixedSize(self._cat_size)
@@ -123,29 +157,10 @@ class DeskCatWidget(QWidget):
         self._anim_timer.timeout.connect(self._tick)
         self._anim_timer.start(40)
 
-        # ★ 定时彻底刷新：Windows DWM 下透明子控件长时间运行后
-        #   会累积残影，每 60 秒隐藏→重新加载→显示一次，彻底清理残影。
-        #   用 QTimer 不阻塞主线程，切换是瞬时的用户几乎感觉不到。
-        self._refresh_timer = QTimer(self)
-        self._refresh_timer.timeout.connect(self._彻底刷新)
-        self._refresh_timer.start(60000)  # 60 秒
-
         # 泡泡文字隐藏定时器
         self._bubble_timer = QTimer(self)
         self._bubble_timer.setSingleShot(True)
         self._bubble_timer.timeout.connect(self._bubble.hide)
-
-        # ★ 生命周期定时器：55 秒说告别话，60 秒自动销毁
-        # 单触发，从小猫出现开始计时，到点依次执行告别 → 销毁
-        self._farewell_timer = QTimer(self)
-        self._farewell_timer.setSingleShot(True)
-        self._farewell_timer.timeout.connect(self._告别说话)
-        self._farewell_timer.start(55000)  # 55 秒
-
-        self._self_destruct_timer = QTimer(self)
-        self._self_destruct_timer.setSingleShot(True)
-        self._self_destruct_timer.timeout.connect(self._自动销毁)
-        self._self_destruct_timer.start(60000)  # 60 秒
 
     # ------------------------------------------------------------------
     # 主题切换
@@ -215,80 +230,63 @@ class DeskCatWidget(QWidget):
         p.end()
         return pm
 
-    def _彻底刷新(self):
-        """每60秒彻底刷新一次，消除Windows DWM透明控件累积的残影。
-        不做hide/show，直接重新加载pixmap，避免隐藏后再显示的重绘问题。"""
-        try:
-            # 重新加载pixmap，刷新画面消除残影
-            self._pixmap = self._load_pixmap(self._image_path)
-            self._scaled_pixmap = self._pixmap.scaled(
-                self._cat_display_size.width(), self._cat_display_size.height(),
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            )
-            self.update()
-        except Exception:
-            pass  # 刷新失败不影响使用
+    # ------------------------------------------------------------------
+    # 顶层窗口
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _F可创建顶层窗口():
+        """是否用独立顶层窗口承载小猫。
 
-    def _告别说话(self):
-        """55 秒时随机说一句告别话，为 60 秒销毁做铺垫。"""
-        try:
-            words = [
-                '我要去吃饭了~', '下次再陪你玩~', '溜了溜了~',
-                '再见啦~', '我困了要睡觉~', '我去找别的猫玩了~',
-            ]
-            self.say(random.choice(words), 3500)
-        except Exception:
-            pass
+        Wayland 会话不允许客户端给顶层窗口定位（move() 会被合成器忽略），
+        小猫会卡死在屏幕上某处；这种环境只能退回父窗口子控件模式。
+        Windows / macOS / X11 都返回 True。
+        """
+        if sys.platform.startswith('linux'):
+            try:
+                from PySide6.QtGui import QGuiApplication
+                V平台名 = (QGuiApplication.platformName() or '').lower()
+                if 'wayland' in V平台名:
+                    return False
+            except Exception:
+                pass
+        return True
 
-    def _自动销毁(self):
-        """60 秒时自动销毁小猫，再等 10 秒后由父窗口重启一只新猫。"""
-        # 先把父窗口引用存下来——self 马上要 deleteLater，
-        # 重建回调只能靠 parent，不能依赖即将被回收的 self。
-        parent = self._parent
+    def _F应用顶层穿透样式(self):
+        """给顶层窗口补上点击穿透 / 不抢焦点的 Windows 扩展样式（双保险）。
+
+        Qt 的 WindowTransparentForInput 已经会让窗口带上
+        WS_EX_TRANSPARENT（Qt 半透明窗口本身已带 WS_EX_LAYERED），
+        这里再做一次幂等确认，防止某些 Qt 版本或打包环境没带上。
+        实测：手动补 LAYERED|TRANSPARENT 后的扩展样式与 Qt 自己算的一致，
+        不会破坏透明绘制。
+        """
+        if sys.platform != 'win32' or not getattr(self, '_有顶层窗口', True):
+            return
         try:
-            # 停掉所有后台定时器，防止销毁后仍有信号触发
-            for t in (
-                self._think_timer, self._anim_timer, self._refresh_timer,
-                self._bubble_timer, self._farewell_timer, self._self_destruct_timer,
-            ):
-                try:
-                    t.stop()
-                except Exception:
-                    pass
+            import ctypes
+            V用户32 = ctypes.WinDLL('user32', use_last_error=True)
+            V有长指针 = hasattr(V用户32, 'GetWindowLongPtrW')
+            V取长 = V用户32.GetWindowLongPtrW if V有长指针 else V用户32.GetWindowLongW
+            V设长 = V用户32.SetWindowLongPtrW if V有长指针 else V用户32.SetWindowLongW
+            V长整类型 = ctypes.c_ssize_t if V有长指针 else ctypes.c_long
+            V取长.argtypes = [ctypes.c_void_p, ctypes.c_int]
+            V取长.restype = V长整类型
+            V设长.argtypes = [ctypes.c_void_p, ctypes.c_int, V长整类型]
+            V设长.restype = V长整类型
+            V句柄 = ctypes.c_void_p(int(self.winId()))
+            V原样式 = V取长(V句柄, -20)  # GWL_EXSTYLE
+            # LAYERED | TRANSPARENT | NOACTIVATE
+            V目标样式 = V原样式 | 0x00080000 | 0x00000020 | 0x08000000
+            if V目标样式 != V原样式:
+                V设长(V句柄, -20, V目标样式)
         except Exception:
-            pass
-        try:
-            self._bubble.hide()
-            self._bubble.deleteLater()
-        except Exception:
-            pass
-        # ★ 关键：清空 parent._desk_cat 的旧引用，
-        #   否则 10 秒后 _切换小猫显示(True) 会尝试 close 一个已 deleteLater 的 C++ 对象，
-        #   异常被吞导致重建路径走偏。
-        try:
-            if parent is not None:
-                parent._desk_cat = None
-        except Exception:
-            pass
-        # 安排 10 秒后走「重新勾选小猫」的完整路径重建
-        # 完全复现 _切换小猫显示(True) 的逻辑，和手动勾选行为一致
-        try:
-            def _重启新猫():
-                try:
-                    if parent is not None and hasattr(parent, '_切换小猫显示'):
-                        parent._切换小猫显示(True)
-                except Exception:
-                    pass
-            QTimer.singleShot(10000, _重启新猫)
-        except Exception:
-            pass
-        try:
-            self.hide()
-            self.close()
-            self.deleteLater()
-        except Exception:
-            pass
+            pass  # 样式设置失败不影响小猫显示（Qt 侧已经设过）
+
+    def _F父窗口局部转屏幕(self, 点):
+        """父窗口局部坐标 → 屏幕坐标（小猫是顶层窗口，move 用屏幕坐标）。"""
+        if self._parent is not None:
+            return self._parent.mapToGlobal(点)
+        return QPoint(点)
 
 
     # ------------------------------------------------------------------
@@ -309,7 +307,10 @@ class DeskCatWidget(QWidget):
                 random.randint(min_y, max_y),
             ))
         else:
+            # 主窗口移动/缩放时会重设边界：局部坐标没变，屏幕位置却已经变了，
+            # 必须重新定位，否则小猫会跟丢主窗口。
             self._clamp_position()
+            self._move_to_position()
 
     def set_position(self, pos: QPoint):
         """立即把小猫放到指定位置（父窗口坐标）。"""
@@ -356,17 +357,17 @@ class DeskCatWidget(QWidget):
         """真正隐藏小猫并停止定时器，20秒后自动回来。"""
         self.hide()
         self._bubble.hide()
-        # 停止所有后台定时器，隐藏时不运行不耗资源
+        # 停止后台定时器，隐藏时不运行不耗资源
         try:
             self._think_timer.stop()
             self._anim_timer.stop()
-            self._refresh_timer.stop()
         except Exception:
             pass
         # 延迟20秒后自动重新展示出来（用户取消勾选时不要自动回来）
+        # ★ 不要在这里重置 _should_come_back：取消勾选路径已由主入口置 False，
+        #   若此处覆盖回 True，20 秒后小猫会在用户明确关闭后自己复活。
         from PySide6.QtCore import QTimer
         import random
-        self._should_come_back = True  # 默认自动回来
         def _自动回来():
             try:
                 if not self._hidden_by_user:
@@ -376,10 +377,9 @@ class DeskCatWidget(QWidget):
                 self.show()
                 self.raise_()
                 self.update()
-                # 重启所有定时器
+                # 重启定时器
                 self._think_timer.start(1800)
                 self._anim_timer.start(40)
-                self._refresh_timer.start(60000)
                 # 延迟3秒再说话（等小猫位置和重绘就绪），展示3秒
                 welcome_words = ['我又回来啦~', '想我了没~', '我胡汉三又回来了~', '还是这里好玩~']
                 word = random.choice(welcome_words)
@@ -389,39 +389,29 @@ class DeskCatWidget(QWidget):
         QTimer.singleShot(20000, _自动回来)
 
     def show_cat(self):
-        """重新显示被隐藏的小猫（重启所有后台定时器）。"""
+        """重新显示被隐藏的小猫（重启后台定时器）。"""
         self._hidden_by_user = False
+        # 顶层窗口 show() 就够了，不需要再去强制主窗口整窗重绘
         self.show()
         self.raise_()
         self.update()
-        # 强制主窗口重绘：用 setUpdatesEnabled 开关触发全窗口重绘
-        # 直接update()不够，因为主窗口是无边框半透明窗口，
-        # 子控件透明显示需要父窗口完全重绘背景才能露出来
-        from PySide6.QtCore import QTimer
-        def _强制重绘主窗口():
-            try:
-                parent = self.parent()
-                if parent is not None:
-                    # 关闭再开启更新，强制所有子控件重绘
-                    parent.setUpdatesEnabled(False)
-                    parent.setUpdatesEnabled(True)
-                    parent.update()
-                    self.raise_()
-                    self.update()
-            except Exception:
-                pass
-        QTimer.singleShot(100, _强制重绘主窗口)
-        # 重启所有后台定时器
+        self._move_to_position()
+        # 重启后台定时器
         try:
             self._think_timer.start(1800)
             self._anim_timer.start(40)
-            self._refresh_timer.start(60000)
         except Exception:
             pass
 
     # ------------------------------------------------------------------
     # 事件处理
     # ------------------------------------------------------------------
+    def showEvent(self, event):
+        """每次显示时确认顶层窗口样式并重新定位。"""
+        super().showEvent(event)
+        self._F应用顶层穿透样式()
+        self._move_to_position()
+
     def paintEvent(self, event):
         """绘制小猫，根据状态做动态变换。"""
         painter = QPainter(self)
@@ -685,31 +675,17 @@ class DeskCatWidget(QWidget):
         ))
 
     def _move_to_position(self):
-        """把自身控件移动到 _pos（父窗口局部坐标），并通知父窗口重绘消除残影。
+        """把小猫顶层窗口移动到 _pos（父窗口局部坐标）对应的屏幕位置。
 
-        在 Windows DWM 合成模式下，update() 只是异步投递重绘消息，
-        DWM 可能在父窗口实际重绘之前就已经合成了新帧——旧位置的像素
-        还没被擦掉就被「定格」进合成画面，长时间运行后累积成残影。
-
-        解决方案：
-        1. move() 之后对旧位置调用 repaint()（同步重绘），阻塞直到父窗口
-           真正把旧位置的像素覆盖掉，DWM 下一帧才不会残留旧猫的影子。
-        2. 新位置用 update() 异步即可（新位置本来就需要小猫自己绘制）。
+        ★ 这是本文件最关键的改动：小猫是独立顶层窗口，移动由 DWM 整窗
+        重定位完成，不存在"父窗口要擦掉旧位置像素"这一步，也就不需要
+        repaint(旧矩形) / update(新矩形) / 整窗 update() 的三连补丁。
+        Wayland 退路下是普通子控件，move 用父窗口局部坐标。
         """
-        old_rect = self.geometry()
-        self.move(self._pos)
-        new_rect = self.geometry()
-        if self._parent is not None:
-            # 扩大重绘矩形：加上边距，确保覆盖小猫阴影/半透明边缘
-            pad = 16
-            old_padded = old_rect.adjusted(-pad, -pad, pad, pad)
-            new_padded = new_rect.adjusted(-pad, -pad, pad, pad)
-            # 关键：同步重绘旧位置，确保 DWM 合成前旧像素已被父窗口覆盖
-            self._parent.repaint(old_padded)
-            # 新位置异步重绘即可
-            self._parent.update(new_padded)
-            # 兜底整窗重绘
-            self._parent.update()
+        if self._有顶层窗口:
+            self.move(self._F父窗口局部转屏幕(self._pos))
+        else:
+            self.move(self._pos)
 
     # ------------------------------------------------------------------
     # 坐标工具

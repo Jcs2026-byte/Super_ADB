@@ -450,6 +450,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         # 启用半透明背景以支持圆角窗口
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setStyleSheet(self._主样式表(self._current_theme))
+        self._F应用主窗口调色板底色()
         # 强制所有按钮非 flat：flat 按钮在 QSS 下 hover/pressed 背景可能不刷新，
         # 导致鼠标移上去/点下去没有视觉反馈。遍历整个窗口树统一设置。
         for _btn in self.findChildren(QPushButton):
@@ -636,6 +637,8 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         try:
             self.raise_()
             self.activateWindow()
+            # 遮挡后重新前置：后缓冲可能尚未重绘，立即同步重绘一帧，压掉未绘制的灰/白帧
+            self.repaint()
         except Exception:
             pass
 
@@ -2038,22 +2041,49 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         if self._desk_cat is not None:
             self._desk_cat.hide()
 
-    def paintEvent(self, ev):
-        """主窗口 paint：圆角背景 + 4px 主题色实色边框。"""
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        # ── 圆角背景 ──
+    def _F获取背景缓存(self):
+        """圆角背景位图：尺寸/主题没变直接复用。
+
+        小猫独立顶层窗口移动、气泡变化都会让主窗口频繁重绘；每帧做
+        抗锯齿圆角路径填充开销不小（实测连点按钮有可感卡顿）。背景只
+        依赖尺寸与主题两个量，缓存成位图后帧间变成一次贴图。
+        """
+        尺寸 = self.size()
+        pm旧 = getattr(self, '_背景缓存位图', None)
+        if (pm旧 is not None
+                and self._背景缓存尺寸 == 尺寸
+                and self._背景缓存主题 == self._current_theme):
+            return pm旧
+        from PySide6.QtCore import QRectF
+        dpr = self.devicePixelRatio() or 1.0
+        pm = QPixmap(max(1, int(尺寸.width() * dpr)), max(1, int(尺寸.height() * dpr)))
+        pm.setDevicePixelRatio(dpr)
+        pm.fill(Qt.GlobalColor.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         t = THEMES.get(self._current_theme, THEMES[DEFAULT_THEME])
-        bg_color = QColor(t['bg_window'])
-        圆角半径 = 12
         path = QPainterPath()
-        path.addRoundedRect(self.rect(), 圆角半径, 圆角半径)
-        painter.fillPath(path, bg_color)
+        path.addRoundedRect(QRectF(0, 0, 尺寸.width(), 尺寸.height()), 12, 12)
+        p.fillPath(path, QColor(t['bg_window']))
+        p.end()
+        self._背景缓存位图 = pm
+        self._背景缓存尺寸 = 尺寸
+        self._背景缓存主题 = self._current_theme
+        return pm
+
+    def paintEvent(self, ev):
+        """主窗口 paint：圆角背景（位图缓存）+ 4px 主题色实色边框。"""
+        painter = QPainter(self)
+        # ── 圆角背景：命中缓存直接贴图，未命中重建一次 ──
+        painter.drawPixmap(QPoint(0, 0), self._F获取背景缓存())
         # ── 子控件正常绘制（覆盖在圆角背景之上）──
         super().paintEvent(ev)
-        # ── 4px 主题色实色边框画最上层（不透明，与 PCAP/无线调试弹窗同亮度）──
+        # ── 4px 主题色实色边框仍每帧画（不透明，与 PCAP/无线调试弹窗同亮度）──
+        # 细线描边开销远小于路径填充，保留每帧画可保证边缘随内容即时锐利。
         # 边框路径内缩 2px（笔宽 4 的一半），圆角半径同步减 2px 保持同心弧，
         # 否则四角弧线中心偏移会导致边框与背景圆角不重合、露出透明漏白。
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        圆角半径 = 12
         r, g, b = self._解析强调色rgb()
         pen = QPen(QColor(r, g, b), 4)
         painter.setPen(pen)
@@ -2228,6 +2258,8 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             self.show()
             self.raise_()
             self.activateWindow()
+            # 隐藏期间后缓冲可能失效，前置后立即同步重绘，压掉未绘制灰/白帧
+            self.repaint()
 
     def _初始化托盘(self):
         self.tray_icon = QSystemTrayIcon(self)
@@ -2666,20 +2698,36 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         拖动过程中只记防抖、不立即重排：splitterMoved 每个像素都会触发，
         此时顶层 layout().activate() 会反复重新分配 splitter 尺寸、把 handle
         拉回原处，视觉上就是左右不停闪；拖动结束后 150ms 一次性重算即可。
+        ★ 拖动中途每停一下都会到点重排一轮整窗（activate 把 handle 拉回
+          「布局理想位置」），左右界面就来回闪。对策：鼠标左键仍按着
+          （还在拖）就继续推迟重排，松手后才重排一次，并重排后钉回宽度。
         """
         if not hasattr(self, '_splitter_main_timer'):
             self._splitter_main_timer = QTimer(self)
             self._splitter_main_timer.setSingleShot(True)
             self._splitter_main_timer.timeout.connect(self._重算分割条布局)
-        self._splitter_main_timer.start(150)
+        # 鼠标还按着 = 拖动未结束：拉长防抖，拖拖停停也不会反复重排闪屏
+        if QApplication.mouseButtons() & Qt.MouseButton.LeftButton:
+            self._splitter_main_timer.start(300)
+        else:
+            self._splitter_main_timer.start(150)
         # 持久化走独立防抖（300ms），与布局重算互不干扰
         self._防抖保存分割条主()
 
     def _重算分割条布局(self):
+        # 到点时仍按着鼠标（拖动中停顿超过防抖窗口）：继续顺延，不重排
+        if QApplication.mouseButtons() & Qt.MouseButton.LeftButton:
+            self._splitter_main_timer.start(300)
+            return
+        # 记下用户刚定的左右宽度：activate() 会按 sizeHint/stretchFactor 重新
+        # 分配、把 handle 拉回「布局理想位置」，重排完按记录值钉回，handle 不跳。
+        sizes = self.splitter_main.sizes()
         for _w in (self.splitter_log, self.leftPanelWidget, self.toolsPanelWidget):
             _w.updateGeometry()
         if self.layout() is not None:
             self.layout().activate()
+        if len(sizes) == 2 and all(s >= 0 for s in sizes):
+            self.splitter_main.setSizes(sizes)
         self.splitter_main.update()
 
     def 带到前台(self):
@@ -2690,6 +2738,8 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         self.show()
         self.raise_()
         self.activateWindow()
+        # 重新前置后立即同步重绘，压掉未绘制灰/白帧
+        self.repaint()
 
 
 # ----------------------------------------------------------------------
@@ -2758,6 +2808,10 @@ def main():
     app.setWindowIcon(QIcon(':/Super_ADB.png'))
     app.setStyle('Fusion')
     app.setQuitOnLastWindowClosed(True)    # 关窗口直接退出
+    # 应用级调色板随主题：必须在任何窗口创建前设置，否则原生顶层窗口
+    # （弹窗、下拉列表、菜单）映射时先用默认浅色底板擦背景 → 闪一下白框。
+    from 项目UI.界面样式 import 应用调色板
+    应用调色板(app)
 
     # ── 加载 Qt 中文翻译（右键菜单 Undo/Cut/Copy/Paste/Select All 等显示中文）──
     import importlib

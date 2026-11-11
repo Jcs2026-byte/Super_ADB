@@ -1037,3 +1037,35 @@ def get_current_theme_id(widget=None):
             return theme
         p = p.parentWidget()
     return load_saved_theme()
+
+
+def 应用调色板(app, theme_id=None):
+    """按主题把应用级调色板底色设为深色，根治所有顶层窗口的首帧白闪。
+
+    原生顶层窗口（各弹窗、QComboBox 下拉视图、菜单、提示框）映射到屏幕时，
+    系统先用调色板 Window/Base 色擦一次背景，才轮到 Qt 的 QSS 绘制；默认
+    Fusion 调色板是浅色（白），于是「打开窗口/点开下拉先闪一下白框」。
+    QSS 管不到原生擦除阶段，必须改调色板本身。应用级设置一次覆盖所有
+    现存与后建的顶层窗口；主题切换时再调一次同步换色。
+    """
+    from PySide6.QtGui import QPalette
+    tid = theme_id if theme_id in THEMES else load_saved_theme()
+    t = THEMES.get(tid, THEMES[DEFAULT_THEME])
+    pal = QPalette()
+    bg = QColor(t['bg_window'])
+    text = QColor(t['text_primary'])
+    pal.setColor(QPalette.ColorRole.Window, bg)
+    pal.setColor(QPalette.ColorRole.WindowText, text)
+    pal.setColor(QPalette.ColorRole.Base, QColor(t['bg_input']))
+    pal.setColor(QPalette.ColorRole.AlternateBase, bg)
+    pal.setColor(QPalette.ColorRole.Text, text)
+    pal.setColor(QPalette.ColorRole.Button, bg)
+    pal.setColor(QPalette.ColorRole.ButtonText, text)
+    pal.setColor(QPalette.ColorRole.ToolTipBase, QColor(t['bg_menu']))
+    pal.setColor(QPalette.ColorRole.ToolTipText, text)
+    # accent 为 'rgb(r,g,b)' 串，QColor 不识别该格式，用 _parse_rgb 转元组
+    pal.setColor(QPalette.ColorRole.Highlight, QColor(*_parse_rgb(t['accent'])))
+    pal.setColor(QPalette.ColorRole.HighlightedText, QColor('#ffffff'))
+    pal.setColor(QPalette.ColorRole.PlaceholderText, QColor(t['text_disabled']))
+    pal.setColor(QPalette.ColorRole.BrightText, QColor('#ffffff'))
+    app.setPalette(pal)

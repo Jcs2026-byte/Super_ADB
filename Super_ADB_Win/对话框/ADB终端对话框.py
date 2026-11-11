@@ -28,12 +28,12 @@ import re
 from collections import deque
 
 from PySide6.QtCore import Qt, Signal, QObject, QTimer, QEvent, QStringListModel
-from PySide6.QtGui import QFont, QIcon, QColor, QTextCursor, QTextCharFormat
+from PySide6.QtGui import QFont, QIcon, QColor, QPalette, QTextCursor, QTextCharFormat
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QComboBox, QPushButton,
     QLabel, QLineEdit, QPlainTextEdit, QSizePolicy,
     QTableWidget, QTableWidgetItem, QHeaderView, QInputDialog, QMessageBox,
-    QScrollArea, QWidget, QListView,
+    QScrollArea, QWidget, QListView, QAbstractScrollArea,
 )
 
 from 项目UI import png_rc  # noqa: F401
@@ -303,21 +303,65 @@ class ADB终端对话框(QDialog):
         self.setAcceptDrops(True)  # 支持拖文件进来追加路径
         self._theme_id = get_current_theme_id(self)
         self.setStyleSheet(get_stylesheet(self._theme_id))
+        # 调色板底色同步设为主题背景：否则窗口映射到屏幕、Qt 画第一帧之前，
+        # 系统会用调色板默认的白色擦一次背景，表现为「打开弹窗先闪一下白」。
+        self._F应用调色板底色()
 
         # 内层亮边卡片（与其他弹窗同款）
         self.card, _ = _create_popup_card(self, self._theme_id)
         self._构建UI()
+        # 卡片与输出区在 _构建UI 之后才存在：再跑一次把子控件底色也写上。
+        self._F应用调色板底色()
         # 后台线程加载设备列表完成 → 主线程更新下拉框
         self._设备列表已加载.connect(self._设备列表加载完成)
 
     # ── 主题切换 ──
 
+    def _F应用调色板底色(self):
+        """把主题背景色写进调色板 Window/Base，消除弹窗首帧原生擦白。
+
+        深色背景由 QSS 提供，但 QSS 只在 Qt 绘制阶段起作用；窗口映射到
+        屏幕、Qt 画第一帧之前，系统会先用调色板 Window 色擦一次原生背景
+        （默认白），表现为「打开弹窗先闪一下白」。show 之前让调色板底色
+        与主题一致，原生擦除阶段就是深色，白闪消失。
+
+        卡片与终端输出区是面积最大的两块，且都在本方法首次调用之后才
+        创建（_构建UI 里）：它们的调色板若仍是默认浅色，首帧 QSS 未生效
+        时就是白块来源。所以 _构建UI 之后会再调一次，把子控件一并刷上。
+        """
+        t = THEMES.get(self._theme_id, THEMES.get('dark_cyan', {}))
+        bg = QColor(t.get('bg_window', '#252f3d'))
+        pal = self.palette()
+        pal.setColor(QPalette.ColorRole.Window, bg)
+        pal.setColor(QPalette.ColorRole.Base, bg)
+        self.setPalette(pal)
+        # 子控件：卡片用按钮底色（与 #popupCard QSS 一致），输出区用输入底色
+        for w, role_bg in (
+            (getattr(self, 'card', None), t.get('bg_button')),
+            (getattr(self, 'output', None), t.get('bg_input')),
+        ):
+            if w is None:
+                continue
+            w.setAutoFillBackground(True)
+            wp = w.palette()
+            wp.setColor(QPalette.ColorRole.Window, QColor(role_bg or '#252f3d'))
+            wp.setColor(QPalette.ColorRole.Base, QColor(role_bg or '#252f3d'))
+            w.setPalette(wp)
+            # 输出区这类滚动区域真正可见的是 viewport 子控件，一并刷上
+            vp = w.viewport() if isinstance(w, QAbstractScrollArea) else None
+            if vp is not None:
+                vp.setAutoFillBackground(True)
+                vpal = vp.palette()
+                vpal.setColor(QPalette.ColorRole.Base, QColor(role_bg or '#252f3d'))
+                vp.setPalette(vpal)
+
     def apply_theme(self, theme_id):
-        """运行时切换主题：更新全局 QSS + 外发光。"""
+        """运行时切换主题：更新全局 QSS + 调色板底色 + 外发光。"""
         if theme_id not in THEMES or theme_id == self._theme_id:
             return
         self._theme_id = theme_id
         self.setStyleSheet(get_stylesheet(theme_id))
+        self._F应用调色板底色()
         self.card.setStyleSheet(highlight_card_style(theme_id))
         add_green_glow(self.card, accent=QColor(THEMES[theme_id]['accent']))
         if getattr(self, 'output', None) is not None:
@@ -821,7 +865,18 @@ class ADB终端对话框(QDialog):
             cursor.movePosition(QTextCursor.MoveOperation.End)
             self._F平铺列表(cursor)
         self._V美化窗口 = None
+        # 追加关闭提示前，先给尚未换行的尾巴提示符补一个换行收尾：
+        # 旧实现先把 _V残留渲染长度 清零再追加，已渲染到文档末尾的尾巴行
+        # 不再被下次重绘删除，设备退出前回显的第二个提示符就和 [连接已关闭]
+        # 直接粘在同一行（实测 "raven:/ $ raven:/ $ [连接已关闭]"）。
+        if self._V残留渲染长度:
+            cursor = self.output.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            cursor.insertText('\n')
+        # 内存管线残留一并清空：否则关闭提示会和 _不完整行 里的尾巴文本再次拼接
         self._V残留渲染长度 = 0
+        self._已渲染残留 = ''
+        self._不完整行 = ''
         self._V最近命令 = ''
         self._已断开UI()
         self.status_label.setText('会话已结束')

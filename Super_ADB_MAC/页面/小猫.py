@@ -563,6 +563,13 @@ class DeskCatWidget(QWidget):
         if self._state in (self.STATE_WALK, self.STATE_RUN) and self._target:
             self._move_toward_target()
 
+        # 空闲降帧：待机/睡觉只有缓慢呼吸动画，隔帧重绘即可（25→12.5FPS），
+        # 小猫顶层窗口带动主窗口重合成的频率减半，缓解「猫动时点按钮卡顿」。
+        # 移动/玩耍/逃跑保持逐帧，动作流畅度不受影响。
+        if (self._state in (self.STATE_IDLE, self.STATE_SLEEP)
+                and self._frame % 2 != 0):
+            return
+
         self.update()
 
     # ------------------------------------------------------------------

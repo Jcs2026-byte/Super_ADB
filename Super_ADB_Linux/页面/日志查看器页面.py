@@ -462,6 +462,9 @@ class 日志查看器页(QWidget):
         bot.addWidget(self.count_label)
         layout.addLayout(bot)
         self._init_mode_label()
+        # 独立构建路径同样要加载收藏过滤（原仅 inject_widgets 调用，
+        # standalone 模式下三下拉框收藏恒为空）
+        self._load_favs()
 
         # 独立构建路径：standalone 模式下 LogViewerPage 可能没有 parent，
         # 退而求其次监听自己；inject_widgets 路径会再装一次真正的顶层窗口。
@@ -710,6 +713,7 @@ class 日志查看器页(QWidget):
             except Exception:
                 pass
             self._shell_stop_event = None
+            self._shell_wait_count = 0  # 复位，否则下次停止抓取首轮即误判超时
             self._finalize_stop()
             return
         self._shell_wait_count = 0
@@ -821,6 +825,10 @@ class 日志查看器页(QWidget):
         f_tag = self._filter_tag
         f_pids = set(self._filter_pids)
         f_msg = self._filter_msg
+        f_regex = self._filter_regex
+        # 快照启动时的过滤代次：回调时若过滤已切换，丢弃旧过滤的命中结果，
+        # 避免新旧过滤混杂、匹配数虚高
+        seq = self._filter_seq
 
         def _task():
             entries = []
@@ -828,16 +836,16 @@ class 日志查看器页(QWidget):
             for raw in batch:
                 e = _parse_line(raw)
                 entries.append(e)
-                if _match_entry(e, f_tag, f_pids, f_msg, self._filter_regex):
+                if _match_entry(e, f_tag, f_pids, f_msg, f_regex):
                     matched.append(e)
             return entries, matched
 
         w = _CmdWorker(_task)
-        w.signals.result.connect(self._on_parsed)
+        w.signals.result.connect(lambda r: self._on_parsed(r, seq))
         w.signals.error.connect(lambda e: _dbg('PARSE', f'error: {e}'))
         self._pool.start(w)
 
-    def _on_parsed(self, result):
+    def _on_parsed(self, result, seq):
         """后台解析完成回调（主线程）：并入总缓存 + 待渲染列表。
 
         注意：这里【不】直接调 _flush_view()。渲染统一交给 _flush_timer
@@ -847,9 +855,11 @@ class 日志查看器页(QWidget):
         entries, matched = result
         self._entries.extend(entries)
         self._total += len(entries)
-        self._matched_total += len(matched)
-        if self._capturing and not self._paused:
-            self._pending_view.extend(matched)
+        if seq == self._filter_seq:
+            self._matched_total += len(matched)
+            if self._capturing and not self._paused:
+                self._pending_view.extend(matched)
+        # 过滤已切换：matched 按旧条件算的，丢弃；entries 总量统计保留
         self._parsing = False
         # 若还有未解析的原始行（抓取期间持续到达），继续消费，天然限速
         with self._raw_lock:
@@ -871,9 +881,11 @@ class 日志查看器页(QWidget):
         if not self._capturing:
             return
         # 抓取中进程意外退出（设备掉线/离线多为此情形）：
-        # 先复位抓取状态（避免 UI 卡在"抓取中"），再通知主窗口刷新设备列表
+        # 先复位抓取状态（避免 UI 卡在"抓取中"），再通知主窗口刷新设备列表。
+        # 进程此时已 NotRunning，_stop_capture 内部同步走 _finalize_stop()，
+        # 不再重复调用，仅补写退出码状态提示。
         self._stop_capture()
-        self._finalize_stop(ec)
+        self.status_label.setText(f'logcat 已退出 (code={ec})')
         self.device_disconnected.emit()
 
     def _on_error(self, err):
@@ -1155,10 +1167,11 @@ class 日志查看器页(QWidget):
         f_tag = self._filter_tag
         f_pids = set(self._filter_pids)
         f_msg = self._filter_msg
+        f_regex = self._filter_regex
 
         def _task():
             matched = [e for e in entries_snapshot
-                       if _match_entry(e, f_tag, f_pids, f_msg, self._filter_regex)]
+                       if _match_entry(e, f_tag, f_pids, f_msg, f_regex)]
             shown = matched[-RENDER_MAX:]
             return {'matched_count': len(matched), 'shown': shown, 'seq': seq}
 

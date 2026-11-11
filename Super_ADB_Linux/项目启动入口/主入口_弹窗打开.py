@@ -118,11 +118,18 @@ class 弹窗打开Mixin:
         所有模式统一打开 ADB 交互式终端弹窗（自研 ADB 客户端）。
         任何异常都打到输出框 + 状态栏, 不弹窗骚扰。"""
         try:
-            if (self._adb_终端_dialog is not None
-                    and self._adb_终端_dialog.isVisible()):
-                self._adb_终端_dialog.raise_()
-                self._adb_终端_dialog.activateWindow()
+            import shiboken6
+            _dlg = self._adb_终端_dialog
+            if _dlg is not None and shiboken6.isValid(_dlg):
+                # 实例存在即复用：QDialog 关闭只是 hide，重开不再重建
+                # （重建 = 重载配置/命令集/几十个控件，且会再闪一次白）
+                if not _dlg.isVisible():
+                    _dlg.show()
+                _dlg.raise_()
+                _dlg.activateWindow()
                 return
+            # C++ 对象已失效（理论上不会发生：未设 DeleteOnClose）：清引用重建
+            self._adb_终端_dialog = None
             from 对话框.ADB终端对话框 import ADB终端对话框
             self._adb_终端_dialog = ADB终端对话框(self)
             # 弹窗内设备切换 → 同步主窗口三个设备选择栏

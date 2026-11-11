@@ -8,8 +8,8 @@
 import sys
 
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QAction, QIcon
-from PySide6.QtWidgets import QMenu
+from PySide6.QtGui import QAction, QIcon, QColor, QPalette
+from PySide6.QtWidgets import QMenu, QApplication
 
 from 项目UI.界面样式 import (
     THEMES, DEFAULT_THEME, get_stylesheet, get_theme_ids, get_theme_name, FONT_FAMILY,
@@ -41,6 +41,21 @@ class 主题系统Mixin:
     def _主样式表(self, theme_id):
         """拼 主窗口 专属样式表：仅主题样式，不额外加主窗口背景色。"""
         return get_stylesheet(theme_id)
+
+    def _F应用主窗口调色板底色(self):
+        """把主题背景色写进主窗口调色板 Window/Base，压低原生擦除阶段的浅色概率。
+
+        主窗口是 WA_TranslucentBackground 圆角自绘窗口，被全局首帧防闪过滤器
+        按「透明窗口」跳过；被弹窗遮挡后重新前置时，后缓冲尚未重绘的间隙，
+        原生擦除阶段会先用调色板 Window 色擦一次（默认浅色）。这里与终端弹窗
+        ``_F应用调色板底色`` 对齐，把底色写成主题 bg_window。
+        """
+        t = THEMES.get(self._current_theme, THEMES[DEFAULT_THEME])
+        bg = QColor(t['bg_window'])
+        pal = self.palette()
+        pal.setColor(QPalette.ColorRole.Window, bg)
+        pal.setColor(QPalette.ColorRole.Base, QColor(t.get('bg_input', t['bg_window'])))
+        self.setPalette(pal)
 
     def _设置列表背景色(self, theme_id):
         """空方法（已移除列表背景色设置）。"""
@@ -129,6 +144,11 @@ class 主题系统Mixin:
             self._主题重绘定时器.stop()
         self._current_theme = theme_id
         self.setStyleSheet(self._主样式表(theme_id))
+        self._F应用主窗口调色板底色()
+        # 应用级调色板同步换色：否则切换主题后，原生顶层窗口（弹窗/下拉/
+        # 菜单）首帧仍按旧主题底色擦除，出现「闪一下上一个主题的颜色」
+        from 项目UI.界面样式 import 应用调色板
+        应用调色板(QApplication.instance(), theme_id)
         self.刷新标题栏按钮样式()
         # 设置 fileMgr_tree 和 logViewer_textEdit 背景色
         self._设置列表背景色(theme_id)

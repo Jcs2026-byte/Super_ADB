@@ -7,6 +7,8 @@ ADB 文件管理器 —— 内嵌子页面
 """
 
 import os
+import re
+import shlex
 
 from PySide6.QtCore import (
     Qt, QThreadPool, QRunnable, Signal, QObject, QEvent, QTimer)
@@ -37,6 +39,28 @@ def _open_path_cross(path):
         subprocess.run(['open', path])
     else:
         subprocess.run(['xdg-open', path])
+
+
+def _safe_open(path):
+    """在 worker 结果回调里安全打开文件：异常不外溢（避免被误判为拉取失败）。"""
+    try:
+        _open_path_cross(path)
+    except Exception:
+        pass
+
+
+_WIN_ILLEGAL = re.compile(r'[<>:"|?*\x00-\x1f]')
+
+
+def _safe_local_part(name):
+    """把设备路径段清洗成合法的本地文件/目录名。
+
+    设备文件名可含 : * ? " < > | 及控制字符（如 sysperf:0），直接拼进本地
+    路径会让 os.makedirs / 拉取写盘抛 OSError，预览与编辑随之失败。
+    仅用于本地映射，发给设备的命令仍使用原始路径。
+    """
+    cleaned = _WIN_ILLEGAL.sub('_', name or '').rstrip('. ')
+    return cleaned or '_'
 
 LOADED_ROLE = Qt.UserRole + 1
 
@@ -193,6 +217,12 @@ class 文件管理页(QWidget):
         self._auto_refresh_ms = 3000
         self._auto_refresh_timer = QTimer(self)
         self._auto_refresh_timer.timeout.connect(self._on_auto_refresh)
+        # 编辑监控：所有被编辑文件共用一个 2 秒定时器代替每文件一个 QTimer。
+        # 原来回传成功后单个文件的定时器也不停止，编辑过的文件越多残留定时器越多。
+        self._edit_watchers = []
+        self._edit_watch_timer = QTimer(self)
+        self._edit_watch_timer.setInterval(2000)
+        self._edit_watch_timer.timeout.connect(self._on_edit_watch_tick)
         self._col_ratios = tuple(COL_RATIOS)
         self._applying = False
         self._restore_col_ratios()
@@ -562,6 +592,9 @@ class 文件管理页(QWidget):
         self._deep_search_mode = False  # 重建根目录时退出深度搜索模式
         self._dir_items.clear()
         self._loading.clear()
+        # 设备/根目录切换后旧 du 结果作废：不清会让 _update_row 保留旧设备大小、
+        # _maybe_compute_dir_size 因"已算过"跳过重算，显示错误数据
+        self._computed_dir_sizes.clear()
         self.model.clear()
         self.model.setHorizontalHeaderLabels(['名称', '大小', '权限', '修改时间'])
         self._apply_header_modes()
@@ -799,7 +832,7 @@ class 文件管理页(QWidget):
             self._computed_dir_sizes.add(cp)
             def _do_du():
                 try:
-                    out = self._mgr.执行shell(self._current_serial, f'du -sk "{cp}"', timeout=15)
+                    out = self._mgr.执行shell(self._current_serial, f'du -sk {shlex.quote(cp)}', timeout=15)
                     first = out.strip().splitlines()[0] if out.strip() else ''
                     parts = first.split()
                     if len(parts) >= 1 and parts[0].isdigit():
@@ -840,7 +873,7 @@ class 文件管理页(QWidget):
         def _do_du():
             try:
                 # du -sk 输出 KB 数，最通用；失败再试 -sh
-                out = self._mgr.执行shell(self._current_serial, f'du -sk "{path}"', timeout=15)
+                out = self._mgr.执行shell(self._current_serial, f'du -sk {shlex.quote(path)}', timeout=15)
                 first = out.strip().splitlines()[0] if out.strip() else ''
                 parts = first.split()
                 if len(parts) >= 1 and parts[0].isdigit():
@@ -905,9 +938,11 @@ class 文件管理页(QWidget):
     def _on_context(self, pos):
         idx = self.tree.indexAt(pos)
         item = self.model.itemFromIndex(idx) if idx.isValid() else None
-        # 右击非第一列时，取同 row 的第一列 item（那里才有 UserRole 数据）
+        # 右击非第一列时，取同 row 的第一列 item（那里才有 UserRole 数据）。
+        # 必须用 siblingAtColumn 在当前层级内取兄弟列：model.item(row, 0)
+        # 取到的是顶层行，对展开后的嵌套子项会拿错对象（误操作别的文件）。
         if item is not None and idx.column() != 0:
-            item = self.model.item(idx.row(), 0)
+            item = self.model.itemFromIndex(idx.siblingAtColumn(0))
         entry = item.data(Qt.UserRole) if item else None
         menu = QMenu(self)
         act_mkdir = menu.addAction('新建目录…')
@@ -947,14 +982,14 @@ class 文件管理页(QWidget):
         elif entry.get('is_dir'):
             # 目录不能编辑
             act_edit.setEnabled(False)
-        act_mkdir.triggered.connect(lambda: self._mkdir())
-        act_mkfile.triggered.connect(lambda: self._mkfile())
-        act_up.triggered.connect(lambda: self._upload())
-        act_dl.triggered.connect(lambda: self._download())
-        act_rn.triggered.connect(lambda: self._rename())
-        act_mv.triggered.connect(lambda: self._move())
-        act_edit.triggered.connect(lambda: self._edit_file())
-        act_ch.triggered.connect(lambda: self._chmod())
+        act_mkdir.triggered.connect(lambda: self._mkdir(entry))
+        act_mkfile.triggered.connect(lambda: self._mkfile(entry))
+        act_up.triggered.connect(lambda: self._upload(entry))
+        act_dl.triggered.connect(lambda: self._download(entry))
+        act_rn.triggered.connect(lambda: self._rename(entry))
+        act_mv.triggered.connect(lambda: self._move(entry))
+        act_edit.triggered.connect(lambda: self._edit_file(entry))
+        act_ch.triggered.connect(lambda: self._chmod(entry))
         act_del.triggered.connect(lambda: self._delete(entry))
         if act_open_path:
             act_open_path.triggered.connect(lambda: self._open_in_browser(entry))
@@ -972,16 +1007,30 @@ class 文件管理页(QWidget):
         entry = item.data(Qt.UserRole) or {}
         return entry
 
-    def _target_dir(self):
-        entry = self._selected_path()
+    @staticmethod
+    def _resolve_entry(clicked, current_getter):
+        """右键操作目标：优先右键点中的行；未点到行时回退当前选中项。
+
+        currentIndex 与鼠标右击行可能不一致（右击不必然改变焦点），
+        若只用 currentIndex，右击 X 行实际会操作选中的 Y 行。
+        """
+        if clicked:
+            return clicked
+        try:
+            return current_getter()
+        except Exception:
+            return None
+
+    def _target_dir(self, clicked=None):
+        entry = self._resolve_entry(clicked, self._selected_path)
         if entry:
             return entry['path'] if entry.get('is_dir') else self._dirname(entry['path'])
         return self._root_path
 
-    def _upload(self):
+    def _upload(self, clicked=None):
         if not self._current_serial:
             return
-        target_dir = self._target_dir()
+        target_dir = self._target_dir(clicked)
         desktop = os.path.join(os.path.expanduser('~'), 'Desktop')
         local, _ = QFileDialog.getOpenFileName(self, '选择要上传的文件', desktop, '所有文件 (*.*)')
         if not local:
@@ -992,7 +1041,8 @@ class 文件管理页(QWidget):
         # 检查远程是否已有同名文件：放后台 worker，避免主线程同步阻塞
         # （设备响应慢时 执行shell(timeout=5) 会让整个 UI 冻结）
         w = _CmdWorker(
-            self._mgr.执行shell, self._current_serial, f'ls -la "{target}" 2>&1', timeout=5)
+            self._mgr.执行shell, self._current_serial,
+            f'ls -la {shlex.quote(target)} 2>&1', timeout=5)
         self._track(w,
                     on_result=lambda r: self._on_upload_check_done(r, local, target, target_dir, file_name),
                     on_error=lambda e: self._do_upload(local, target, target_dir, file_name))
@@ -1079,7 +1129,7 @@ class 文件管理页(QWidget):
         # 诊断1: 检查远程目录权限
         try:
             目录状态 = self._mgr.执行shell(
-                self._current_serial, f'ls -ld "{target_dir}" 2>&1', timeout=2)
+                self._current_serial, f'ls -ld {shlex.quote(target_dir)} 2>&1', timeout=2)
             self._log(f'[上传] 诊断: 目标目录状态: {(目录状态 or "").strip()}')
             if 'No such file' in (目录状态 or ''):
                 self._log('[上传] ✗ 诊断: 目标目录不存在')
@@ -1113,8 +1163,8 @@ class 文件管理页(QWidget):
         self._auto_close_msg('上传失败', f'上传 "{file_name}" 失败:\n{error_msg}',
                             icon=QMessageBox.Icon.Warning)
 
-    def _download(self):
-        entry = self._selected_path()
+    def _download(self, clicked=None):
+        entry = self._resolve_entry(clicked, self._selected_path)
         if not entry:
             return
         _name = self._entry_name(entry)
@@ -1153,13 +1203,18 @@ class 文件管理页(QWidget):
         self._auto_close_msg('下载失败', f'下载 "{name}" 失败:\n{error_msg}',
                             icon=QMessageBox.Icon.Warning)
 
-    def _rename(self):
-        entry = self._selected_path()
+    def _rename(self, clicked=None):
+        entry = self._resolve_entry(clicked, self._selected_path)
         if not entry:
             return
         _name = self._entry_name(entry)
         new, ok = QInputDialog.getText(self, '重命名', '输入新名称：', text=_name)
         if not (ok and new and new != _name):
+            return
+        # 名称含路径分隔符会静默变成"移动"，甚至拼出非法路径，直接拒绝
+        if '/' in new or '\\' in new:
+            self._auto_close_msg('重命名失败', '新名称不能包含 / 或 \\',
+                                 icon=QMessageBox.Icon.Warning, timeout_ms=5000)
             return
         parent = self._dirname(entry['path'])
         new_path = parent.rstrip('/') + '/' + new
@@ -1181,9 +1236,9 @@ class 文件管理页(QWidget):
                 self._loading.discard(parent_dir)
             self._refresh_dir(parent_dir)
 
-    def _move(self):
+    def _move(self, clicked=None):
         """移动文件/目录到指定目标目录。"""
-        entry = self._selected_path()
+        entry = self._resolve_entry(clicked, self._selected_path)
         if not entry:
             return
         src_path = entry['path']
@@ -1194,10 +1249,8 @@ class 文件管理页(QWidget):
             text=default_dst)
         if not (ok and dst_dir.strip()):
             return
-        dst_dir = dst_dir.strip().rstrip('/')
-        if not dst_dir:
-            dst_dir = '/'
-        dst_path = f'{dst_dir}/{_name}'
+        dst_dir = dst_dir.strip().rstrip('/') or '/'
+        dst_path = f'/{_name}' if dst_dir == '/' else f'{dst_dir}/{_name}'
         if dst_path == src_path:
             self._status('源路径和目标路径相同，无需移动')
             return
@@ -1225,21 +1278,25 @@ class 文件管理页(QWidget):
                 self._refresh_dir(dst_dir)
         self._auto_close_msg('移动成功', f'已移动: {name}')
 
-    def _get_current_dir(self):
-        """获取当前操作目录：优先最近浏览路径，其次选中项所在目录，最后根目录。"""
-        if self._last_browsed_path:
-            return self._last_browsed_path
-        entry = self._selected_path()
+    def _get_current_dir(self, clicked=None):
+        """获取当前操作目录：优先右键点中项所在目录，其次最近浏览路径，最后根目录。
+
+        右键某目录=在其下新建；右键某文件=在其父目录下新建；
+        右键空白处 entry 为空，回退最近浏览目录。
+        """
+        entry = self._resolve_entry(clicked, self._selected_path)
         if entry:
             p = entry.get('path', '')
             if entry.get('is_dir'):
                 return p
             return self._dirname(p)
+        if self._last_browsed_path:
+            return self._last_browsed_path
         return self._root_path
 
-    def _mkdir(self):
+    def _mkdir(self, clicked=None):
         """在当前目录新建子目录。"""
-        parent = self._get_current_dir()
+        parent = self._get_current_dir(clicked)
         name, ok = QInputDialog.getText(self, '新建目录',
             f'在 {parent} 下新建目录，输入目录名：')
         if not (ok and name.strip()):
@@ -1248,17 +1305,27 @@ class 文件管理页(QWidget):
         new_path = parent.rstrip('/') + '/' + name
         self._status(f'新建目录: {new_path}…')
         w = _CmdWorker(self._mgr.执行shell, self._current_serial,
-                       f'mkdir -p "{new_path}" && echo MKDIR_OK', timeout=10)
+                       f'mkdir -p {shlex.quote(new_path)} 2>&1 && echo MKDIR_OK', timeout=10)
         self._track(w,
-                    on_result=lambda r: (self._status('新建目录成功'),
-                                         self._refresh_dir(parent),
-                                         self._auto_close_msg('成功', f'已创建目录: {name}')),
+                    on_result=lambda r: self._on_mkdir_done(r, parent, name),
                     on_error=lambda e: self._auto_close_msg('新建目录失败', str(e),
                         icon=QMessageBox.Icon.Warning, timeout_ms=5000))
 
-    def _mkfile(self):
+    def _on_mkdir_done(self, out, parent, name):
+        """校验设备端输出确实含 MKDIR_OK，防止 mkdir 静默失败时 UI 假成功。"""
+        if 'MKDIR_OK' not in (out or ''):
+            err = (out or '无输出').strip()
+            self._status(f'新建目录失败: {err}')
+            self._auto_close_msg('新建目录失败', err,
+                                 icon=QMessageBox.Icon.Warning, timeout_ms=5000)
+            return
+        self._status('新建目录成功')
+        self._refresh_dir(parent)
+        self._auto_close_msg('成功', f'已创建目录: {name}')
+
+    def _mkfile(self, clicked=None):
         """在当前目录新建空文件。"""
-        parent = self._get_current_dir()
+        parent = self._get_current_dir(clicked)
         name, ok = QInputDialog.getText(self, '新建文件',
             f'在 {parent} 下新建文件，输入文件名：')
         if not (ok and name.strip()):
@@ -1267,30 +1334,52 @@ class 文件管理页(QWidget):
         new_path = parent.rstrip('/') + '/' + name
         self._status(f'新建文件: {new_path}…')
         w = _CmdWorker(self._mgr.执行shell, self._current_serial,
-                       f'touch "{new_path}" && echo TOUCH_OK', timeout=10)
+                       f'touch {shlex.quote(new_path)} 2>&1 && echo TOUCH_OK', timeout=10)
         self._track(w,
-                    on_result=lambda r: (self._status('新建文件成功'),
-                                         self._refresh_dir(parent),
-                                         self._auto_close_msg('成功', f'已创建文件: {name}')),
+                    on_result=lambda r: self._on_mkfile_done(r, parent, name),
                     on_error=lambda e: self._auto_close_msg('新建文件失败', str(e),
                         icon=QMessageBox.Icon.Warning, timeout_ms=5000))
 
-    def _edit_file(self):
+    def _on_mkfile_done(self, out, parent, name):
+        """校验设备端输出确实含 TOUCH_OK，防止 touch 静默失败时 UI 假成功。"""
+        if 'TOUCH_OK' not in (out or ''):
+            err = (out or '无输出').strip()
+            self._status(f'新建文件失败: {err}')
+            self._auto_close_msg('新建文件失败', err,
+                                 icon=QMessageBox.Icon.Warning, timeout_ms=5000)
+            return
+        self._status('新建文件成功')
+        self._refresh_dir(parent)
+        self._auto_close_msg('成功', f'已创建文件: {name}')
+
+    def _cache_local_path(self, remote_path):
+        """把设备路径映射到本地缓存路径，保留远程目录层级。
+
+        桌面/Super_ADB/文件缓存/sdcard/A/config.xml 形式，
+        避免不同目录下的同名文件互相覆盖（进而误传回设备）。
+        """
+        tmp_dir = os.path.join(os.path.expanduser('~'), 'Desktop',
+                               'Super_ADB', '文件缓存')
+        rel = (remote_path or '').lstrip('/').replace('\\', '/')
+        parts = [_safe_local_part(p) for p in rel.split('/') if p] or ['_root_']
+        local_path = os.path.join(tmp_dir, *parts)
+        parent_dir = os.path.dirname(local_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+        return local_path
+
+    def _edit_file(self, clicked=None):
         """从设备拉取文件到本地临时目录，用系统默认程序打开编辑，
         监控文件修改时间，保存后自动回传设备。"""
-        entry = self._selected_path()
+        entry = self._resolve_entry(clicked, self._selected_path)
         if not entry or entry.get('is_dir'):
             return
         remote_path = entry['path']
         _name = self._entry_name(entry)
-        # 临时目录：桌面/Super_ADB/文件缓存/
-        tmp_dir = os.path.join(os.path.expanduser('~'), 'Desktop',
-                               'Super_ADB', '文件缓存')
-        os.makedirs(tmp_dir, exist_ok=True)
-        local_path = os.path.join(tmp_dir, _name)
+        local_path = self._cache_local_path(remote_path)
         self._status(f'拉取文件到本地编辑: {_name}…')
-        # 先拉取
-        w = _CmdWorker(self._mgr.拉取文件, self._current_serial, remote_path, tmp_dir)
+        # 先拉取（目标为完整文件路径，缓存按远程目录结构隔离）
+        w = _CmdWorker(self._mgr.拉取文件, self._current_serial, remote_path, local_path)
         self._track(w,
                     on_result=lambda r: self._on_edit_pulled(local_path, remote_path, _name),
                     on_error=lambda e: self._auto_close_msg('拉取失败', str(e),
@@ -1310,37 +1399,49 @@ class 文件管理页(QWidget):
             return
         self._status(f'已在本地打开编辑: {name}（保存后自动回传）')
         self._log(f'[编辑] 已打开: {local_path} <- {remote_path}')
-        # 记录原始修改时间，启动监控
+        # 记录原始修改时间，登记到整页共用的监控列表（同路径只留一条）
         mtime = os.path.getmtime(local_path)
-        if not hasattr(self, '_edit_watchers'):
-            self._edit_watchers = []
-        # 用 QTimer 每 2 秒检查一次文件是否被修改
+        for w_old in [w for w in self._edit_watchers if w['path'] == local_path]:
+            self._edit_watchers.remove(w_old)
         watcher = {'path': local_path, 'remote': remote_path,
-                   'name': name, 'mtime': mtime, 'timer': None}
-        timer = QTimer(self)
-        timer.setInterval(2000)
-        def _check():
+                   'name': name, 'mtime': mtime,
+                   'serial': self._current_serial}
+        self._edit_watchers.append(watcher)
+        # 每 2 秒轮询一次是否有文件被修改（全页共用一个定时器）
+        if not self._edit_watch_timer.isActive():
+            self._edit_watch_timer.start()
+
+    def _on_edit_watch_tick(self):
+        """共用定时器：轮询所有被编辑文件，本地修改后回传设备。"""
+        if not self._edit_watchers:
+            self._edit_watch_timer.stop()
+            return
+        for watcher in list(self._edit_watchers):
             try:
                 new_mtime = os.path.getmtime(watcher['path'])
-                if new_mtime != watcher['mtime']:
-                    watcher['mtime'] = new_mtime
-                    # 文件被修改，回传设备
-                    self._push_edit_back(watcher)
             except OSError:
-                pass
-        timer.timeout.connect(_check)
-        timer.start()
-        watcher['timer'] = timer
-        self._edit_watchers.append(watcher)
+                # 本地缓存已被删除/移动：移除该文件，避免每次空转
+                self._edit_watchers.remove(watcher)
+                continue
+            if new_mtime != watcher['mtime']:
+                watcher['mtime'] = new_mtime
+                # 文件被修改，回传设备
+                self._push_edit_back(watcher)
 
     def _push_edit_back(self, watcher):
         """把本地编辑后的文件推回设备原路径。"""
         local_path = watcher['path']
         remote_path = watcher['remote']
         name = watcher['name']
+        # 回传给"打开编辑时"的那台设备：中途切换过设备时用当前 serial
+        # 会把 A 机的编辑推到 B 机同路径文件上
+        serial = watcher.get('serial') or self._current_serial
+        if serial != self._current_serial:
+            self._log(f'[编辑] 设备已切换({self._current_serial})，'
+                      f'仍回传原设备 {serial}: {name}')
         self._status(f'回传编辑: {name}…')
         # 传完整目标路径（含文件名），推送文件方法据此计算父目录
-        w = _CmdWorker(self._mgr.推送文件, self._current_serial, local_path, remote_path)
+        w = _CmdWorker(self._mgr.推送文件, serial, local_path, remote_path)
         self._track(w,
                     on_result=lambda r: (self._status(f'已回传: {name}'),
                                          self._log(f'[编辑] 已回传: {remote_path}'),
@@ -1348,8 +1449,8 @@ class 文件管理页(QWidget):
                     on_error=lambda e: self._auto_close_msg('回传失败', str(e),
                         icon=QMessageBox.Icon.Warning, timeout_ms=5000))
 
-    def _chmod(self):
-        entry = self._selected_path()
+    def _chmod(self, clicked=None):
+        entry = self._resolve_entry(clicked, self._selected_path)
         if not entry:
             return
         path = entry['path']
@@ -1448,7 +1549,7 @@ class 文件管理页(QWidget):
     def _ensure_search_edit(self):
         if self.search_edit is None:
             self.search_edit = QLineEdit()
-            self.search_edit.setPlaceholderText('输入实时过滤当前目录；按回车深度递归搜索…')
+            self.search_edit.setPlaceholderText('输入实时过滤当前目录；按回车从根目录递归搜索全部文件…')
             self.search_edit.setClearButtonEnabled(True)
         if not self._search_wired:
             self._search_wired = True
@@ -1488,7 +1589,13 @@ class 文件管理页(QWidget):
         if not item:
             return
         entry = item.data(Qt.UserRole) or {}
-        if not entry or entry.get('is_dir'):
+        if not entry:
+            return
+        if self._deep_search_mode and entry.get('is_dir'):
+            # 深度搜索结果里的目录无法原地展开，双击=定位到其所在路径
+            self._open_in_browser(entry)
+            return
+        if entry.get('is_dir'):
             return
         name = entry.get('name', '').lower()
         if any(name.endswith(ext) for ext in PREVIEW_EXT):
@@ -1523,12 +1630,9 @@ class 文件管理页(QWidget):
             self._status('未选择设备')
             return
         name = entry.get('name', '')
-        tmp_dir = os.path.join(os.path.expanduser('~'), 'Desktop',
-                               'Super_ADB', '文件缓存')
-        os.makedirs(tmp_dir, exist_ok=True)
-        local_path = os.path.join(tmp_dir, name)
+        local_path = self._cache_local_path(entry['path'])
         self._status(f'拉取图片: {name}…')
-        w = _CmdWorker(self._mgr.拉取文件, serial, entry['path'], tmp_dir)
+        w = _CmdWorker(self._mgr.拉取文件, serial, entry['path'], local_path)
         self._track(w,
                     on_result=lambda r: self._show_image_dialog(local_path, entry),
                     on_error=lambda e: self._auto_close_msg('图片预览失败', str(e),
@@ -1565,14 +1669,11 @@ class 文件管理页(QWidget):
             self._status('未选择设备')
             return
         name = entry.get('name', '')
-        tmp_dir = os.path.join(os.path.expanduser('~'), 'Desktop',
-                               'Super_ADB', '文件缓存')
-        os.makedirs(tmp_dir, exist_ok=True)
-        local_path = os.path.join(tmp_dir, name)
+        local_path = self._cache_local_path(entry['path'])
         self._status(f'拉取: {name}…')
-        w = _CmdWorker(self._mgr.拉取文件, serial, entry['path'], tmp_dir)
+        w = _CmdWorker(self._mgr.拉取文件, serial, entry['path'], local_path)
         self._track(w,
-                    on_result=lambda r: (_open_path_cross(local_path),
+                    on_result=lambda r: (_safe_open(local_path),
                                          self._status(f'已打开: {name}')),
                     on_error=lambda e: self._auto_close_msg('打开失败', str(e),
                         icon=QMessageBox.Icon.Warning, timeout_ms=5000))
@@ -1631,40 +1732,50 @@ class 文件管理页(QWidget):
         # 过滤单引号防止 shell 注入
         safe_kw = text.replace("'", "'\\''")
         search_path = '/'  # 深度搜索始终从根目录开始，不管当前浏览哪个目录
-        cmd = f"find {search_path} -iname '*{safe_kw}*' 2>/dev/null"
-        self._status(f'深度搜索: {cmd} …')
-        print(f'[深度搜索] serial={self._current_serial}, cmd={cmd}')
-        w = _CmdWorker(self._mgr.执行shell, self._current_serial, cmd, 60)
-        self._track(w, on_result=lambda out: self._show_deep_results(out, text),
+        # 分两次 find：单独拿目录列表（-type d），结果才能正确标记 is_dir，
+        # 双击目录不会再误走文件预览；head 限制结果量，防止一次灌入几万行卡死 UI
+        cmd_f = f"find {search_path} -iname '*{safe_kw}*' ! -type d 2>/dev/null | head -n 1000"
+        cmd_d = f"find {search_path} -iname '*{safe_kw}*' -type d 2>/dev/null | head -n 500"
+        self._status(f'深度搜索: "{text}" …')
+        print(f'[深度搜索] serial={self._current_serial}, cmd={cmd_f}')
+
+        def _task():
+            files = (self._mgr.执行shell(self._current_serial, cmd_f, 60) or '').splitlines()
+            dirs = (self._mgr.执行shell(self._current_serial, cmd_d, 60) or '').splitlines()
+            return [(p, False) for p in files] + [(p, True) for p in dirs]
+
+        w = _CmdWorker(_task)
+        self._track(w, on_result=lambda res: self._show_deep_results(res, text),
                    on_error=lambda e: self._status(f'搜索失败: {e}'))
 
-    def _show_deep_results(self, output, keyword):
-        """解析 find 输出，把匹配路径作为平铺列表显示在 tree 中。"""
-        paths = [p.strip() for p in (output or '').splitlines() if p.strip()]
+    def _show_deep_results(self, results, keyword):
+        """解析 find 输出 [(path, is_dir)]，把匹配路径作为平铺列表显示在 tree 中。"""
+        paths = [(p.strip(), is_dir) for p, is_dir in results if p.strip()]
         # 过滤 find 错误行（如 "find: /proc/xxx: Permission denied"）
-        paths = [p for p in paths if not p.startswith('find:')]
+        paths = [(p, d) for p, d in paths if not p.startswith('find:')]
         self.model.removeRows(0, self.model.rowCount())
         self._dir_items.clear()
         self._deep_search_mode = True
         # 深度搜索时第4列显示完整路径，列名改为"文件路径"
         self.model.setHorizontalHeaderLabels(['名称', '大小', '权限', '文件路径'])
-        for p in paths:
+        for p, is_dir in paths:
             name = p.rstrip('/').rsplit('/', 1)[-1] or p
             entry = {
-                'is_dir': False,
+                'is_dir': is_dir,
                 'path': p,
                 'name': name,
                 'size': '—',
                 'perm': '—',
                 'mtime': p,
             }
-            ni = QStandardItem(name)
+            _prefix = '📁 ' if is_dir else ''
+            ni = QStandardItem(_prefix + name)
             ni.setData(entry, Qt.UserRole)
             ni.setData(True, LOADED_ROLE)  # 防止展开
             self.model.appendRow([ni, QStandardItem('—'), QStandardItem('—'), QStandardItem(p)])
-        raw_len = len(output or '')
-        print(f'[深度搜索] 原始输出长度={raw_len}, 结果数={len(paths)}')
-        self._status(f'搜索 "{keyword}" 完成: {len(paths)} 个结果 (原始{raw_len}字符)')
+        raw_len = sum(len(p) for p, _ in paths)
+        print(f'[深度搜索] 结果数={len(paths)}')
+        self._status(f'搜索 "{keyword}" 完成: {len(paths)} 个结果')
 
     def _exit_deep_search(self):
         """退出深度搜索模式，恢复正常目录浏览。"""

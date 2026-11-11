@@ -11,7 +11,9 @@
 并通过 ``apply_theme()`` 同步刷新。默认 ``dark_teal`` 与 ``界面样式.DEFAULT_THEME`` 一致。
 """
 
-from PySide6.QtCore import Qt, Signal, QPoint, QCoreApplication, QEvent, QRect
+from PySide6.QtCore import (
+    Qt, Signal, QPoint, QCoreApplication, QEvent, QRect, QObject,
+)
 from PySide6.QtGui import QColor, QPainter, QPolygon, QImage, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
@@ -28,6 +30,172 @@ from 项目UI.界面样式 import (
     THEMES,
     DEFAULT_THEME,
 )
+
+
+def _禁用窗口淡入过渡(dlg):
+    """Windows：关闭该窗口的 DWM 过渡/淡入动画。
+
+    录屏实证：弹窗映射上屏的瞬间，DWM 淡入动画会先合成一帧「尚未绘制」
+    的窗口后缓冲 —— 表现为整片半透明白、桌面从底下透出，等 Qt 画完才变
+    深色。关掉过渡动画后窗口直接以最终状态出现，不再有半透明白阶段。
+    DWMWA_TRANSITIONS_FORCEDISABLED = 3。非 Windows 直接返回。
+    """
+    if sys.platform != 'win32':
+        return
+    try:
+        import ctypes
+        hwnd = int(dlg.winId())
+        if not hwnd:
+            return
+        enable = ctypes.c_bool(True)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, 3, ctypes.byref(enable), ctypes.sizeof(enable))
+    except Exception:
+        pass
+
+
+def _预热首帧(dlg):
+    """show/exec 之前调用：创建原生窗口 + 离屏预热首帧（不含 DWM 处理）。
+
+    grab() 离屏渲染一帧，把 style polish、QSS 解析、布局计算全部预热，
+    让随后的真实首帧绘制只剩纯 blit。供 exec 模态弹窗与全局过滤器复用。
+    """
+    try:
+        dlg.winId()          # 强制创建原生窗口（此时尚未映射，不触发淡入）
+        dlg.grab()           # 离屏预热：跑完 polish + QSS 解析 + 布局
+    except Exception:
+        pass
+
+
+def 无闪预热弹窗(dlg):
+    """show/exec 之前调用：创建原生窗口 + 预热首帧 + 关闭 DWM 淡入。
+
+    与全局过滤器 ``首帧防闪过滤器`` 共用同一套底层步骤；模态弹窗（exec）
+    在 exec 前调本函数即可。
+    """
+    _预热首帧(dlg)
+    _禁用窗口淡入过渡(dlg)
+
+
+def 无闪显示弹窗(dlg):
+    """显示弹窗并消除 Windows / DWM 首帧白闪（仅 Windows 有此现象）。
+
+    根因（录屏实证）：弹窗刚映射上屏时，DWM 的窗口淡入动画会先合成一帧
+    「尚未绘制」的窗口后缓冲 —— 表现为整片半透明白、桌面从底下透出，等
+    Qt 画完第一帧才变深色。首帧绘制越慢（QSS 解析 + 布局 + 大控件），白帧
+    停留越久、越容易被肉眼捕捉，所以同一弹窗「有时闪有时不闪」，负载高时
+    更明显。调色板 / 窗口类背景刷都改不到这一层：白来自后缓冲的初始内容，
+    不是原生擦除色；grab() 只渲染到独立位图、填不进窗口真实后缓冲。
+
+    对策（三者配合）：
+    1. 无闪预热弹窗：grab 预热 polish + QSS + 布局，并关闭 DWM 淡入；
+    2. show() 后立刻 repaint() 同步绘制真实后缓冲，抢在首次合成前；
+    3. raise + activateWindow 保持原有前置/焦点行为。
+    透明背景弹窗同样适用：淡入关闭后内容直接出现，不再渐变。
+    """
+    无闪预热弹窗(dlg)
+    dlg.show()
+    dlg.raise_()
+    dlg.activateWindow()
+    try:
+        dlg.repaint()        # 映射后立即同步绘制真实后缓冲，压掉白帧
+    except Exception:
+        pass
+
+
+# ----------------------------------------------------------------------
+# 全局首帧防闪过滤器（装到 QApplication）
+# ----------------------------------------------------------------------
+# 已处理过的顶层窗口身份集合：避免同一窗口 show/hide 反复预热、重复关 DWM。
+# 存 Python 对象弱引用更稳妥，但顶层弹窗生命周期通常与会话一致；这里用
+# id() 并在窗口 destroyed 时清理，避免长期残留。
+_已处理窗口id = set()
+
+
+def _F是否跳过防闪(win):
+    """判断该顶层窗口是否应跳过首帧防闪处理。
+
+    跳过规则：
+    - 非 Windows（DWM 淡入是 Windows 专有现象，其他平台不处理）；
+    - 透明背景窗口（WA_TranslucentBackground）：本身没有「先白后画」的
+      不透明后缓冲，无线调试 / 关于 / 环境配置 / 截图覆盖层等保持原样；
+    - 工具提示、菜单、弹窗类原生浮层（Qt 自己管理其出现动画）；
+    - 已被处理过的窗口（复用 hide/show 的弹窗）。
+    """
+    if sys.platform != 'win32':
+        return True
+    if not isinstance(win, QWidget):
+        return True
+    if win.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground):
+        return True
+    # 窗口类型是枚举值（Dialog=3 / Popup=9 / ToolTip=13 / SplashScreen=15），
+    # 不是位掩码，必须用 windowType() 精确比较，不能用 & 位与（会误命中）。
+    wtype = win.windowType()
+    if wtype in (Qt.WindowType.ToolTip, Qt.WindowType.Popup,
+                 Qt.WindowType.SplashScreen):
+        return True
+    if id(win) in _已处理窗口id:
+        return True
+    return False
+
+
+def _F执行防闪(win):
+    """对一个未处理过的不透明顶层窗口执行预热 + 关 DWM 淡入。"""
+    _预热首帧(win)
+    _禁用窗口淡入过渡(win)
+    _已处理窗口id.add(id(win))
+    try:
+        win.destroyed.connect(lambda _obj=None, _k=id(win): _已处理窗口id.discard(_k))
+    except Exception:
+        pass
+
+
+class 首帧防闪过滤器(QObject):
+    """装到 QApplication 的全局事件过滤器：自动消除顶层弹窗首帧白闪。
+
+    背景：逐个弹窗改 show/exec 调用点既啰嗦又会漏掉以后新增的弹窗。本过滤器
+    统一在事件层拦截顶层窗口的显示流程：
+    - ``Polish`` 事件（窗口样式即将生效、尚未映射）：对未处理过的不透明顶层
+      窗口做离屏预热首帧；
+    - ``Show`` 事件（映射上屏前）：关闭该窗口的 DWM 淡入动画；
+    - ``Show`` 之后由 ``DynamicPropertyChange``/映射后立即 repaint 同步绘制真实
+      后缓冲，抢在 DWM 首次合成之前。
+
+    透明背景窗口、工具提示 / 菜单 / 启动图、非 Windows 平台自动跳过，不受
+    影响。用法（main() 内 QApplication 创建后）::
+
+        app.installEventFilter(首帧防闪过滤器(app))
+    """
+
+    def eventFilter(self, obj, event):
+        # 防御：个别场景绑定层会把非 QObject 传入 watched（PYSIDE-3143 变体）
+        if not isinstance(obj, QWidget):
+            return False
+        try:
+            etype = event.type()
+        except Exception:
+            return False
+        if etype in (QEvent.Type.Polish, QEvent.Type.Show):
+            # 只处理顶层窗口；内嵌子控件不做任何窗口级处理
+            if obj.parent() is not None:
+                return False
+            if _F是否跳过防闪(obj):
+                return False
+            if etype == QEvent.Type.Polish:
+                # 样式 polish 前先预热：跑完 QSS 解析 + 布局，避免首帧卡住
+                try:
+                    obj.winId()
+                    obj.grab()
+                except Exception:
+                    pass
+            elif etype == QEvent.Type.Show:
+                _F执行防闪(obj)
+                # 映射后立即同步重绘真实后缓冲，压掉「未绘制白色画面」
+                try:
+                    obj.repaint()
+                except Exception:
+                    pass
+        return super().eventFilter(obj, event)
 
 
 # ----------------------------------------------------------------------

@@ -44,6 +44,7 @@ from 项目UI.界面样式 import (
     THEMES, DEFAULT_THEME, _parse_rgb, FONT_FAMILY,
 )
 from 项目UI.弹窗样式 import add_green_glow
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 
 # 注册 png_rc 资源
 from 项目UI import png_rc  # noqa: F401
@@ -708,7 +709,7 @@ class _BodyViewer(QWidget):
 
 # ──────────────────────── 对话框 ────────────────────────
 
-class Pcap解析对话框(QWidget):
+class Pcap解析对话框(自绘外壳对话框):
     """PCAP 解析器独立窗口。支持拖拽 pcap 文件。"""
 
     _parse_done = Signal(list, int, str, dict)  # flows, total_pkts, error, stats
@@ -724,7 +725,7 @@ class Pcap解析对话框(QWidget):
         super().closeEvent(event)
 
     def __init__(self, pcap_path='', parent=None):
-        super().__init__(parent)
+        super().__init__(parent, 标题='PCAP 解析器', 最小尺寸=(1100, 680))
         self._pcap_path = pcap_path
         self._flows = []
         self._filtered_flows = []
@@ -742,23 +743,18 @@ class Pcap解析对话框(QWidget):
         self._search_timer.setInterval(250)
         self._search_timer.timeout.connect(self._apply_filter)
 
-        self.setWindowTitle('PCAP 解析器')
-        self.setWindowIcon(QIcon(':/Super_ADB.png'))
-        self.setMinimumSize(1100, 680)
         self.resize(1280, 800)
         self._theme_id = get_current_theme_id(self)
         # 全局样式：所有子控件跟随主题
         self.setStyleSheet(self._global_style(self._theme_id))
-        # 独立窗口：不设 parent，避免 Windows owned-window 始终置顶行为
-        self.setWindowFlag(Qt.Window, True)
         self.setAttribute(Qt.WA_ShowWithoutActivating, False)
 
         # 启用拖拽
         self.setAcceptDrops(True)
         self.setToolTip('PCAP 解析器')
 
-        # 主布局：让 card 铺满整个窗口
-        main_lay = QVBoxLayout(self)
+        # 主布局：让 card 铺满整个窗口（复用外壳主布局）
+        main_lay = self.layout()
         main_lay.setContentsMargins(8, 8, 8, 8)
         main_lay.setSpacing(0)
 

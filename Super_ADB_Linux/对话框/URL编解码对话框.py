@@ -26,9 +26,10 @@ from PySide6.QtWidgets import (
 from 项目UI import png_rc  # noqa: F401
 from 项目UI.界面样式 import FONT_FAMILY, get_stylesheet, get_current_theme_id, THEMES
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style, _create_popup_card
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 
 
-class CURL编解码对话框(QDialog):
+class CURL编解码对话框(自绘外壳对话框):
     """URL 编码 / 解码工具弹窗（与其他弹窗同款高亮卡片样式）。
 
     C 前缀类名、F 前缀公开方法、_F 前缀私有方法（项目新代码命名约定：
@@ -36,10 +37,7 @@ class CURL编解码对话框(QDialog):
     """
 
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("URL 编解码")
-        self.setWindowIcon(QIcon(":/Super_ADB.png"))
-        self.setMinimumWidth(560)
+        super().__init__(parent, 标题="URL 编解码", 最小尺寸=(560, 360))
         self._theme_id = get_current_theme_id(self)
         self.setStyleSheet(get_stylesheet(self._theme_id))
         # 内层亮边卡片（与时间戳 / TCPDump / PCAP 弹窗同款 4px 主题色边框）

@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 from 项目UI.界面样式 import THEMES, get_stylesheet, get_current_theme_id
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style, _create_popup_card
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 
 ORG = 'Super_ADB'
 APP = 'Super_ADB'
@@ -260,14 +261,11 @@ def build_scrcpy_args(settings):
 # 对话框 UI
 # ────────────────────────────────────────────────────────────
 
-class Scrcpy设置对话框(QDialog):
+class Scrcpy设置对话框(自绘外壳对话框):
     """scrcpy 投屏参数设置对话框（官方参数映射，5 页签 + 自定义额外参数）。"""
 
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle('scrcpy 投屏设置（官方参数）')
-        self.setMinimumWidth(520)
-        self.setMinimumHeight(560)
+        super().__init__(parent, 标题='scrcpy 投屏设置（官方参数）', 最小尺寸=(520, 560))
         self._theme_id = get_current_theme_id(self)
         self.setStyleSheet(get_stylesheet(self._theme_id) + "QDialog { background-color: transparent; }")
         self.card, _ = _create_popup_card(self, self._theme_id)

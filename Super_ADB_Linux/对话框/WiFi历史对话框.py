@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from 项目UI import png_rc  # noqa: F401
 from 项目UI.界面样式 import get_stylesheet, get_current_theme_id, THEMES
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 from 工具.android调试工具.ADB工具 import 加载json配置, 保存json配置
 
 _HISTORY_CFG = 'wifi_debug_history.json'
@@ -26,15 +27,11 @@ _HISTORY_CFG = 'wifi_debug_history.json'
 _COLUMNS = ['时间', '动作', '目标', '结果', '详情']
 
 
-class WifiHistoryDialog(QDialog):
+class WifiHistoryDialog(自绘外壳对话框):
     """配对/连接操作历史查看器。"""
 
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("WiFi 配对/连接历史")
-        self.setWindowIcon(QIcon(":/Super_ADB.png"))
-        self.setMinimumWidth(680)
-        self.setMinimumHeight(420)
+        super().__init__(parent, 标题="WiFi 配对/连接历史", 最小尺寸=(680, 420))
         self._build_ui()
         self.setStyleSheet(get_stylesheet(get_current_theme_id(self)))
         self._load()
@@ -47,7 +44,7 @@ class WifiHistoryDialog(QDialog):
         self.update()
 
     def _build_ui(self):
-        root = QVBoxLayout(self)
+        root = self.layout()
         root.setSpacing(10)
         root.setContentsMargins(16, 16, 16, 16)
 

@@ -67,6 +67,7 @@ from PySide6.QtWidgets import (
 
 from 工具.android调试工具.ADB工具 import AdbHelper, 格式化设备标签, 加载json配置, 保存json配置
 from 工具.android调试工具.收藏下拉框 import 收藏下拉框
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 
 # 缓冲区上限
 BUFFER_MAX = 100_000
@@ -987,10 +988,8 @@ class 日志查看器页(QWidget):
                 pass
             self._片段弹窗 = None
 
-        dlg = QDialog(self, Qt.WindowType.Window)
-        dlg.setWindowTitle('日志行详情（拖选片段后 Ctrl+C 复制）')
+        dlg = 自绘外壳对话框(self, 标题='日志行详情（拖选片段后 Ctrl+C 复制）', 最小尺寸=(900, 260))
         dlg.setModal(False)          # 非模态：弹窗出来仍可操作主界面
-        dlg.resize(900, 260)
 
         # 统一卡片容器：主题色 4px 边框 + 圆角 + 外发光
         card, _outer = _create_popup_card(dlg, theme_id, margins=(10, 10, 10, 10))

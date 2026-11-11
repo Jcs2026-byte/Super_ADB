@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 from 项目UI import png_rc  # noqa: F401
 from 项目UI.界面样式 import get_stylesheet, get_current_theme_id, THEMES
 from 项目UI.弹窗样式 import highlight_card_style, _create_popup_card, add_green_glow
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 
 # 打包为 -w 窗口程序后，子进程（ping/arp/ipconfig）若不隐藏窗口会逐个弹出 CMD 黑框；
 # 与全项目约定一致：Windows 用 CREATE_NO_WINDOW，其他平台传 0（默认）。
@@ -182,14 +183,11 @@ class _扫描工作器(QObject):
 # ----------------------------------------------------------------------
 # 主对话框
 # ----------------------------------------------------------------------
-class IP扫描对话框(QDialog):
+class IP扫描对话框(自绘外壳对话框):
     """IP 局域网扫描弹窗。"""
 
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("IP 局域网扫描")
-        self.setWindowIcon(QIcon(":/Super_ADB.png"))
-        self.setMinimumWidth(560)
+        super().__init__(parent, 标题="IP 局域网扫描", 最小尺寸=(560, 480))
         self.resize(640, 480)
         self._theme_id = get_current_theme_id(self)
         self.setStyleSheet(get_stylesheet(self._theme_id))

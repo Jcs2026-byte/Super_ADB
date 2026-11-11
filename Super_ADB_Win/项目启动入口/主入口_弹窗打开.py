@@ -15,6 +15,28 @@ from 项目UI.弹窗样式 import 无闪显示弹窗
 class 弹窗打开Mixin:
     """弹窗打开方法集合。"""
 
+    def _弹窗首帧应用主题(self, dlg):
+        """新建弹窗在 show 前按主窗口当前主题刷新，避免首帧停留在读盘默认主题、
+        要等运行时切换主题才对齐。
+
+        无 parent 的独立弹窗构造期只能读持久化配置，可能与主窗口内存里的
+        ``_current_theme`` 不一致；这里显式把当前主题传进去。外壳自绘色由
+        ``_F刷新外壳自绘颜色`` 兜底——子类 ``apply_theme`` 可能未调 super，
+        或主题相同时提前 return，外壳颜色仍能强制对齐。
+        """
+        if dlg is None:
+            return
+        if callable(getattr(dlg, 'apply_theme', None)):
+            try:
+                dlg.apply_theme(self._current_theme)
+            except Exception as e:
+                print(f'[主题] 弹窗 {type(dlg).__name__} apply_theme 失败: {e!r}')
+        if callable(getattr(dlg, '_F刷新外壳自绘颜色', None)):
+            try:
+                dlg._F刷新外壳自绘颜色(self._current_theme)
+            except Exception as e:
+                print(f'[主题] 弹窗 {type(dlg).__name__} 外壳颜色刷新失败: {e!r}')
+
     # ------------------------------------------------------------------
     # 设备性能监控
     # ------------------------------------------------------------------
@@ -84,6 +106,7 @@ class 弹窗打开Mixin:
         from 对话框.安装解包对话框 import 安装解包对话框
         self._install_dialog = 安装解包对话框(
             self.adb, self.当前序列号)
+        self._弹窗首帧应用主题(self._install_dialog)
         self._install_dialog.show()
 
     def 打开证书安装对话框(self):
@@ -95,6 +118,7 @@ class 弹窗打开Mixin:
         from 对话框.证书安装对话框 import 证书安装对话框
         self._cert_dialog = 证书安装对话框(
             self.adb, self.当前序列号)
+        self._弹窗首帧应用主题(self._cert_dialog)
         self._cert_dialog.show()
 
     def 打开历史连接设备(self):
@@ -205,6 +229,7 @@ class 弹窗打开Mixin:
             return
         from 对话框.JSON工具对话框 import Json工具对话框
         self._json_tool_dialog = Json工具对话框()
+        self._弹窗首帧应用主题(self._json_tool_dialog)
         self._json_tool_dialog.show()
 
     def 打开md5校验(self):
@@ -215,6 +240,7 @@ class 弹窗打开Mixin:
             return
         from 对话框.哈希校验对话框 import 哈希校验对话框
         self._md5_dialog = 哈希校验对话框()
+        self._弹窗首帧应用主题(self._md5_dialog)
         self._md5_dialog.show()
 
     def 打开时间戳(self):
@@ -225,6 +251,7 @@ class 弹窗打开Mixin:
             return
         from 对话框.时间戳对话框 import 时间戳对话框
         self._timestamp_dialog = 时间戳对话框()
+        self._弹窗首帧应用主题(self._timestamp_dialog)
         self._timestamp_dialog.show()
 
     def 打开URL编解码(self):
@@ -235,6 +262,7 @@ class 弹窗打开Mixin:
             return
         from 对话框.URL编解码对话框 import CUrlCodecDialog
         self._url_codec_dialog = CUrlCodecDialog()
+        self._弹窗首帧应用主题(self._url_codec_dialog)
         self._url_codec_dialog.show()
 
     def 打开无线调试(self):
@@ -271,6 +299,11 @@ class 弹窗打开Mixin:
         # 与关于/环境配置弹窗一致：创建后立即应用当前主题，确保边框/背景/tab 样式
         # 首次显示就与主题一致（__init__ 已按主题初始化，此处双重保险并触发子页同步）
         self._wireless_debug_dialog.apply_theme(self._current_theme)
+        # 关闭/销毁后释放引用，避免持有旧 Qt 对象、重复打开时旧实例残留叠显
+        self._wireless_debug_dialog.destroyed.connect(
+            lambda *_: setattr(self, '_wireless_debug_dialog', None))
+        self._wireless_debug_dialog.finished.connect(
+            lambda *_: QTimer.singleShot(0, self._激活主窗口到前台))
         self._wireless_debug_dialog.show()
 
     def 打开wifi(self):
@@ -281,6 +314,7 @@ class 弹窗打开Mixin:
             return
         from 对话框.WiFi对话框 import WiFi对话框
         self._wifi_dialog = WiFi对话框()
+        self._弹窗首帧应用主题(self._wifi_dialog)
         self._wifi_dialog.show()
 
     def 打开tcpdump对话框(self):
@@ -298,6 +332,7 @@ class 弹窗打开Mixin:
         # 传入主窗口的 self.adb（已与自研adb 类级缓存共享 client），
         # 对话框内部优先复用，避免 new AdbHelper 造成独立实例建连。
         self._tcpdump_dialog = Tcpdump对话框(serial, adb=self.adb)
+        self._弹窗首帧应用主题(self._tcpdump_dialog)
         self._tcpdump_dialog.show()
 
     def 打开关于对话框(self):
@@ -366,6 +401,7 @@ class 弹窗打开Mixin:
             lambda _obj=None, _self=self: _self._清空_pcap_parser_dialog(_obj))
         dlg._关闭.connect(lambda *_: QTimer.singleShot(0, self._激活主窗口到前台))
         self._pcap_parser_dialog = dlg
+        self._弹窗首帧应用主题(dlg)
         dlg.show()
 
     def 打开ip扫描(self):
@@ -384,6 +420,7 @@ class 弹窗打开Mixin:
             lambda _obj=None, _self=self: _self._清空_ip扫描引用(_obj))
         dlg.finished.connect(lambda *_: QTimer.singleShot(0, self._激活主窗口到前台))
         self._ip_scan_dialog = dlg
+        self._弹窗首帧应用主题(dlg)
         dlg.show()
 
     def _清空_ip扫描引用(self, obj):
@@ -408,6 +445,7 @@ class 弹窗打开Mixin:
             lambda _obj=None, _self=self: _self._清空_adbcmd引用(_obj))
         dlg.finished.connect(lambda *_: QTimer.singleShot(0, self._激活主窗口到前台))
         self._adbcmd_dialog = dlg
+        self._弹窗首帧应用主题(dlg)
         dlg.show()
 
     def 打开apifox提取(self):
@@ -428,6 +466,7 @@ class 弹窗打开Mixin:
             lambda _obj=None, _self=self: _self._清空_apifox引用(_obj))
         dlg.finished.connect(lambda *_: QTimer.singleShot(0, self._激活主窗口到前台))
         self._apifox_dialog = dlg
+        self._弹窗首帧应用主题(dlg)
         dlg.show()
 
     def _清空_apifox引用(self, obj):

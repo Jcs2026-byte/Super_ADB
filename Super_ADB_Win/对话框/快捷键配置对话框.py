@@ -317,7 +317,7 @@ class 快捷键配置对话框(对话框基类):
     def __init__(self, parent=None):
         super().__init__(parent, 标题='快捷键配置', 最小尺寸=(620, 540), 发光=False)
         self._cfg = _load_hotkey_config()
-        lay = QVBoxLayout(self)
+        lay = self.layout()
         lay.setContentsMargins(20, 20, 20, 20)
         lay.setSpacing(10)
 

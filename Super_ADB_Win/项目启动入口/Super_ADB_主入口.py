@@ -56,6 +56,7 @@ from 项目UI.Super_ADB import Ui_MainWindow
 from 工具.android调试工具.ADB工具 import Adb设备操作, 加载json配置, 保存json配置
 from 项目UI.界面样式 import get_stylesheet, DEFAULT_THEME, THEMES, FONT_FAMILY
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 
 # 注册 png_rc 资源（含应用图标 :/Super_ADB.png），import 即执行 qInitResources()
 from 项目UI import png_rc  # noqa: F401
@@ -1387,9 +1388,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             self._input_text_dialog.raise_()
             self._input_text_dialog.activateWindow()
             return
-        dlg = QDialog(self)
-        dlg.setWindowTitle('输入文本 (支持中文)')
-        dlg.setMinimumSize(560, 300)
+        dlg = 自绘外壳对话框(self, 标题='输入文本 (支持中文)', 最小尺寸=(560, 300))
         dlg.setStyleSheet(get_stylesheet(self._current_theme))
 
         card = QWidget(dlg)
@@ -1536,7 +1535,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         from PySide6.QtGui import QShortcut, QKeySequence
         QShortcut(QKeySequence('Ctrl+Return'), dlg, activated=_执行发送)
 
-        main_lay = QVBoxLayout(dlg)
+        main_lay = dlg.layout()
         main_lay.setContentsMargins(10, 10, 10, 10)
         main_lay.addWidget(card)
 

@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from 项目UI.界面样式 import get_stylesheet, THEMES
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style, _create_popup_card
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 
 
 class _工作器信号(QObject):
@@ -45,11 +46,11 @@ class 命令工作器(QRunnable):
             self.signals.finished.emit()
 
 
-class 修改时间对话框(QDialog):
+class 修改时间对话框(自绘外壳对话框):
     """修改设备系统时间弹窗。"""
 
     def __init__(self, adb, serial, theme_id, pool=None, 状态回调=None, parent=None):
-        super().__init__(parent)
+        super().__init__(parent, 标题=f'修改系统时间 — 设备: {serial}', 最小尺寸=(420, 220))
         self.adb = adb
         self.serial = serial
         self._theme_id = theme_id
@@ -57,8 +58,6 @@ class 修改时间对话框(QDialog):
         self._状态回调 = 状态回调  # 主窗口状态栏回调 (文本, ok=bool)
         self._live_workers = []
 
-        self.setWindowTitle(f'修改系统时间 — 设备: {serial}')
-        self.setMinimumSize(420, 220)
         self.setStyleSheet(get_stylesheet(theme_id))
 
         # 内层亮边卡片（与 TCPDump/PCAP 弹窗同款 4px 主题色边框）

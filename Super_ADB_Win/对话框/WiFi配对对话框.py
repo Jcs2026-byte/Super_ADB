@@ -21,10 +21,10 @@ import time
 import warnings
 import threading as _th
 
-from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer
+from PySide6.QtCore import QThread, Signal, QObject, QTimer
 from PySide6.QtGui import (QIcon, QIntValidator, QRegularExpressionValidator)
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+    QApplication, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QGroupBox, QMessageBox, QTextEdit,
     QSizePolicy, QCheckBox, QWidget,
 )
@@ -168,15 +168,14 @@ class _ConnectWorker(QObject):
         self.done.emit(False, hint, tried)
 
 
-class WiFi配对对话框(QDialog):
-    """WiFi 配对码连接对话框。"""
+class WiFi配对对话框(QWidget):
+    """WiFi 配对码连接页（嵌入统一无线调试面板的子页，普通 QWidget 容器）。"""
 
     def __init__(self, parent=None, on_pair_success=None):
         super().__init__(parent)
-        self.setWindowTitle("WiFi 配对码连接")
-        self.setWindowIcon(QIcon(":/Super_ADB.png"))
-        self.setMinimumWidth(520)
-        self.setMinimumHeight(380)
+        # 普通子页容器：自建纵向布局，不继承任何弹窗/分层外壳属性，避免被
+        # DWM 提升为独立分层原生窗口而与父面板叠加出双层残影。
+        QVBoxLayout(self)
         self._theme_id = get_current_theme_id(self)
         self._accent = THEMES[self._theme_id]['accent']
         self.setStyleSheet(get_stylesheet(self._theme_id))
@@ -198,7 +197,7 @@ class WiFi配对对话框(QDialog):
         # 信号触发后再 deleteLater，杜绝 QThread 运行中被析构的原生崩溃。
         self._retired_threads = []    # list[(QThread, QObject)]
         self._connect_enabled = False   # 配对成功后才允许 connect
-        self._embedded = False          # 被统一无线调试面板嵌入时设为 True
+        self._embedded = True          # 生产环境仅作为无线调试面板子页嵌入
 
         self._build_ui()
         self._apply_style()
@@ -217,7 +216,7 @@ class WiFi配对对话框(QDialog):
     # UI
     # ══════════════════════════════════════════════════════════
     def _build_ui(self):
-        root = QVBoxLayout(self)
+        root = self.layout()
         root.setSpacing(10)
         root.setContentsMargins(16, 16, 16, 16)
 
@@ -325,16 +324,12 @@ class WiFi配对对话框(QDialog):
         self.setStyleSheet(get_stylesheet(self._theme_id))
 
     def set_embedded(self, embedded):
-        """嵌入统一无线调试面板时调用：去掉 Qt.Dialog 标志，确保作为子控件正确渲染。
+        """标记是否作为无线调试面板子页嵌入。
 
-        QDialog 默认带 Qt.Dialog 窗口标志，被 QScrollArea/布局包裹时可能不显示内容。
-        嵌入时显式设为 Qt.Widget，独立弹出时恢复默认。
+        本页已是普通 QWidget 容器，不带弹窗/分层原生属性，无需再切换窗口标志；
+        保留该接口仅为与既有装配调用兼容。
         """
-        self._embedded = embedded
-        if embedded:
-            self.setWindowFlags(Qt.Widget)
-        else:
-            self.setWindowFlags(Qt.Dialog)
+        self._embedded = bool(embedded)
 
     def apply_theme(self, theme_id):
         """运行时切换主题：更新 accent + 重设 QSS + 空状态标签颜色。"""
@@ -585,9 +580,9 @@ class WiFi配对对话框(QDialog):
                     self.on_connect_success(ip, tried_ports[-1])
                 except Exception:
                     pass
-            # 嵌入标签页时不关闭页面（accept 会隐藏 widget），仅独立弹窗时自动关闭
+            # 嵌入标签页时不关闭页面（close 会隐藏 widget），仅独立场景自动关闭
             if not self._embedded:
-                self.accept()
+                self.close()
         else:
             # msg 已由 _ConnectWorker 按错误类型分类，直接显示
             self.status_lbl.setText(msg[:120])

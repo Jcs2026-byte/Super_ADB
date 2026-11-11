@@ -242,6 +242,7 @@ class 主题系统Mixin:
         from PySide6.QtWidgets import QApplication
         sheet = get_stylesheet(theme_id)
         已发现弹窗 = []
+        外壳弹窗 = []
         for win in QApplication.topLevelWidgets():
             if win is self:
                 continue
@@ -249,12 +250,21 @@ class 主题系统Mixin:
                 continue
             if callable(getattr(win, 'apply_theme', None)):
                 已发现弹窗.append(win)
+            if callable(getattr(win, '_F刷新外壳自绘颜色', None)):
+                外壳弹窗.append(win)
         print(f'[主题] 发现 {len(已发现弹窗)} 个待同步弹窗: {[type(w).__name__ for w in 已发现弹窗]}')
         for dlg in 已发现弹窗:
             try:
                 dlg.apply_theme(theme_id)
             except Exception as e:
                 print(f'[主题] 弹窗 {type(dlg).__name__} 样式同步失败: {e!r}')
+        # 外壳自绘颜色兜底：即使子类 apply_theme 未调 super，也强制按主题重刷
+        # 外壳背景/边框/发光，避免外发光残留上一套主题的 accent 色。
+        for dlg in 外壳弹窗:
+            try:
+                dlg._F刷新外壳自绘颜色(theme_id)
+            except Exception as e:
+                print(f'[主题] 外壳 {type(dlg).__name__} 颜色刷新失败: {e!r}')
         try:
             from 项目UI.弹窗样式 import 重建所有发光效果
             重建所有发光效果(self._解析强调色rgb())

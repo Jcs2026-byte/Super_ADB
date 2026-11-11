@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
 from 工具.android调试工具.ADB工具 import AdbHelper, CREATE_NO_WINDOW
 from 项目UI.界面样式 import FONT_FAMILY, get_stylesheet, get_current_theme_id, THEMES
 from 项目UI.弹窗样式 import highlight_card_style, add_green_glow, _create_popup_card
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 
 # 注册 png_rc 资源（应用图标 :/Super_ADB.png）
 from 项目UI import png_rc  # noqa: F401
@@ -213,26 +214,23 @@ class EventPieChart(QWidget):
 # ------------------------------------------------------------------
 # 事件回放对话框（单步重放 adb shell input 序列）
 # ------------------------------------------------------------------
-class ReplayDialog(QDialog):
+class ReplayDialog(自绘外壳对话框):
     """把记录到的 input 命令序列单步重放到设备上。"""
 
     _progress = Signal(int, int, str)  # done, total, current_cmd
 
     def __init__(self, serial, events, adb=None, parent=None):
-        super().__init__(parent)
+        super().__init__(parent, 标题='Monkey 事件回放', 最小尺寸=(460, 360))
         self._serial = serial
         self._events = list(events)
         self._adb = adb if adb else AdbHelper()
         self._running = False
         self._delay = 0.3
-        self.setWindowTitle('Monkey 事件回放')
-        self.setWindowIcon(QIcon(':/Super_ADB.png'))
-        self.setMinimumSize(460, 360)
         self.setStyleSheet(get_stylesheet(get_current_theme_id(self)))
         self._build_ui()
 
     def _build_ui(self):
-        root = QVBoxLayout(self)
+        root = self.layout()
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(8)
 
@@ -341,7 +339,7 @@ class ReplayDialog(QDialog):
 # ------------------------------------------------------------------
 # Monkey 配置 + 运行窗口
 # ------------------------------------------------------------------
-class Monkey压测窗口(QWidget):
+class Monkey压测窗口(自绘外壳对话框):
     """Monkey 压测独立窗口。
 
     用法：
@@ -358,7 +356,7 @@ class Monkey压测窗口(QWidget):
     _proc_ended = Signal()
 
     def __init__(self, serial, default_pkg='', parent=None):
-        super().__init__(parent)
+        super().__init__(parent, 标题=f'Monkey 压力测试 — {serial}', 最小尺寸=(720, 620))
         self._adb = AdbHelper()
         self._serial = serial
         self._default_pkg = default_pkg or ''
@@ -383,13 +381,9 @@ class Monkey压测窗口(QWidget):
             os.path.expanduser('~'), '.Super_ADB', 'monkey_templates.json')
         self._replay_dlg = None
 
-        self.setWindowTitle(f'Monkey 压力测试 — {serial}')
-        self.setWindowIcon(QIcon(':/Super_ADB.png'))
-        self.setMinimumSize(720, 620)
         self.resize(1000, 750)
         self._theme_id = get_current_theme_id(self)
         self.setStyleSheet(get_stylesheet(self._theme_id))
-        self.setWindowFlag(Qt.Window, True)
 
         # ── 主题色高亮外边框卡片（含主布局挂载）─────────────────
         self.card, _ = _create_popup_card(self, self._theme_id)

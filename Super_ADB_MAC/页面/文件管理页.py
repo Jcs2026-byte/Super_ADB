@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from 工具.android调试工具.ADB工具 import (AdbFileManager, 格式化设备标签,
                                           加载json配置, 保存json配置)
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 
 
 # 内置文本预览器支持的文件扩展名（双击即用 QuickLook 式预览）
@@ -134,20 +135,14 @@ class _ProgressCmdWorker(QRunnable):
 # ----------------------------------------------------------------------
 # 内置文本预览器（仿 macOS QuickLook）
 # ----------------------------------------------------------------------
-class TextPreviewDialog(QDialog):
+class TextPreviewDialog(自绘外壳对话框):
     """只读展示文本文件内容；支持复制全部、超大文件截断提示。"""
 
     def __init__(self, entry, parent=None):
-        super().__init__(parent)
+        super().__init__(parent, 标题=f'预览 — {entry["name"]}', 最小尺寸=(760, 540))
         self.entry = entry
-        self.setWindowTitle(f'预览 — {entry["name"]}')
         self.resize(760, 540)
-        if parent is not None:
-            try:
-                self.setWindowIcon(parent.window().windowIcon())
-            except Exception:
-                pass
-        lay = QVBoxLayout(self)
+        lay = self.layout()
         lay.setContentsMargins(10, 10, 10, 10)
         lay.setSpacing(8)
 

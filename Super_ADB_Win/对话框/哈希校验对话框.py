@@ -43,6 +43,7 @@ from 项目UI.界面样式 import THEMES, FONT_FAMILY, get_current_theme_id
 from 项目UI.弹窗样式 import 拖拽区域, add_green_glow, highlight_card_style, _create_popup_card
 
 from 项目UI.对话框基类 import 对话框基类
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 
 
 # ─────────────────── 算法注册表（可扩展 #11） ───────────────────
@@ -384,15 +385,14 @@ class 哈希结果行(QWidget):
 # ─────────────────── 目录展开弹窗（递归 / 非递归 / 通配符） ───────────────────
 
 
-class 目录拖拽对话框(QDialog):
+class 目录拖拽对话框(自绘外壳对话框):
     def __init__(self, dirpath, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("目录展开方式")
+        super().__init__(parent, 标题="目录展开方式", 最小尺寸=(360, 220))
         self.setModal(True)
         self.mode = 'recursive'
         self._dir = dirpath
 
-        v = QVBoxLayout(self)
+        v = self.layout()
         info = QLabel(f"检测到文件夹：\n{dirpath}\n请选择展开方式：")
         info.setWordWrap(True)
         v.addWidget(info)
@@ -442,15 +442,13 @@ class 目录拖拽对话框(QDialog):
 # ─────────────────── 性能基准弹窗（#12） ───────────────────
 
 
-class 基准测试对话框(QDialog):
+class 基准测试对话框(自绘外壳对话框):
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("哈希算法性能基准")
-        self.setMinimumWidth(540)
+        super().__init__(parent, 标题="哈希算法性能基准", 最小尺寸=(540, 360))
         self._filepath = None
         self._theme_id = get_current_theme_id(self)
 
-        v = QVBoxLayout(self)
+        v = self.layout()
         h = QHBoxLayout()
         self.btn_pick = QPushButton("选择文件...")
         self.btn_pick.clicked.connect(self._pick)

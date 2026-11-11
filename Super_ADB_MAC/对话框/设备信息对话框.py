@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from 项目UI.界面样式 import get_stylesheet
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style, _create_popup_card
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 
 
 # ------------------------------------------------------------------
@@ -441,7 +442,7 @@ class _结果信号(QObject):
     全部完成 = Signal()  # 全部获取完成
 
 
-class 设备信息对话框(QDialog):
+class 设备信息对话框(自绘外壳对话框):
     """设备信息弹窗：getprop + 多线程标识符获取。
 
     实际抓取委托给模块级函数 `获取设备信息_方法B(adb, serial)`，
@@ -449,7 +450,7 @@ class 设备信息对话框(QDialog):
     """
 
     def __init__(self, adb, serial, theme_id, pool=None, parent=None):
-        super().__init__(parent)
+        super().__init__(parent, 标题=f'设备信息 — 设备: {serial}', 最小尺寸=(760, 620))
         self.adb = adb
         self.serial = serial
         self._theme_id = theme_id
@@ -465,8 +466,6 @@ class 设备信息对话框(QDialog):
         self._信号.标识符获取到.connect(self._追加标识符)
         self._信号.全部完成.connect(self._获取完成)
 
-        self.setWindowTitle(f'设备信息 — 设备: {serial}')
-        self.setMinimumSize(760, 620)
         self.setStyleSheet(get_stylesheet(theme_id))
 
         # 内层亮边卡片（与 TCPDump/PCAP 弹窗同款 4px 主题色边框）

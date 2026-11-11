@@ -56,6 +56,7 @@ from 项目UI.Super_ADB import Ui_MainWindow
 from 工具.android调试工具.ADB工具 import Adb设备操作, 加载json配置, 保存json配置
 from 项目UI.界面样式 import get_stylesheet, DEFAULT_THEME, THEMES, FONT_FAMILY
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 
 # 注册 png_rc 资源（含应用图标 :/Super_ADB.png），import 即执行 qInitResources()
 from 项目UI import png_rc  # noqa: F401
@@ -1387,9 +1388,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
             self._input_text_dialog.raise_()
             self._input_text_dialog.activateWindow()
             return
-        dlg = QDialog(self)
-        dlg.setWindowTitle('输入文本 (支持中文)')
-        dlg.setMinimumSize(560, 300)
+        dlg = 自绘外壳对话框(self, 标题='输入文本 (支持中文)', 最小尺寸=(560, 300))
         dlg.setStyleSheet(get_stylesheet(self._current_theme))
 
         card = QWidget(dlg)
@@ -1536,7 +1535,7 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         from PySide6.QtGui import QShortcut, QKeySequence
         QShortcut(QKeySequence('Ctrl+Return'), dlg, activated=_执行发送)
 
-        main_lay = QVBoxLayout(dlg)
+        main_lay = dlg.layout()
         main_lay.setContentsMargins(10, 10, 10, 10)
         main_lay.addWidget(card)
 
@@ -2695,12 +2694,11 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
     def _分割条移动时(self, *_):
         """折叠/拖动左右分隔条后重算布局，避免右侧控件残留旧宽度被裁剪。
 
-        拖动过程中只记防抖、不立即重排：splitterMoved 每个像素都会触发，
-        此时顶层 layout().activate() 会反复重新分配 splitter 尺寸、把 handle
-        拉回原处，视觉上就是左右不停闪；拖动结束后 150ms 一次性重算即可。
-        ★ 拖动中途每停一下都会到点重排一轮整窗（activate 把 handle 拉回
-          「布局理想位置」），左右界面就来回闪。对策：鼠标左键仍按着
-          （还在拖）就继续推迟重排，松手后才重排一次，并重排后钉回宽度。
+        splitterMoved 每个像素都会触发，立即 layout().activate() 会把 handle
+        拉回「布局理想位置」——拖动中途每停一下都重排一轮整窗，左右界面就
+        来回闪。对策：
+          1) 防抖，且鼠标左键仍按着（还在拖）就继续推迟，松手后才重排一次；
+          2) 重排前记录用户定好的宽度，重排后原样钉回，handle 不再跳位。
         """
         if not hasattr(self, '_splitter_main_timer'):
             self._splitter_main_timer = QTimer(self)
@@ -2874,6 +2872,12 @@ def main():
 
     _zh_filter = _中文上下文菜单过滤器(app)
     app.installEventFilter(_zh_filter)
+
+    # ── 全局首帧防闪过滤器：所有不透明顶层弹窗（含 exec 模态框、以后新增的）
+    # 显示前自动预热首帧 + 关闭 DWM 淡入 + 映射后同步重绘；透明背景的
+    # 无线调试 / 关于 / 环境配置 / 截图覆盖层自动跳过，不受影响。──
+    from 项目UI.弹窗样式 import 首帧防闪过滤器
+    app.installEventFilter(首帧防闪过滤器(app))
 
     # ── 右键「计算哈希」模式：由注册表 command 调用（Super_ADB.exe --hash "%1"）──
     # 在单实例锁之前处理，确保即使主程序已运行，右键哈希仍能独立弹出。

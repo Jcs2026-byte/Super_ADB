@@ -32,12 +32,13 @@ from 项目UI.界面样式 import (
     THEMES, DEFAULT_THEME, _parse_rgb,
 )
 from 项目UI.弹窗样式 import add_green_glow
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 
 # 注册 png_rc 资源（应用图标 :/Super_ADB.png）
 from 项目UI import png_rc  # noqa: F401
 
 
-class Tcpdump对话框(QWidget):
+class Tcpdump对话框(自绘外壳对话框):
     """tcpdump 抓包独立窗口。"""
 
     _bytes_updated = Signal(int, float)
@@ -53,7 +54,7 @@ class Tcpdump对话框(QWidget):
     _run_on_ui = Signal(object)  # 后台线程投递 UI 操作到主线程执行
 
     def __init__(self, serial, parent=None, adb=None):
-        super().__init__(parent)
+        super().__init__(parent, 标题=f'tcpdump 抓包 — {serial}', 最小尺寸=(560, 360))
         # 优先复用调用方（主窗口）传入的 AdbHelper/Adb设备操作 实例：
         # 避免 new 独立实例 → 自研adb 缓存为空 → 重复 AUTH 建连。
         # 为兼容旧代码（直接 Tcpdump对话框(serial)），未传参时 fallback AdbHelper()。
@@ -80,13 +81,9 @@ class Tcpdump对话框(QWidget):
         self._usb_verify_result = None  # U 盘文件完整性校验结果 (ok, lines)
         self._tcpdump_bin = 'tcpdump'  # 设备上 tcpdump 可执行路径（默认依赖 PATH）
 
-        self.setWindowTitle(f'tcpdump 抓包 — {serial}')
-        self.setWindowIcon(QIcon(':/Super_ADB.png'))
-        self.setMinimumSize(560, 360)
         self.resize(620, 400)
         self._theme_id = get_current_theme_id(self)
         self.setStyleSheet(self._style(self._theme_id))
-        self.setWindowFlag(Qt.Window, True)
 
         self.card = QWidget(self)
         self.card.setObjectName('popupCard')
@@ -113,7 +110,7 @@ class Tcpdump对话框(QWidget):
         # 打开弹窗时后台识别设备上的 U 盘
         threading.Thread(target=self._detect_usb, daemon=True).start()
 
-        main_lay = QVBoxLayout(self)
+        main_lay = self.layout()
         main_lay.setContentsMargins(10, 10, 10, 10)
         main_lay.addWidget(self.card)
 

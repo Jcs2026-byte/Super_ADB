@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from 项目UI import png_rc  # noqa: F401
 from 项目UI.界面样式 import get_stylesheet, get_current_theme_id, THEMES
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style, _create_popup_card
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 
 
 # ----------------------------------------------------------------------
@@ -501,12 +502,9 @@ ADB命令集 = [
 ]
 
 
-class ADB命令集合对话框(QDialog):
+class ADB命令集合对话框(自绘外壳对话框):
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("ADB 命令集合")
-        self.setWindowIcon(QIcon(":/Super_ADB.png"))
-        self.setMinimumSize(680, 520)
+        super().__init__(parent, 标题="ADB 命令集合", 最小尺寸=(680, 520))
         self._theme_id = get_current_theme_id(self)
         self.setStyleSheet(get_stylesheet(self._theme_id))
         # 与其他弹窗同款：主题色高亮边框卡片 + 外发光

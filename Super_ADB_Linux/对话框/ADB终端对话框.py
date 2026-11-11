@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 from 项目UI import png_rc  # noqa: F401
 from 项目UI.界面样式 import get_stylesheet, get_current_theme_id, THEMES
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style, _create_popup_card
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 from 工具.android调试工具.ADB工具 import 格式化设备标签
 
 # ANSI 转义序列过滤（字节级，在解码前过滤，避免 UTF-8 多字节字符干扰）
@@ -202,7 +203,7 @@ class _AdbShell行会话:
         self.已关闭 = True
 
 
-class ADB终端对话框(QDialog):
+class ADB终端对话框(自绘外壳对话框):
     """ADB 交互式终端弹窗。
 
     Parameters
@@ -219,7 +220,8 @@ class ADB终端对话框(QDialog):
     _设备列表已加载 = Signal(list, str)
 
     def __init__(self, 主窗口, parent=None):
-        super().__init__(parent)
+        super().__init__(parent, 标题="adb shell 交互式终端",
+                         最小尺寸=(900, 600), 显示最小化=True, 显示最大化=True)
         self._主窗口 = 主窗口
         self._adb = 主窗口.adb
         self._shell = None  # 交互式Shell 实例
@@ -286,19 +288,8 @@ class ADB终端对话框(QDialog):
         self._尺寸防抖定时器.timeout.connect(self._F同步终端尺寸)
         self._信号桥.路径候选.connect(self._F路径候选就绪)
 
-        # 窗口设置
-        self.setWindowTitle("adb shell 交互式终端")
-        self.setWindowIcon(QIcon(":/Super_ADB.png"))
-        self.setMinimumSize(900, 600)
+        # 窗口尺寸（标题栏/图标/最小化/最大化由自绘外壳提供，不再叠加原生 flags）
         self.resize(1100, 750)
-        # QDialog 的原生标题栏默认只有「关闭」按钮。这里在现有 flags 上叠加
-        # 最小化 + 最大化/还原提示位，用 |= 而不是重设整套 flags，避免改变
-        # Dialog 窗口类型与模态行为（弹窗由 show() 非模态打开）。
-        self.setWindowFlags(
-            self.windowFlags()
-            | Qt.WindowType.WindowMinimizeButtonHint
-            | Qt.WindowType.WindowMaximizeButtonHint
-        )
         self.setAcceptDrops(True)  # 支持拖文件进来追加路径
         self._theme_id = get_current_theme_id(self)
         self.setStyleSheet(get_stylesheet(self._theme_id))
@@ -336,6 +327,9 @@ class ADB终端对话框(QDialog):
         pal.setColor(QPalette.ColorRole.Window, bg)
         pal.setColor(QPalette.ColorRole.Base, bg)
         self.setPalette(pal)
+        # 弹窗自身也要自动填充背景：不开时首帧 backing store 保留系统默认白，
+        # 开启后首帧原生擦除阶段即用调色板 Window 深色填充。
+        self.setAutoFillBackground(True)
         # 子控件：卡片用按钮底色（与 #popupCard QSS 一致），输出区用输入底色
         for w, role_bg in (
             (getattr(self, 'card', None), t.get('bg_button')),
@@ -2245,16 +2239,14 @@ class ADB终端对话框(QDialog):
             self._刷新自定义按钮()
 
 
-class _自定义命令配置对话框(QDialog):
+class _自定义命令配置对话框(自绘外壳对话框):
     """自定义快捷命令配置对话框：增删改查。"""
 
     def __init__(self, commands, parent=None):
-        super().__init__(parent)
+        super().__init__(parent, 标题='自定义快捷命令配置', 最小尺寸=(560, 460))
         # 关闭即释放：旧实现每次开关都 new 一个 QDialog 且不释放（轻微内存泄漏）
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self._commands = [c.copy() for c in commands]  # 深拷贝，取消时不影响原列表
-        self.setWindowTitle('自定义快捷命令配置')
-        self.setMinimumSize(560, 460)
         self._theme_id = get_current_theme_id(self)
         self.setStyleSheet(get_stylesheet(self._theme_id))
 
@@ -2402,19 +2394,17 @@ class _自定义命令配置对话框(QDialog):
         return self._commands
 
 
-class _命令编辑对话框(QDialog):
+class _命令编辑对话框(自绘外壳对话框):
     """编辑单个命令的对话框：名称 + 内容同时编辑。"""
 
     def __init__(self, name='', command='', parent=None):
-        super().__init__(parent)
+        super().__init__(parent, 标题='编辑命令', 最小尺寸=(440, 260))
         # 关闭即释放：避免每次打开编辑框都残留一个未释放的 QDialog
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         # 最终值缓存在 Python 字段：WA_DeleteOnClose 关闭即销毁 C++ 控件，
         # 获取值若再读控件会抛 "QLineEdit already deleted"，故取值读字段
         self._名称 = name.strip()
         self._内容 = command.strip()
-        self.setWindowTitle('编辑命令')
-        self.setMinimumSize(440, 260)
         self._theme_id = get_current_theme_id(self)
         self.setStyleSheet(get_stylesheet(self._theme_id))
 

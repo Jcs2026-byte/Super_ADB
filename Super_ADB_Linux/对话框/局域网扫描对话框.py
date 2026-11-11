@@ -21,7 +21,7 @@ import shiboken6
 from PySide6.QtCore import Qt, QThread, QTimer, Signal, QObject
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QGroupBox, QTableWidget, QTableWidgetItem,
     QProgressBar, QComboBox, QSpinBox, QHeaderView, QMessageBox,
     QAbstractItemView,
@@ -459,8 +459,8 @@ class _RangeCombo(QComboBox):
         super().showPopup()
 
 
-class 局域网扫描对话框(QDialog):
-    """局域网 ADB 设备扫描弹窗。
+class 局域网扫描对话框(QWidget):
+    """局域网 ADB 设备扫描页（嵌入统一无线调试面板的子页，普通 QWidget 容器）。
 
     参数:
       - on_device_connected(serial): 用户在扫描结果里点「连接」(或「一键连接全部」)
@@ -470,10 +470,9 @@ class 局域网扫描对话框(QDialog):
 
     def __init__(self, parent=None, on_device_connected=None, adb=None):
         super().__init__(parent)
-        self.setWindowTitle("局域网 ADB 设备扫描")
-        self.setWindowIcon(QIcon(":/Super_ADB.png"))
-        self.setMinimumWidth(780)
-        self.setMinimumHeight(480)
+        # 普通子页容器：自建纵向布局，不继承任何弹窗/分层外壳属性，避免被
+        # DWM 提升为独立分层原生窗口而与父面板叠加出双层残影。
+        QVBoxLayout(self)
         self._theme_id = get_current_theme_id(self)
         self._accent = THEMES[self._theme_id]['accent']
         self.setStyleSheet(get_stylesheet(self._theme_id))
@@ -484,7 +483,7 @@ class 局域网扫描对话框(QDialog):
         self._scan_thread = None
         self._port = ADB_PORT
         self._closing = False
-        self._embedded = False          # 被统一无线调试面板嵌入时设为 True
+        self._embedded = True          # 生产环境仅作为无线调试面板子页嵌入
         # 追踪正在运行的连接/回填后台线程，避免关闭窗口时悬挂
         self._connect_threads = []   # list[(QThread, _ConnectWorker)]
         self._enrich_threads = []    # list[(QThread, _EnrichWorker)]
@@ -516,16 +515,12 @@ class 局域网扫描对话框(QDialog):
     # ── 嵌入模式 ──
 
     def set_embedded(self, embedded):
-        """嵌入统一无线调试面板时调用：去掉 Qt.Dialog 标志，确保作为子控件正确渲染。
+        """标记是否作为无线调试面板子页嵌入。
 
-        QDialog 默认带 Qt.Dialog 窗口标志，被 QTabWidget 包裹时首帧可能不渲染内容
-        （表现为标签页空白）。嵌入时显式设为 Qt.Widget，独立弹出时恢复默认。
+        本页已是普通 QWidget 容器，不带弹窗/分层原生属性，无需再切换窗口标志；
+        保留该接口仅为与既有装配调用兼容。
         """
-        self._embedded = embedded
-        if embedded:
-            self.setWindowFlag(Qt.WindowType.Widget, True)
-        else:
-            self.setWindowFlag(Qt.WindowType.Dialog, True)
+        self._embedded = bool(embedded)
 
     # ── 主题切换 ──
 
@@ -543,7 +538,7 @@ class 局域网扫描对话框(QDialog):
     # ── UI 构建 ──
 
     def _build_ui(self):
-        root = QVBoxLayout(self)
+        root = self.layout()
         root.setSpacing(10)
         root.setContentsMargins(16, 16, 16, 16)
 

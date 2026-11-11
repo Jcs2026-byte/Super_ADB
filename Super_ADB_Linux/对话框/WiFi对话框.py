@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from 项目UI import png_rc  # noqa: F401
 from 项目UI.界面样式 import get_stylesheet, get_current_theme_id, THEMES
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style, _create_popup_card
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 from 工具.便捷工具 import WiFi工具
 
 # ── 语义色 ──
@@ -98,14 +99,11 @@ class _StatCard(QFrame):
         self.value_lbl.setText(str(v))
 
 
-class WiFi对话框(QDialog):
+class WiFi对话框(自绘外壳对话框):
     COL_SSID, COL_PWD, COL_AUTH, COL_CIPHER, COL_NOTE, COL_OP = range(6)
 
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("WiFi 密码查看器")
-        self.setWindowIcon(QIcon(":/Super_ADB.png"))
-        self.setMinimumSize(940, 600)
+        super().__init__(parent, 标题="WiFi 密码查看器", 最小尺寸=(940, 600))
         self._theme_id = get_current_theme_id(self)
         self._accent = THEMES[self._theme_id]['accent']
         self.setStyleSheet(get_stylesheet(self._theme_id))

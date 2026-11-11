@@ -12,7 +12,7 @@
 """
 
 from PySide6.QtCore import (
-    Qt, Signal, QPoint, QCoreApplication, QEvent, QRect, QObject,
+    Qt, Signal, QPoint, QCoreApplication, QEvent, QRect, QObject, QTimer,
 )
 from PySide6.QtGui import QColor, QPainter, QPolygon, QImage, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
@@ -47,7 +47,11 @@ def _禁用窗口淡入过渡(dlg):
         hwnd = int(dlg.winId())
         if not hwnd:
             return
-        enable = ctypes.c_bool(True)
+        # Win32 BOOL 是 4 字节 int：必须用 c_int 而不是 c_bool（1 字节）。
+        # 旧实现传 c_bool，cbAttribute=1 与 DWM 期望的 4 字节不符，Set 返回
+        # E_INVALIDARG(0x80070057) 被 except 静默吞掉，淡入过渡从未被禁用，
+        # 弹窗首帧仍先播半透明淡入（实测 c_int 后 Set 返回 S_OK）。
+        enable = ctypes.c_int(1)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(
             hwnd, 3, ctypes.byref(enable), ctypes.sizeof(enable))
     except Exception:
@@ -58,11 +62,14 @@ def _预热首帧(dlg):
     """show/exec 之前调用：创建原生窗口 + 离屏预热首帧（不含 DWM 处理）。
 
     grab() 离屏渲染一帧，把 style polish、QSS 解析、布局计算全部预热，
-    让随后的真实首帧绘制只剩纯 blit。供 exec 模态弹窗与全局过滤器复用。
+    让随后的真实首帧绘制只剩纯 blit。repaint() 则把当前（已 polish 的）
+    深色背景直接画进窗口真实后缓冲，避免映射瞬间后缓冲还是未绘制的默认白。
+    供 exec 模态弹窗与全局过滤器复用。
     """
     try:
         dlg.winId()          # 强制创建原生窗口（此时尚未映射，不触发淡入）
         dlg.grab()           # 离屏预热：跑完 polish + QSS 解析 + 布局
+        dlg.repaint()        # 同步绘制真实后缓冲，抢在首次 DWM 合成前填深
     except Exception:
         pass
 
@@ -126,6 +133,10 @@ def _F是否跳过防闪(win):
         return True
     if not isinstance(win, QWidget):
         return True
+    # 内嵌子控件不是顶层窗口，不做窗口级预热（isWindow() 才是顶层判据，
+    # 不能用 parent() is None：带 parent 的 Dialog 仍是顶层窗口）。
+    if not win.isWindow():
+        return True
     if win.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground):
         return True
     # 窗口类型是枚举值（Dialog=3 / Popup=9 / ToolTip=13 / SplashScreen=15），
@@ -139,10 +150,39 @@ def _F是否跳过防闪(win):
     return False
 
 
+def _F递归开自动填充(w):
+    """递归把不透明子孙控件的背景自动填充打开。
+
+    实测：铺满弹窗的 card、QPlainTextEdit 的 viewport 这类容器，在窗口
+    polish 阶段 autoFillBackground 会被 Qt 重置回 False；此时调色板虽已是
+    深色，但 autoFill 关闭时首帧未绘制阶段不刷底色，露出系统默认白（白块
+    主要落在这些面积最大的子层上，而非弹窗本体）。Show 分支在 polish 完成、
+    即将映射上屏前最后一刻递归兜底强制开启。带 WA_TranslucentBackground 的
+    子控件跳过，不影响透明自绘浮层。
+    """
+    try:
+        if isinstance(w, QWidget) and not w.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground):
+            w.setAutoFillBackground(True)
+    except Exception:
+        pass
+    for ch in getattr(w, 'children', lambda: [])():
+        _F递归开自动填充(ch)
+
+
 def _F执行防闪(win):
-    """对一个未处理过的不透明顶层窗口执行预热 + 关 DWM 淡入。"""
+    """对一个未处理过的不透明顶层窗口执行预热 + 关 DWM 淡入 + 背景自动填充。"""
     _预热首帧(win)
     _禁用窗口淡入过渡(win)
+    try:
+        # 弹窗自身自动填充背景：不开时 Qt 不在首帧擦除背景，backing store 保留
+        # 系统默认白（最小复现实测首帧 RGB 255,255,255）；开启后首帧原生擦除
+        # 阶段即用调色板 Window 深色填充。属性在窗口存活期保留，复用重开仍有效。
+        win.setAutoFillBackground(True)
+        # 递归兜底：card / viewport 等子容器在 polish 阶段 autoFill 会被重置，
+        # 这里最后一刻再强制打开，压掉子层首帧白块。
+        _F递归开自动填充(win)
+    except Exception:
+        pass
     _已处理窗口id.add(id(win))
     try:
         win.destroyed.connect(lambda _obj=None, _k=id(win): _已处理窗口id.discard(_k))
@@ -176,23 +216,35 @@ class 首帧防闪过滤器(QObject):
         except Exception:
             return False
         if etype in (QEvent.Type.Polish, QEvent.Type.Show):
-            # 只处理顶层窗口；内嵌子控件不做任何窗口级处理
-            if obj.parent() is not None:
+            # 只处理顶层窗口；内嵌子控件不做任何窗口级处理。
+            # 注意：不能用 parent() is None 判断顶层——带 parent 的 QDialog
+            # 仍是独立顶层窗口（isWindow()=True），用 parent 判断会把这类
+            # 弹窗误当成内嵌子控件跳过预热，首帧直接闪白（实测终端弹窗纯白）。
+            if not obj.isWindow():
                 return False
-            if _F是否跳过防闪(obj):
+            复用中 = id(obj) in _已处理窗口id
+            if _F是否跳过防闪(obj) and not 复用中:
+                # 透明浮层 / 工具提示 / 非顶层 / 非 Windows：保持原样不动。
+                # 复用窗口例外：已在 _已处理窗口id 中，走到下面的兜底重绘。
                 return False
             if etype == QEvent.Type.Polish:
-                # 样式 polish 前先预热：跑完 QSS 解析 + 布局，避免首帧卡住
-                try:
-                    obj.winId()
-                    obj.grab()
-                except Exception:
-                    pass
+                # 样式 polish 前先预热：跑完 QSS 解析 + 布局，避免首帧卡住。
+                # 复用窗口已预热过，不重复。
+                if not 复用中:
+                    try:
+                        obj.winId()
+                        obj.grab()
+                    except Exception:
+                        pass
             elif etype == QEvent.Type.Show:
-                _F执行防闪(obj)
-                # 映射后立即同步重绘真实后缓冲，压掉「未绘制白色画面」
+                if not 复用中:
+                    _F执行防闪(obj)
+                # showEvent 派发早于 native 窗口映射，此时 repaint 不保证写进
+                # 真实后缓冲；先同步重绘一次，再排到上屏后的事件循环首轮补一次，
+                # 压住残留的未绘制白帧。receiver 传 obj，窗口销毁时定时器自动取消。
                 try:
                     obj.repaint()
+                    QTimer.singleShot(0, obj, obj.repaint)
                 except Exception:
                     pass
         return super().eventFilter(obj, event)
@@ -331,7 +383,10 @@ def _create_popup_card(dialog, theme_id, margins=(10, 10, 10, 10),
     if glow:
         accent = THEMES.get(theme_id, THEMES[DEFAULT_THEME])['accent']
         add_green_glow(card, accent=QColor(accent))
-    outer = QVBoxLayout(dialog)
+    # 复用弹窗已有布局（自绘外壳对话框已建主布局）；无布局时才新建。
+    outer = dialog.layout()
+    if outer is None:
+        outer = QVBoxLayout(dialog)
     outer.setContentsMargins(*margins)
     outer.addWidget(card)
     return card, outer
@@ -734,7 +789,7 @@ class 无边框缩放Mixin:
         四角 + 左右 + 底部均可缩放。
         """
         rect = self.rect()
-        m = self._缩放边距
+        m = getattr(self, '_缩放边距', 8)
         左 = 坐标.x() < m
         右 = 坐标.x() > rect.width() - m
         上 = 坐标.y() < m
@@ -813,7 +868,7 @@ class 无边框缩放Mixin:
 
     def _缩放移动处理(self, 事件):
         """在弹窗自身 mouseMoveEvent 开头调用：缩放中则执行缩放，否则更新光标。"""
-        if self._缩放中:
+        if getattr(self, '_缩放中', False):
             if 事件.buttons() & Qt.MouseButton.LeftButton:
                 self._执行缩放(事件.globalPosition().toPoint())
             事件.accept()
@@ -825,7 +880,7 @@ class 无边框缩放Mixin:
 
     def _缩放释放处理(self, 事件):
         """在弹窗自身 mouseReleaseEvent 开头调用：结束缩放状态。"""
-        if self._缩放中:
+        if getattr(self, '_缩放中', False):
             self._缩放中 = False
             self._缩放方向 = None
             self.unsetCursor()

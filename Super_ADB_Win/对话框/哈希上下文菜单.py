@@ -33,12 +33,13 @@ from 项目UI import png_rc  # noqa: F401
 
 from 项目UI.界面样式 import ACCENT, FONT_FAMILY, STYLE_SHEET, get_stylesheet, get_current_theme_id, THEMES
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style, _create_popup_card
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 from 哈希校验对话框 import compute_hashes_batch, ALGO_ORDER
 
 
-class 哈希上下文菜单(QDialog):
+class 哈希上下文菜单(自绘外壳对话框):
     def __init__(self, results, algo_keys=None, parent=None):
-        super().__init__(parent)
+        super().__init__(parent, 最小尺寸=(640, 480))
         self._algo_keys = list(algo_keys) if algo_keys else ['MD5', 'SHA1', 'SHA256']
         self._results_raw = results  # 保存原始小写哈希值
         if results:
@@ -52,8 +53,6 @@ class 哈希上下文菜单(QDialog):
         self._theme_id = get_current_theme_id(self)
         self._accent = THEMES[self._theme_id]['accent']
         self.setStyleSheet(get_stylesheet(self._theme_id))
-        self.setMinimumSize(640, 480)
-        self.setWindowIcon(QIcon(':/Super_ADB.png'))
 
         # 大小写偏好持久化（默认勾选=大写）
         self._settings = QSettings('Super_ADB', 'Md5Tool')

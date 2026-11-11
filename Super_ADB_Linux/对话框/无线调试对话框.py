@@ -147,7 +147,7 @@ class 无线调试对话框(QDialog, 无边框缩放Mixin):
         # ── 标签页 1：局域网扫描 ──
         self._lan_dialog = 局域网扫描对话框(
             parent=self, on_device_connected=self._设备连接时, adb=self._adb)
-        # 嵌入时去掉 Qt.Dialog 标志，否则 QTabWidget 里首帧可能不渲染内容
+        # 子页已是普通 QWidget 容器，标记嵌入态（保留接口兼容）
         self._lan_dialog.set_embedded(True)
         # 嵌入后不要让其独立窗口的最小尺寸限制整个 QTabWidget
         self._lan_dialog.setMinimumSize(0, 0)
@@ -163,7 +163,7 @@ class 无线调试对话框(QDialog, 无边框缩放Mixin):
         self._pair_dialog = WiFi配对对话框(parent=self, on_pair_success=_pair_cb)
         self._pair_dialog.set_embedded(True)
         self._pair_dialog.setMinimumSize(0, 0)
-        # 配对页直接嵌入标签页（与局域网扫描一致），QDialog 套 QScrollArea 会导致空白
+        # 配对页直接嵌入标签页（与局域网扫描一致，普通 QWidget 容器）
         self.tab.addTab(self._pair_dialog, "🔑 配对码连接")
 
         # ── 标签页 3：二维码连接 ──

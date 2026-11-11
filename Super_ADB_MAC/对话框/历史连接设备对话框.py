@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QFrame, QSizePolicy
 )
 from 工具.android调试工具.ADB工具 import 加载json配置, 保存json配置
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 
 # 配置文件名
 _HISTORY_CFG = '历史连接设备.json'
@@ -72,18 +73,15 @@ def 添加历史设备(ip, port, model=''):
     _save_history(devices)
 
 
-class 历史连接设备对话框(QDialog):
+class 历史连接设备对话框(自绘外壳对话框):
     """历史连接设备对话框。"""
 
     def __init__(self, adb, on_reconnect=None, parent=None, theme_id=None):
-        super().__init__(parent)
+        super().__init__(parent, 标题="历史连接设备", 最小尺寸=(680, 400))
         self.adb = adb
         self._on_reconnect = on_reconnect
         self._devices = []
         self._theme_id = theme_id or 'default'
-        self.setWindowTitle("历史连接设备")
-        self.setMinimumWidth(680)
-        self.setMinimumHeight(400)
         from 项目UI.界面样式 import get_stylesheet
         from 项目UI.弹窗样式 import _create_popup_card
         self.setStyleSheet(get_stylesheet(self._theme_id))
@@ -185,7 +183,7 @@ class 历史连接设备对话框(QDialog):
             # 从设备能力配置里查询是不是单通道
             is_single_channel = False
             try:
-                from 工具.配置.设备能力 import 是否单通道
+                from 工具.android调试工具.设备能力 import 是否单通道
                 result = 是否单通道(model, system_version)
                 if result is True:
                     is_single_channel = True

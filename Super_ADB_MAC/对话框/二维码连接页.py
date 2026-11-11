@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 
 from 项目UI import png_rc  # noqa: F401
 from 项目UI.弹窗样式 import add_green_glow
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 from 项目UI.界面样式 import get_stylesheet, get_current_theme_id, THEMES
 
 # 精确匹配等待窗口（秒）：超过该时间仍未发现「服务名匹配」的配对广播时，
@@ -1196,12 +1197,10 @@ class 二维码连接页(QWidget):
         name = self._service_name
         code = self._code
 
-        dlg = QDialog(self)
-        dlg.setWindowTitle("扫码配对二维码")
-        dlg.setWindowIcon(QIcon(":/Super_ADB.png"))
+        dlg = 自绘外壳对话框(self, 标题="扫码配对二维码", 最小尺寸=(380, 420))
         add_green_glow(dlg)
 
-        root = QVBoxLayout(dlg)
+        root = dlg.layout()
         root.setSpacing(12)
         root.setContentsMargins(20, 20, 20, 20)
 

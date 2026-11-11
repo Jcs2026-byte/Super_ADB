@@ -38,6 +38,7 @@ from 项目UI import png_rc  # noqa: F401
 from PySide6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat, QFont, QIcon, QTextCursor, QPixmap, QPainter, QPainterPath, QPen
 from 项目UI.界面样式 import THEMES, get_stylesheet
 from 项目UI.对话框基类 import 对话框基类
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style, _create_popup_card
 from 工具.android调试工具.收藏下拉框 import 收藏委托, _收藏列表视图
 
@@ -924,21 +925,17 @@ class Json工具对话框(对话框基类):
     """JSON 工具弹窗（QDialog，自定义标题关闭按钮免依赖系统框架）。"""
 
     def __init__(self, parent=None):
-        super().__init__(parent, 标题='JSON 工具', 最小尺寸=(680, 460), 发光=False)
-        self.setWindowFlags(
-            Qt.WindowType.Window |
-            Qt.WindowType.WindowCloseButtonHint |
-            Qt.WindowType.WindowMinMaxButtonsHint
-        )
+        super().__init__(parent, 标题='JSON 工具', 最小尺寸=(680, 460), 发光=False,
+                         显示最大化=True)
         self.resize(960, 680)
         self._theme_id = self._主题id  # 兼容旧代码引用
         self._accent = THEMES[self._主题id]['accent']
         self.diffA_filepath = ''
         self.diffB_filepath = ''
         self._last_diff_result = None
-        self.fmt_filepath = ''        # 格式化页拖入的源文件路径
-        self._last_mode = 'format'    # 最近一次输出模式：format / minify（决定保存文件名后缀）
-        # setWindowFlags 后需重设样式（Window 标志会重置部分样式）
+        self.fmt_filepath = ''
+        self._last_mode = 'format'
+        # 重设样式（窗口标志变化会重置部分样式）
         self.setStyleSheet(get_stylesheet(self._theme_id))
 
         # 内层亮边卡片（与 TCPDump/PCAP 弹窗同款 4px 主题色边框）
@@ -1794,17 +1791,8 @@ class Json工具对话框(对话框基类):
             return
 
         # 无 parent：与主页/JSON 工具平级的独立窗口，点击谁谁在前
-        dlg = QDialog()
-        dlg.setWindowTitle('JSON 树视图')
-        dlg.setWindowIcon(QIcon(':/Super_ADB.png'))
-        # 允许最小化/最大化（大 JSON 时可放大查看）
-        dlg.setWindowFlags(
-            Qt.WindowType.Window |
-            Qt.WindowType.WindowMinMaxButtonsHint |
-            Qt.WindowType.WindowCloseButtonHint
-        )
+        dlg = 自绘外壳对话框(None, 标题='JSON 树视图', 最小尺寸=(520, 360), 显示最大化=True)
         dlg.resize(860, 580)
-        dlg.setMinimumSize(QSize(520, 360))
         # 无 parent 独立窗口继承不到全局样式，需自行挂载（滚动条等控件才会走主题样式）
         dlg.setStyleSheet(get_stylesheet(self._theme_id))
 

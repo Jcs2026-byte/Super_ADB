@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from 项目UI.界面样式 import get_stylesheet
 from 项目UI.弹窗样式 import _create_popup_card
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 
 
 def _显示宽度(s):
@@ -154,11 +155,11 @@ class _结果信号(QObject):
     全部完成 = Signal()
 
 
-class 包信息对话框(QDialog):
+class 包信息对话框(自绘外壳对话框):
     """包信息弹窗：异步获取并展示指定包的详细信息。"""
 
     def __init__(self, adb, serial, package_name, theme_id, parent=None):
-        super().__init__(parent)
+        super().__init__(parent, 标题=f'包信息 — {package_name}', 最小尺寸=(600, 420))
         self.adb = adb
         self.serial = serial
         self.package_name = package_name
@@ -168,8 +169,6 @@ class 包信息对话框(QDialog):
         self._信号.单条完成.connect(self._追加一行)
         self._信号.全部完成.connect(self._完成)
 
-        self.setWindowTitle(f'包信息 — {package_name}')
-        self.setMinimumSize(600, 420)
         self.setStyleSheet(get_stylesheet(theme_id))
 
         # 内层亮边卡片

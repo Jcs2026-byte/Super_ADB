@@ -343,8 +343,8 @@ class 安装解包对话框(对话框基类):
         # 把子控件的局部样式（meta_label / preview / progress_bar 等）也跟主题走
         self._apply_widget_styles(self._theme_id)
 
-        # 把卡片放入对话框
-        main_lay = QVBoxLayout(self)
+        # 把卡片放入对话框（复用外壳主布局，不再新建外层布局）
+        main_lay = self.layout()
         main_lay.setContentsMargins(10, 10, 10, 10)
         main_lay.addWidget(self.card)
 

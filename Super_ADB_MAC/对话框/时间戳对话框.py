@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from 项目UI import png_rc  # noqa: F401
 from 项目UI.界面样式 import FONT_FAMILY, STYLE_SHEET, get_stylesheet, get_current_theme_id, THEMES
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style, _create_popup_card
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 
 BJ = timezone(timedelta(hours=8))  # 北京时间 UTC+8
 
@@ -41,12 +42,9 @@ def _norm_ts(ts: int) -> float:
     return ts / 1e9
 
 
-class 时间戳对话框(QDialog):
+class 时间戳对话框(自绘外壳对话框):
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("时间戳转换")
-        self.setWindowIcon(QIcon(":/Super_ADB.png"))
-        self.setMinimumWidth(480)
+        super().__init__(parent, 标题="时间戳转换", 最小尺寸=(480, 360))
         self._theme_id = get_current_theme_id(self)
         self.setStyleSheet(get_stylesheet(self._theme_id))
         # 内层亮边卡片（与 TCPDump/PCAP 弹窗同款 4px 主题色边框）

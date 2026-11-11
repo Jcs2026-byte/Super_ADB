@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from 项目UI import png_rc  # noqa: F401
 from 项目UI.界面样式 import get_stylesheet, get_current_theme_id, THEMES
 from 项目UI.弹窗样式 import add_green_glow, highlight_card_style, _create_popup_card
+from 项目UI.透明外壳对话框 import 自绘外壳对话框
 from 工具.便捷工具 import WiFi工具
 
 # ── 语义色 ──
@@ -98,14 +99,11 @@ class _StatCard(QFrame):
         self.value_lbl.setText(str(v))
 
 
-class WiFi对话框(QDialog):
+class WiFi对话框(自绘外壳对话框):
     COL_SSID, COL_PWD, COL_AUTH, COL_CIPHER, COL_NOTE, COL_OP = range(6)
 
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("WiFi 密码查看器")
-        self.setWindowIcon(QIcon(":/Super_ADB.png"))
-        self.setMinimumSize(940, 600)
+        super().__init__(parent, 标题="WiFi 密码查看器", 最小尺寸=(940, 600))
         self._theme_id = get_current_theme_id(self)
         self._accent = THEMES[self._theme_id]['accent']
         self.setStyleSheet(get_stylesheet(self._theme_id))
@@ -124,15 +122,23 @@ class WiFi对话框(QDialog):
     # ══════════════════════════════════════════════════════════
     # 主题切换
     # ══════════════════════════════════════════════════════════
-    def apply_theme(self, theme_id):
-        """运行时切换主题。"""
+    def apply_theme(self, theme_id=None):
+        """运行时切换主题。
+
+        构造期基类可能调到本方法（此时 self.card 还没建），故 card 相关操作必须
+        先判存在，只更新全局 QSS；card 建好后的首次样式由 __init__ 自己负责。
+        """
+        if theme_id not in THEMES:
+            theme_id = getattr(self, '_theme_id', None)
         if theme_id not in THEMES:
             theme_id = 'dark_cyan'
         self._theme_id = theme_id
         self._accent = THEMES[theme_id]['accent']
         self.setStyleSheet(get_stylesheet(theme_id))
-        self.card.setStyleSheet(highlight_card_style(theme_id))
-        add_green_glow(self.card, accent=QColor(self._accent))
+        卡片 = getattr(self, 'card', None)
+        if 卡片 is not None:
+            卡片.setStyleSheet(highlight_card_style(theme_id))
+            add_green_glow(卡片, accent=QColor(self._accent))
         self.update()
 
     # ══════════════════════════════════════════════════════════

@@ -18,7 +18,7 @@ import tempfile
 import hashlib
 
 from PySide6.QtCore import QThread, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QDragEnterEvent, QDragMoveEvent, QDropEvent
 from PySide6.QtWidgets import (QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
                                QPlainTextEdit, QFileDialog, QWidget)
 
@@ -338,6 +338,36 @@ class 证书安装对话框(对话框基类):
         根布局.addWidget(self.输出框, 1)
 
         self.setAcceptDrops(True)
+
+    # ------------------------------------------------------------------
+    # 宿主层拖放转发到内部拖拽区（透明分层外壳下子控件收不到 shell 拖放事件）
+    # ------------------------------------------------------------------
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        区 = getattr(self, '拖拽区', None)
+        if 区 is not None:
+            区.dragEnterEvent(event)
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event: QDragMoveEvent):
+        区 = getattr(self, '拖拽区', None)
+        if 区 is not None:
+            区.dragMoveEvent(event)
+        else:
+            super().dragMoveEvent(event)
+
+    def dragLeaveEvent(self, event):
+        区 = getattr(self, '拖拽区', None)
+        if 区 is not None:
+            区.dragLeaveEvent(event)
+        super().dragLeaveEvent(event)
+
+    def dropEvent(self, event: QDropEvent):
+        区 = getattr(self, '拖拽区', None)
+        if 区 is not None:
+            区.dropEvent(event)
+        else:
+            super().dropEvent(event)
 
     def _输出框样式(self):
         t = THEMES[self._主题id]

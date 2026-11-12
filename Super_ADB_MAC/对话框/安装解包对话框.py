@@ -19,7 +19,7 @@ import subprocess
 import zipfile
 
 from PySide6.QtCore import Qt, QThread, Signal, QSize, QTimer
-from PySide6.QtGui import QColor, QIcon, QPixmap, QPainter, QFont
+from PySide6.QtGui import QColor, QIcon, QPixmap, QPainter, QFont, QDragEnterEvent, QDragMoveEvent, QDropEvent
 from PySide6.QtWidgets import (QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
                                QWidget, QPlainTextEdit, QTreeWidget, QTreeWidgetItem,
                                QCheckBox, QProgressBar, QFileDialog, QMessageBox,
@@ -347,6 +347,40 @@ class 安装解包对话框(对话框基类):
         main_lay = self.layout()
         main_lay.setContentsMargins(10, 10, 10, 10)
         main_lay.addWidget(self.card)
+
+        # 拖放接收上移到宿主层：透明无边框分层外壳下，shell 拖放事件未命中到
+        # 内部子控件 拖拽区域；由宿主 self 接管 acceptDrops，再转发给 drop_area。
+        self.setAcceptDrops(True)
+
+    # ------------------------------------------------------------------
+    # 宿主层拖放转发到内部拖拽区
+    # ------------------------------------------------------------------
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        区 = getattr(self, 'drop_area', None)
+        if 区 is not None:
+            区.dragEnterEvent(event)
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event: QDragMoveEvent):
+        区 = getattr(self, 'drop_area', None)
+        if 区 is not None:
+            区.dragMoveEvent(event)
+        else:
+            super().dragMoveEvent(event)
+
+    def dragLeaveEvent(self, event):
+        区 = getattr(self, 'drop_area', None)
+        if 区 is not None:
+            区.dragLeaveEvent(event)
+        super().dragLeaveEvent(event)
+
+    def dropEvent(self, event: QDropEvent):
+        区 = getattr(self, 'drop_area', None)
+        if 区 is not None:
+            区.dropEvent(event)
+        else:
+            super().dropEvent(event)
 
     # ------------------------------------------------------------------
     # 主题切换

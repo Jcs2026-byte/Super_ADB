@@ -30,7 +30,7 @@ if sys.platform == 'win32':
     import winreg  # 注册表「计算哈希」右键菜单，仅 Windows 支持
 
 from PySide6.QtCore import Qt, QThread, Signal, QSemaphore, QSettings
-from PySide6.QtGui import QColor, QFont, QFontMetrics
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QDragEnterEvent, QDragMoveEvent, QDropEvent
 from PySide6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QLabel, QPushButton,
     QVBoxLayout, QWidget, QScrollArea, QCheckBox, QProgressBar,
@@ -656,6 +656,36 @@ class 哈希校验对话框(对话框基类):
         root.addLayout(bottom)
 
         self.setAcceptDrops(True)
+
+    # ------------------------------------------------------------------
+    # 宿主层拖放转发到内部拖拽区（透明分层外壳下子控件收不到 shell 拖放事件）
+    # ------------------------------------------------------------------
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        区 = getattr(self, 'drop_area', None)
+        if 区 is not None:
+            区.dragEnterEvent(event)
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event: QDragMoveEvent):
+        区 = getattr(self, 'drop_area', None)
+        if 区 is not None:
+            区.dragMoveEvent(event)
+        else:
+            super().dragMoveEvent(event)
+
+    def dragLeaveEvent(self, event):
+        区 = getattr(self, 'drop_area', None)
+        if 区 is not None:
+            区.dragLeaveEvent(event)
+        super().dragLeaveEvent(event)
+
+    def dropEvent(self, event: QDropEvent):
+        区 = getattr(self, 'drop_area', None)
+        if 区 is not None:
+            区.dropEvent(event)
+        else:
+            super().dropEvent(event)
 
     def apply_theme(self, theme_id):
         """主窗口切换主题时调用：把弹窗与所有已添加的结果行一起刷新。

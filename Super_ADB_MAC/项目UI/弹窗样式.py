@@ -14,7 +14,7 @@
 from PySide6.QtCore import (
     Qt, Signal, QPoint, QCoreApplication, QEvent, QRect, QObject, QTimer,
 )
-from PySide6.QtGui import QColor, QPainter, QPolygon, QImage, QDragEnterEvent, QDropEvent
+from PySide6.QtGui import QColor, QPainter, QPolygon, QImage, QDragEnterEvent, QDragMoveEvent, QDropEvent
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QLabel,
@@ -689,6 +689,14 @@ class 拖拽区域(QLabel):
             ev.acceptProposedAction()
             self._active = True
             self._apply_style()
+
+    def dragMoveEvent(self, ev: QDragMoveEvent):
+        # dragEnter 接受后，拖拽在区域内移动期间需持续接受动作；
+        # 否则基类默认 ignore，放置目标会被重新标记为不可放置，dropEvent 不触发。
+        if ev.mimeData().hasUrls():
+            ev.acceptProposedAction()
+        else:
+            super().dragMoveEvent(ev)
 
     def dragLeaveEvent(self, _ev):
         self._active = False

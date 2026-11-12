@@ -32,6 +32,9 @@ ADB_VERSION = 0x01000001  # 官方adb使用0x01000001（skip checksum）
 A_VERSION_SKIP_CHECKSUM = 0x01000001
 ADB_MAX_PAYLOAD = 1048576  # 1MB
 INITIAL_DELAYED_ACK_BYTES = 32 * 1024 * 1024  # delayed_ack 初始发送窗口(32MB, 对齐官方 adb.h)
+# 安装包/推送文件先一次性读入内存并关闭本地句柄，再从内存分块发送，避免网络发送阻塞
+# 期间长期占用本地文件；超过此大小回退边读边发，控制内存占用。
+全量读入阈值字节 = 200 * 1024 * 1024
 
 # ── 连接池常量 ──
 连接池默认最大空闲秒 = 300       # 空闲连接保留时间（秒）
@@ -1639,33 +1642,50 @@ class AdbConnection:
                   f'文件={file_size}字节({total_chunks}块/{往返次数}次往返)')
             sent = 0
             t0 = time.time()
-            with open(local_path, 'rb') as f:
-                while True:
-                    buf = f.read(读取量)
-                    if not buf:
-                        break
-                    # 把多个 DATA 块拼进同一个 WRTE payload。
-                    # ★ 提速：预分配整帧容量 + memoryview 视图填充，避免
-                    # 「每块一次切片拷贝 + bytearray 逐块 extend 反复 realloc」。
-                    块头 = 8  # b'DATA' + <I 长度
-                    块数 = (len(buf) + chunk_size - 1) // chunk_size
-                    帧 = bytearray(块数 * (块头 + chunk_size))
-                    buf_view = memoryview(buf)
-                    pos = 0
-                    for off in range(0, len(buf), chunk_size):
-                        blk_len = min(chunk_size, len(buf) - off)
-                        帧[pos:pos + 4] = b'DATA'
-                        帧[pos + 4:pos + 8] = struct.pack('<I', blk_len)
-                        帧[pos + 8:pos + 8 + blk_len] = buf_view[off:off + blk_len]
-                        pos += 块头 + blk_len
-                    payload = bytes(帧) if pos == len(帧) else bytes(帧[:pos])
-                    self._发送流内(local_id, payload, '推送')
-                    sent += len(buf)
-                    if progress_cb:
-                        try:
-                            progress_cb(sent, file_size)
-                        except Exception:
-                            pass
+
+            def _发送一批(buf):
+                nonlocal sent
+                # 把多个 DATA 块拼进同一个 WRTE payload。
+                # ★ 提速：预分配整帧容量 + memoryview 视图填充，避免
+                # 「每块一次切片拷贝 + bytearray 逐块 extend 反复 realloc」。
+                块头 = 8  # b'DATA' + <I 长度
+                块数 = (len(buf) + chunk_size - 1) // chunk_size
+                帧 = bytearray(块数 * (块头 + chunk_size))
+                buf_view = memoryview(buf)
+                pos = 0
+                for off in range(0, len(buf), chunk_size):
+                    blk_len = min(chunk_size, len(buf) - off)
+                    帧[pos:pos + 4] = b'DATA'
+                    帧[pos + 4:pos + 8] = struct.pack('<I', blk_len)
+                    帧[pos + 8:pos + 8 + blk_len] = buf_view[off:off + blk_len]
+                    pos += 块头 + blk_len
+                payload = bytes(帧) if pos == len(帧) else bytes(帧[:pos])
+                self._发送流内(local_id, payload, '推送')
+                sent += len(buf)
+                if progress_cb:
+                    try:
+                        progress_cb(sent, file_size)
+                    except Exception:
+                        pass
+
+            if file_size <= 全量读入阈值字节:
+                # 先读入内存并关闭本地句柄，网络发送阻塞期间不再占用本地文件
+                with open(local_path, 'rb') as f:
+                    全量 = f.read()
+                视图 = memoryview(全量)
+                起始 = 0
+                while 起始 < len(视图):
+                    buf = 视图[起始:起始 + 读取量]
+                    起始 += len(buf)
+                    _发送一批(buf)
+            else:
+                # 超大包回退边读边发，控制内存占用（句柄随发送周期持有）
+                with open(local_path, 'rb') as f:
+                    while True:
+                        buf = f.read(读取量)
+                        if not buf:
+                            break
+                        _发送一批(buf)
 
             mtime = int(os.path.getmtime(local_path))
             done_cmd = b'DONE' + struct.pack('<I', mtime)
@@ -1739,33 +1759,50 @@ class AdbConnection:
                 f"shell推送初始化失败: {原因分析} | "
                 f"路径: {remote_path} | 详情: {touch_out or '无输出'}")
         sent = 0
-        with open(local_path, 'rb') as f:
-            while True:
-                chunk = f.read(chunk_size)
-                if not chunk:
+
+        def _发送一块(chunk):
+            nonlocal sent
+            b64 = base64.b64encode(chunk).decode('ascii')
+            cmd = f'printf "%s" "{b64}" | base64 -d >> "{remote_path}"'
+            last_err = None
+            for retry in range(3):
+                try:
+                    self.执行shell(cmd, timeout=10)
+                    last_err = None
                     break
-                b64 = base64.b64encode(chunk).decode('ascii')
-                cmd = f'printf "%s" "{b64}" | base64 -d >> "{remote_path}"'
-                last_err = None
-                for retry in range(3):
-                    try:
-                        self.执行shell(cmd, timeout=10)
-                        last_err = None
+                except Exception as e:
+                    last_err = e
+                    print(f'[自研adb] shell推送块失败，重试{retry+1}/3: {e}')
+                    time.sleep(0.5)
+            if last_err:
+                raise RuntimeError(
+                    f"shell推送数据块失败（已重试3次）: {last_err} | "
+                    f"目标: {remote_path} | 已发送: {sent}/{file_size}B")
+            sent += len(chunk)
+            if progress_cb:
+                try:
+                    progress_cb(sent, file_size)
+                except Exception:
+                    pass
+
+        if file_size <= 全量读入阈值字节:
+            # 先读入内存并关闭本地句柄，shell 往返阻塞期间不再占用本地文件
+            with open(local_path, 'rb') as f:
+                全量 = f.read()
+            视图 = memoryview(全量)
+            起始 = 0
+            while 起始 < len(视图):
+                chunk = bytes(视图[起始:起始 + chunk_size])
+                起始 += len(chunk)
+                _发送一块(chunk)
+        else:
+            # 超大包回退边读边发，控制内存占用（句柄随发送周期持有）
+            with open(local_path, 'rb') as f:
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
                         break
-                    except Exception as e:
-                        last_err = e
-                        print(f'[自研adb] shell推送块失败，重试{retry+1}/3: {e}')
-                        time.sleep(0.5)
-                if last_err:
-                    raise RuntimeError(
-                        f"shell推送数据块失败（已重试3次）: {last_err} | "
-                        f"目标: {remote_path} | 已发送: {sent}/{file_size}B")
-                sent += len(chunk)
-                if progress_cb:
-                    try:
-                        progress_cb(sent, file_size)
-                    except Exception:
-                        pass
+                    _发送一块(chunk)
         # 传完后落盘验证：文件存在且字节数一致，杜绝静默成功
         verify = (self.执行shell(f'ls -l "{remote_path}"', timeout=10) or '').strip()
         if not verify or 'No such file' in verify:
@@ -2056,11 +2093,15 @@ class AdbConnection:
             # 1) 把 APK 字节写进 exec 流的 stdin（设备端按 -S 声明的 size 收取）
             块 = max(4096, min(self._max_payload - 8, 64 * 1024))
             sent = 0
-            with open(apk_path, 'rb') as f:
-                while True:
-                    data = f.read(块)
-                    if not data:
-                        break
+            if apk_size <= 全量读入阈值字节:
+                # 先读入内存并关闭本地句柄，网络发送阻塞期间不再占用 APK 文件
+                with open(apk_path, 'rb') as f:
+                    全量 = f.read()
+                视图 = memoryview(全量)
+                起始 = 0
+                while 起始 < len(视图):
+                    data = bytes(视图[起始:起始 + 块])
+                    起始 += len(data)
                     self._发送流内(local_id, data, '流式安装')
                     sent += len(data)
                     if progress_cb:
@@ -2068,6 +2109,20 @@ class AdbConnection:
                             progress_cb(sent, apk_size)
                         except Exception:
                             pass
+            else:
+                # 超大包回退边读边发，控制内存占用（句柄随发送周期持有）
+                with open(apk_path, 'rb') as f:
+                    while True:
+                        data = f.read(块)
+                        if not data:
+                            break
+                        self._发送流内(local_id, data, '流式安装')
+                        sent += len(data)
+                        if progress_cb:
+                            try:
+                                progress_cb(sent, apk_size)
+                            except Exception:
+                                pass
             # 2) 读回安装结果（Success / Failure [INSTALL_FAILED_XXX]）
             while True:
                 msg = self._接收消息()

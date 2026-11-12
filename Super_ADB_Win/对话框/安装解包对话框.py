@@ -321,6 +321,7 @@ class 安装解包对话框(对话框基类):
         self._thread = None          # install / extract 任务线程
         self._load_thread = None     # 打开包线程
         self._build_tree_thread = None   # 目录树构建线程
+        self._存活线程 = []          # 关闭时未结束、转后台跑完的线程，保留引用防析构
         self._tree_data = None       # 完整的目录树 dict
         self._folder_icon = None
 
@@ -1279,13 +1280,35 @@ class 安装解包对话框(对话框基类):
         )
 
     def closeEvent(self, ev):
+        # 先释放 zip 句柄
         if self._zf is not None:
             try:
                 self._zf.close()
             except Exception as e:
                 print(f'[安装弹窗] 关闭时释放 zip 失败: {e!r}')
-        for t in (self._load_thread, self._build_tree_thread,
-                  getattr(self, '_meta_thread', None), getattr(self, '_thread', None)):
-            if t is not None and t.isRunning():
-                t.wait(1000)
+            self._zf = None
+        线程列表 = (self._load_thread, self._build_tree_thread,
+                   getattr(self, '_meta_thread', None), getattr(self, '_thread', None),
+                   getattr(self, '_preview_thread', None))
+        for t in 线程列表:
+            if t is None:
+                continue
+            if t.isRunning():
+                if not t.wait(1000):
+                    # 超时未结束：不可中断的安装/读取线程转后台，脱离弹窗 parent，
+                    # 保留引用到存活列表，杜绝弹窗析构连带运行中线程崩溃；不强行析构。
+                    try:
+                        t.setParent(None)
+                    except Exception:
+                        pass
+                    if t not in self._存活线程:
+                        self._存活线程.append(t)
+                        try:
+                            t.finished.connect(
+                                lambda th=t: self._存活线程.remove(th)
+                                if th in self._存活线程 else None)
+                        except Exception:
+                            pass
+        # 清理已自然结束的存活线程引用
+        self._存活线程 = [t for t in self._存活线程 if t.isRunning()]
         super().closeEvent(ev)

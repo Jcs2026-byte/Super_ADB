@@ -111,16 +111,19 @@ class _ScanWorker(QObject):
     def run(self):
         results = []
         total = len(self._ips)
-        with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
+        # ★ 不用 with ThreadPoolExecutor：__exit__ 会 shutdown(wait=True)，
+        #   中途「停止扫描」时仍要等 100 个已启动的 socket 任务各自跑满
+        #   timeout(默认 0.8s)，worker.run 迟迟不返回 → QThread 退不掉 →
+        #   主线程 _cleanup_thread 的 wait() 被拖住约 0.8s，窗口「卡死」。
+        #   改为显式 shutdown(wait=False, cancel_futures=True)：取消排队任务、
+        #   不等在途任务，run 立即返回，残余 socket 各自超时后自行结束。
+        pool = ThreadPoolExecutor(max_workers=self._max_workers)
+        try:
             futures = {pool.submit(self._probe, ip): ip for ip in self._ips}
             done_count = 0
             for future in as_completed(futures):
                 if self._cancelled:
-                    # 取消未完成的
-                    for f in futures:
-                        f.cancel()
-                    self.stopped.emit()
-                    return
+                    break
                 ip = futures[future]
                 try:
                     latency = future.result()
@@ -132,6 +135,14 @@ class _ScanWorker(QObject):
                     self.found.emit(ip, latency, None)
                 if done_count % SCAN_BATCH_SIZE == 0 or done_count == total:
                     self.progress.emit(done_count, total)
+        finally:
+            try:
+                pool.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                pass
+        if self._cancelled:
+            self.stopped.emit()
+            return
         self.progress.emit(total, total)
         # 按延迟排序
         results.sort(key=lambda x: x[1])
@@ -139,9 +150,11 @@ class _ScanWorker(QObject):
 
     def _probe(self, ip):
         """探测单个 IP 的 ADB 端口。返回延迟(ms) 或 None（不可达）。
-        
+
         只做纯 TCP 端口探测，不发送 CNXN 消息，避免抢占单客户设备的连接槽位。
         """
+        if self._cancelled:
+            return None
         try:
             t0 = time.monotonic()
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -482,6 +495,7 @@ class 局域网扫描对话框(QWidget):
         self._worker = None
         self._scan_thread = None
         self._port = ADB_PORT
+        self._scan_done = False        # 扫描收尾后不再让逐条 found 覆盖「扫描完成」状态
         self._closing = False
         self._embedded = True          # 生产环境仅作为无线调试面板子页嵌入
         # 追踪正在运行的连接/回填后台线程，避免关闭窗口时悬挂
@@ -799,7 +813,8 @@ class 局域网扫描对话框(QWidget):
         # 清空旧结果前先中止所有进行中的连接，否则回调会访问已销毁的按钮
         self._stop_mdns_probe()
         self._abort_all_connects()
-        self.table.setRowCount(0)
+        self._scan_done = False
+        self._F清空结果表()
         self._found_ips = []  # 保留发现列表供"一键连接"
 
         # UI 状态切换
@@ -839,9 +854,30 @@ class 局域网扫描对话框(QWidget):
 
     # ── 回调信号 ──
 
+    def _F清空结果表(self):
+        """清空结果表：先摘掉所有 cellWidget，再删行。
+
+        QTableWidget.setRowCount(0) 不会自动删除 setCellWidget 放进格子的按钮，
+        旧按钮会残留在新行位置，出现「只有连接按钮、IP/状态/延迟全空」的幽灵行
+        （截图里第二行空白就是这个现象）。
+        """
+        for r in range(self.table.rowCount()):
+            w = self.table.cellWidget(r, 3)
+            if w is not None:
+                self.table.removeCellWidget(r, 3)
+                if _is_valid(w):
+                    w.deleteLater()
+        self.table.clearSpans()
+        self.table.setRowCount(0)
+
     def _on_device_found(self, ip, latency_ms, _extra=None, port=None):
         if not _is_valid(self) or getattr(self, '_closing', False):
             return
+        # 上一轮「未发现设备」的跨列提示行还占着第 0 行时，先删掉再落表
+        if self.table.rowCount() > 0:
+            tip = self.table.item(0, 0)
+            if tip is not None and tip.text().startswith("  未在当前网段发现"):
+                self._F清空结果表()
         # 5555 扫描用默认端口；mDNS 补充时传入真实随机端口。行 key 统一为 "ip:port"。
         实际端口 = self._port if port is None else int(port)
         row = self.table.rowCount()
@@ -865,7 +901,9 @@ class 局域网扫描对话框(QWidget):
         self.table.setCellWidget(row, 3, btn_conn)
 
         self._found_ips.append(addr)
-        self.lbl_status.setText(f"已发现 {len(self._found_ips)} 台设备...")
+        # 扫描收尾后 mDNS 还会补入随机端口设备，别把「✅ 扫描完成」倒退回「已发现 N 台」
+        if not getattr(self, '_scan_done', False):
+            self.lbl_status.setText(f"已发现 {len(self._found_ips)} 台设备...")
 
     def _on_progress(self, current, total):
         if not _is_valid(self) or getattr(self, '_closing', False):
@@ -877,6 +915,7 @@ class 局域网扫描对话框(QWidget):
     def _on_scan_finished(self, results):
         if not _is_valid(self) or getattr(self, '_closing', False):
             return
+        self._scan_done = True
         self._cleanup_thread()
         total_scanned = self.progress.maximum()
         found = len(results)
@@ -953,7 +992,10 @@ class 局域网扫描对话框(QWidget):
         w.moveToThread(t)
         t.started.connect(w.run)
         w.found.connect(self._on_mdns_found)
-        w.finished.connect(lambda 新增: self._mdns_finish(新增))
+        # ★ 必须连 bound method，不能用 lambda 闭包：PySide6 下无 QObject receiver
+        #   的可调用对象会退化为直连，finished 槽在 mDNS 后台线程直接执行，
+        #   跨线程重建表格 / 操作按钮会导致按钮堆叠、幽灵行与界面错乱。
+        w.finished.connect(self._mdns_finish)
         # 线程回收统一走 _F回收mdns线程：主线程 quit + wait(join) 后再释放，
         # 不能只靠 finished 信号里 deleteLater —— 该 PySide6/Qt6 版本下
         # QThread 未在主线程 wait 即析构，退出阶段会在 Qt6Core 抛 0xc0000005。
@@ -982,14 +1024,14 @@ class 局域网扫描对话框(QWidget):
         """取消并回收上一轮 mDNS 探活线程（主线程 join 后释放）。"""
         self._F回收mdns线程()
 
-    def _F回收mdns线程(self, 等待毫秒=1000):
-        """回收 mDNS 探活线程：主线程 quit + wait(join) 后再释放底层对象。
+    def _F回收mdns线程(self, 等待毫秒=0):
+        """回收 mDNS 探活线程：断信号 → cancel → quit → 挂退役池，不做同步 wait。
 
-        背景：该 PySide6 6.11 / Qt6 版本下，QThread 若未在主线程 wait()
-        完成 join，仅 deleteLater 或直接丢弃引用，进程退出 / 对象析构时会在
-        Qt6Core 抛 0xc0000005 访问违例，表现为「扫描完直接闪退」。worker 是
-        同步 socket 循环（单探针 0.4s 超时），cancel 后最多一个超时即返回，
-        短 wait 不会卡住 UI；超时仍未结束的不强行 deleteLater，移入退役池兜底。
+        ★ 本方法是从 w.finished 的槽里调进来的，属于「槽回调上下文」。旧实现在这里
+          t.wait(1000) + t.deleteLater() + w.deleteLater()，既冻结主线程 1 秒，又
+          在槽里释放 QThread —— 与 _retire_thread 注释记录的 Qt6 崩溃原因
+          （0xc0000005 / 扫描完直接闪退）完全冲突。统一交给退役池 +
+          主线程清理路径 _F释放退役线程 wait(join) 后释放。
         """
         w = self._mdns_worker
         t = self._mdns_thread
@@ -997,33 +1039,14 @@ class 局域网扫描对话框(QWidget):
         self._mdns_thread = None
         if t is None:
             return
-        try:
-            if w is not None:
-                try:
-                    w.cancel()
-                except Exception:
-                    pass
-            t.quit()
-            已结束 = t.wait(等待毫秒)
-        except Exception:
-            已结束 = False
-        if 已结束:
-            try:
-                t.deleteLater()
-            except Exception:
-                pass
-            if w is not None:
-                try:
-                    w.deleteLater()
-                except Exception:
-                    pass
-        else:
-            # 超时未结束：运行中不得 deleteLater，挂退役池由 finished / 关闭路径兜底
-            self._retire_thread(t, w)
+        # 引用先交给退役池保活，绝不在槽里把 QThread / worker 丢给 Python 析构
+        self._retire_thread(t, w)
+        QTimer.singleShot(0, self, lambda: self._F释放退役线程(0))
 
     def _on_scan_stopped(self):
         if not _is_valid(self) or getattr(self, '_closing', False):
             return
+        self._scan_done = True
         self._cleanup_thread()
         # 进度条保持停止时的真实进度，不再强行拉满（拉满会被误读成「扫描已完成」）
         self.lbl_status.setText("⛔ 扫描已停止")
@@ -1039,11 +1062,23 @@ class 局域网扫描对话框(QWidget):
             self.btn_copy_all.setEnabled(True)
 
     def _cleanup_thread(self):
-        if self._scan_thread:
-            self._scan_thread.quit()
-            self._scan_thread.wait(3000)
-            self._scan_thread = None
+        """扫描结束 / 中止：只做「断信号 + cancel + quit + 挂退役池」。
+
+        ★ 旧实现在 finished / stopped 槽里 quit() + wait(3000) 再把引用置 None：
+          1) wait 阻塞主线程 —— 实测「停止扫描」一次卡 ~800ms（100 个在途 socket
+             任务各跑满 0.8s timeout），窗口呈未响应灰白；
+          2) 更致命：置 None 会从主线程析构仍属于扫描线程的 QObject，甚至析构
+             仍在运行的无 parent QThread，触发 Qt6Core 0xc0000005 闪退
+             （与 _retire_thread / _F释放退役线程 的注释自相矛盾）。
+          现在统一走退役池，由主线程清理路径 wait(join) 后再 deleteLater。
+        """
+        t, w = self._scan_thread, self._worker
+        self._scan_thread = None
         self._worker = None
+        if t is not None:
+            self._retire_thread(t, w)   # 先交引用保活，绝不直接丢
+        # 延后到下一个事件循环周期释放，避开槽回调上下文
+        QTimer.singleShot(0, self, lambda: self._F释放退役线程(0))
 
     # ── 线程退役回收（非阻塞，防运行中析构崩溃） ──
 
@@ -1103,6 +1138,9 @@ class 局域网扫描对话框(QWidget):
             pass
         if thread is not None and (thread, worker) not in self._dead_threads:
             self._dead_threads.append((thread, worker))
+        # 线程已结束：下一个事件循环周期由主线程 wait(join) 后释放，
+        # 不在 thread.finished 槽上下文里做 deleteLater。
+        QTimer.singleShot(0, self, lambda: self._F释放退役线程(0))
 
     def _F释放退役线程(self, 等待毫秒=600):
         """主线程清理路径：对退役 / 待释放线程 wait(join) 后再 deleteLater。
@@ -1200,9 +1238,10 @@ class 局域网扫描对话框(QWidget):
         thread = QThread(self)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
-        # 闭包绑定 ip：不依赖 sender() 反查，worker 若在信号排队前被退役/析构，
-        # sender() 返回 None 会导致按钮永久停在「连接中...」。
-        worker.done.connect(lambda ok, msg, _ip=ip: self._on_connect_done(ok, msg, _ip))
+        # ★ 必须连 bound method，不能用 lambda 闭包：PySide6 下无 QObject receiver
+        #   的可调用对象会退化为直连，done 槽在连接后台线程直接操作按钮/表格，
+        #   导致按钮状态错乱、堆叠甚至原生崩溃。ip 由槽内 sender() 反查 worker._addr。
+        worker.done.connect(self._on_connect_done)
         # 信号绑完再 start，确保回调能找到 widget
         thread.start()
         self._connect_threads.append((thread, worker))
@@ -1383,38 +1422,15 @@ class 局域网扫描对话框(QWidget):
         self._set_status_for_ip(ip, "⏳ 连接中...", TIP_GRAY)
         worker = _ConnectWorker(host, port=实际端口, timeout=8)
         worker._addr = ip
+        worker._代际 = 代际
+        worker._callback = callback
         thread = QThread(self)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
-
-        def _done(ok, msg):
-            if 代际 != self._connect_generation:
-                return  # 旧批次回调，已被中止/重建
-            if getattr(self, '_closing', False) or not _is_valid(self):
-                return
-            btn = self._busy_buttons.pop(ip, None)
-            if _is_valid(btn):
-                btn.setText("连接")
-                btn.setEnabled(True)
-            color = ACCENT_COLOR_GREEN if ok else TIP_GRAY
-            text = "🟢 在线" if ok else "❌ 离线/失败"
-            if _is_valid(self.table):
-                self._set_status_for_ip(ip, text, color)
-            self._cleanup_worker_list(self._connect_threads, ip)
-            if ok:
-                self._enrich_after_connect(ip)
-                # 通知主窗口：刚连上一台新设备，刷新设备下拉框并自动选中它
-                if callable(self._on_device_connected):
-                    try:
-                        self._on_device_connected(ip)
-                    except Exception:
-                        pass
-            try:
-                callback(ok, msg)
-            except Exception:
-                pass
-
-        worker.done.connect(_done)
+        # ★ 连 bound method，不用闭包：否则槽在连接后台线程直连执行，跨线程操作
+        #   按钮/表格会导致状态错乱、按钮堆叠。ip/代际/回调挂在 worker 上，槽内
+        #   sender() 反查取回。
+        worker.done.connect(self._on_batch_done)
 
         # 总超时护栏（主线程 QTimer 兜底）：
         #  - 非自研模式 subprocess.run 超时靠杀 adb.exe 进程，但 Windows 上
@@ -1432,11 +1448,11 @@ class 局域网扫描对话框(QWidget):
             if 代际 != self._connect_generation:
                 return
             if V状态 == 'device':
-                _done(True, f"connected to {ip}（握手较慢，已复核在线）")
+                self._on_batch_done(True, f"connected to {ip}（握手较慢，已复核在线）", worker=worker)
             elif V状态 == 'unauthorized':
-                _done(True, f"已连接 {ip}，请在设备上确认调试授权弹窗")
+                self._on_batch_done(True, f"已连接 {ip}，请在设备上确认调试授权弹窗", worker=worker)
             else:
-                _done(False, f"连接超时（超过 {V护栏秒数}s 未完成），已跳过")
+                self._on_batch_done(False, f"连接超时（超过 {V护栏秒数}s 未完成），已跳过", worker=worker)
 
         def _guard():
             if 代际 != self._connect_generation:
@@ -1450,11 +1466,11 @@ class 局域网扫描对话框(QWidget):
             # 自研模式：设备不在系统 adb server 注册，跑 adb devices 必然查不到，
             # 复核只会误判超时并拉起无用 server；直接按超时判失败。
             if getattr(worker, '_用自研', False):
-                _done(False, f"连接超时（超过 {V护栏秒数}s 未完成），已跳过")
+                self._on_batch_done(False, f"连接超时（超过 {V护栏秒数}s 未完成），已跳过", worker=worker)
                 return
             # 系统模式：adb devices 复核挪后台线程，避免主线程同步 subprocess.run
-            # 冻结界面；结果经 QTimer 回主线程再调 _done 推进队列（worker 线程无
-            # 事件循环，_done 必须在主线程执行才可靠）。
+            # 冻结界面；结果经 QTimer 回主线程再调批量完成回调推进队列（worker 线程无
+            # 事件循环，回调必须在主线程执行才可靠）。
             # ★ singleShot 必须传 receiver=self：无 receiver 时定时器归属调用它的
             #   裸线程，而该线程没有 Qt 事件循环，回调永远不会被派发；传 self 后
             #   Qt 把槽排队到 self 所在的主线程事件循环执行。
@@ -1468,10 +1484,47 @@ class 局域网扫描对话框(QWidget):
                 QTimer.singleShot(0, self, lambda st=V状态: _guard复核(st))
             threading.Thread(target=_复核, daemon=True).start()
 
-        QTimer.singleShot(V护栏毫秒, _guard)
+        QTimer.singleShot(V护栏毫秒, self, _guard)
         # 跟踪并清理
         self._connect_threads.append((thread, worker))
         thread.start()
+
+    def _on_batch_done(self, ok, msg, worker=None):
+        """批量连接 worker 的 done 槽（主线程执行）。
+
+        worker 可由信号 sender() 反查；护栏超时强制汇报时直接显式传入。
+        """
+        if worker is None:
+            worker = self.sender()
+        ip = getattr(worker, '_addr', None)
+        代际 = getattr(worker, '_代际', None)
+        callback = getattr(worker, '_callback', None)
+        if 代际 != self._connect_generation:
+            return  # 旧批次回调，已被中止/重建
+        if ip is None or getattr(self, '_closing', False) or not _is_valid(self):
+            return
+        btn = self._busy_buttons.pop(ip, None)
+        if _is_valid(btn):
+            btn.setText("连接")
+            btn.setEnabled(True)
+        color = ACCENT_COLOR_GREEN if ok else TIP_GRAY
+        text = "🟢 在线" if ok else "❌ 离线/失败"
+        if _is_valid(self.table):
+            self._set_status_for_ip(ip, text, color)
+        self._cleanup_worker_list(self._connect_threads, ip)
+        if ok:
+            self._enrich_after_connect(ip)
+            # 通知主窗口：刚连上一台新设备，刷新设备下拉框并自动选中它
+            if callable(self._on_device_connected):
+                try:
+                    self._on_device_connected(ip)
+                except Exception:
+                    pass
+        try:
+            if callable(callback):
+                callback(ok, msg)
+        except Exception:
+            pass
 
     def _copy_all_ips(self):
         """复制所有发现的 IP 到剪贴板。"""
@@ -1512,21 +1565,26 @@ class 局域网扫描对话框(QWidget):
             lat_item = self.table.item(r, 2)
             try:
                 order.append((float(lat_item.text()), r))
-            except (TypeError, ValueError):
+            except (AttributeError, TypeError, ValueError):
                 order.append((float('inf'), r))
         order.sort(key=lambda x: x[0])
         # 提取可见数据后重建（避免复用可能被 Qt 释放的 item 指针）
+        # 提示行 / 只有按钮没有 item 的幽灵行一律跳过，否则 item 为 None 时
+        # AttributeError 会在重建中途打断槽，界面停在半张表上。
         snapshot = []
         for _, r in order:
-            ip = self.table.item(r, 0).text()
+            ip_item = self.table.item(r, 0)
             st_item = self.table.item(r, 1)
-            st_text = st_item.text()
-            st_fg = st_item.foreground().color()
-            lat_text = self.table.item(r, 2).text()
-            snapshot.append((ip, st_text, st_fg, lat_text))
+            lat_item = self.table.item(r, 2)
+            if ip_item is None or st_item is None or lat_item is None:
+                continue
+            snapshot.append((ip_item.text(), st_item.text(),
+                             st_item.foreground().color(), lat_item.text()))
+        if not snapshot:
+            return
         # 重建会销毁所有旧按钮，先中止进行中的连接避免回调访问失效对象
         self._abort_all_connects()
-        self.table.setRowCount(0)
+        self._F清空结果表()
         for ip, st_text, st_fg, lat_text in snapshot:
             row = self.table.rowCount()
             self.table.insertRow(row)
@@ -1572,31 +1630,34 @@ class 局域网扫描对话框(QWidget):
         worker = _EnrichWorker(host, port=enrich_port, timeout=5, adb=self._adb)
         thread = QThread(self)
 
-        def _on_done(_ip, name, _t=thread, _w=worker):
-            # 先回填 UI
-            if name and not getattr(self, '_closing', False) and _is_valid(self) and _is_valid(self.table):
-                # 先尝试匹配「🟢 在线」/「🟢 在线 · XXX」行,加名称后缀
-                target_row = None
-                for r in range(self.table.rowCount()):
-                    item = self.table.item(r, 0)
-                    if item and item.text() == _ip:
-                        target_row = r
-                        break
-                if target_row is not None:
-                    st = self.table.item(target_row, 1)
-                    if st is not None:
-                        cur = st.text()
-                        if name not in cur:
-                            st.setText(f"{cur} · {name}" if not cur.endswith(' ·') else
-                                       f"{cur.rstrip(' ·')} · {name}")
-            # 清理本线程
-            self._cleanup_worker_list(self._enrich_threads, _ip)
-
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
-        worker.done.connect(_on_done)
+        # ★ 连 bound method（done 信号已带 ip），不用闭包：否则槽在回填后台线程
+        #   直连执行，跨线程改表格状态列会导致错乱。
+        worker.done.connect(self._on_enrich_done)
         self._enrich_threads.append((thread, worker))
         thread.start()
+
+    def _on_enrich_done(self, ip, name):
+        """机型回填 worker 的 done 槽（主线程执行）。"""
+        # 先回填 UI
+        if name and not getattr(self, '_closing', False) and _is_valid(self) and _is_valid(self.table):
+            # 先尝试匹配「🟢 在线」/「🟢 在线 · XXX」行,加名称后缀
+            target_row = None
+            for r in range(self.table.rowCount()):
+                item = self.table.item(r, 0)
+                if item and item.text() == ip:
+                    target_row = r
+                    break
+            if target_row is not None:
+                st = self.table.item(target_row, 1)
+                if st is not None:
+                    cur = st.text()
+                    if name not in cur:
+                        st.setText(f"{cur} · {name}" if not cur.endswith(' ·') else
+                                   f"{cur.rstrip(' ·')} · {name}")
+        # 清理本线程
+        self._cleanup_worker_list(self._enrich_threads, ip)
 
     def 清理(self):
         """停止所有后台线程（扫描 + 连接 + 回填），绝不留悬挂进程。
@@ -1614,29 +1675,15 @@ class 局域网扫描对话框(QWidget):
         """
         self._closing = True
 
-        # ── 扫描线程：断开信号 → 取消 → quit，短 wait 收尾 ──
+        # ── 扫描线程：与连接 / mDNS 线程一致，统一走退役池 ──
+        # 旧实现在主线程 wait(600) 后直接置 None：超时分支虽挂了退役池，
+        # 成功分支却把已结束的 QThread / 属于它的 worker 直接交给 Python 析构，
+        # 与 _retire_thread 的 Qt6 崩溃说明冲突。全部交给清理路径 wait(join)。
         if self._scan_thread is not None:
-            if self._worker is not None:
-                try:
-                    for sig_name in ('found', 'progress', 'finished', 'stopped'):
-                        sig = getattr(self._worker, sig_name, None)
-                        if sig is not None:
-                            try:
-                                sig.disconnect()
-                            except Exception:
-                                pass
-                    self._worker.cancel()
-                except Exception:
-                    pass
-            try:
-                self._scan_thread.quit()
-                # 短等待（最多 600ms），不等满旧版的 2000/3000ms
-                if not self._scan_thread.wait(600):
-                    self._retire_thread(self._scan_thread, self._worker)
-            except Exception:
-                pass
+            t, w = self._scan_thread, self._worker
             self._scan_thread = None
             self._worker = None
+            self._retire_thread(t, w)
 
         # ── mDNS 后台探活线程：取消并清理 ──
         self._stop_mdns_probe()

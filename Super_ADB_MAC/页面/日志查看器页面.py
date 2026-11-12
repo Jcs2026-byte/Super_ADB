@@ -173,7 +173,7 @@ class _CmdWorker(QRunnable):
         self.args = args
         self.kwargs = kwargs
         self.signals = _WorkerSignals()
-        self.setAutoDelete(True)
+        self.setAutoDelete(False)
 
     def run(self):
         try:
@@ -482,7 +482,7 @@ class 日志查看器页(QWidget):
     def _scan_devices(self):
         self.status_label.setText('扫描中…')
         w = _CmdWorker(self._mgr.获取设备列表)
-        w.setAutoDelete(True)
+        w.setAutoDelete(False)
         w.signals.result.connect(self._on_scan_result)
         w.signals.error.connect(lambda e: self.status_label.setText(f'扫描失败: {e}'))
         self._pool.start(w)
@@ -842,6 +842,9 @@ class 日志查看器页(QWidget):
             return entries, matched
 
         w = _CmdWorker(_task)
+        # 持有 worker 引用：autoDelete=False 下防止 Python 局部引用归零后被 GC，
+        # 导致结果信号在派发回主线程前随 signals 对象一起被回收（解析回调静默丢失）。
+        self._parse_worker = w
         w.signals.result.connect(lambda r: self._on_parsed(r, seq))
         w.signals.error.connect(lambda e: _dbg('PARSE', f'error: {e}'))
         self._pool.start(w)
@@ -862,6 +865,7 @@ class 日志查看器页(QWidget):
                 self._pending_view.extend(matched)
         # 过滤已切换：matched 按旧条件算的，丢弃；entries 总量统计保留
         self._parsing = False
+        self._parse_worker = None
         # 若还有未解析的原始行（抓取期间持续到达），继续消费，天然限速
         with self._raw_lock:
             more = bool(self._raw_lines)

@@ -488,9 +488,13 @@ class 局域网扫描对话框(QWidget):
         self._connect_threads = []   # list[(QThread, _ConnectWorker)]
         self._enrich_threads = []    # list[(QThread, _EnrichWorker)]
         # 退役池：关闭/重建时未能立即结束的线程移入此处持有引用，
-        # 等其 run 自然返回、finished 信号触发后再 deleteLater 释放，
+        # 等其 run 自然返回、finished 信号触发后再释放，
         # 杜绝「QThread 运行中被销毁」导致的原生崩溃。
-        self._retired_threads = []    # list[(QThread, QObject)]
+        self._retired_threads = []    # list[(QThread, QObject)] 仍在跑/待 join
+        # 已结束、待主线程清理路径释放的线程：finished 槽里只摘池挂到这里，
+        # 绝不在槽回调里 deleteLater（该 PySide6/Qt6 版本槽上下文释放 QThread
+        # 会 0xc0000005），统一由 清理() 主线程 wait(join) 后再释放。
+        self._dead_threads = []       # list[(QThread, QObject)]
         # 处于「正在连接」的按钮映射 ip→btn（点击后改文字/禁用，回调后再恢复）
         self._busy_buttons = {}
         # 批量连接队列与结果；_connect_generation 为队列代际号，
@@ -950,7 +954,9 @@ class 局域网扫描对话框(QWidget):
         t.started.connect(w.run)
         w.found.connect(self._on_mdns_found)
         w.finished.connect(lambda 新增: self._mdns_finish(新增))
-        t.finished.connect(lambda: self._drop_retired(t, w))
+        # 线程回收统一走 _F回收mdns线程：主线程 quit + wait(join) 后再释放，
+        # 不能只靠 finished 信号里 deleteLater —— 该 PySide6/Qt6 版本下
+        # QThread 未在主线程 wait 即析构，退出阶段会在 Qt6Core 抛 0xc0000005。
         t.start()
 
     def _on_mdns_found(self, ip, latency_ms, port):
@@ -960,7 +966,7 @@ class 局域网扫描对话框(QWidget):
 
     def _mdns_finish(self, 新增):
         if not _is_valid(self) or getattr(self, '_closing', False):
-            self._cleanup_mdns_thread()
+            self._F回收mdns线程()
             return
         if 新增:
             self._resort_by_latency()
@@ -970,27 +976,50 @@ class 局域网扫描对话框(QWidget):
         if self._found_ips:
             self.btn_connect_all.setEnabled(True)
             self.btn_copy_all.setEnabled(True)
-        self._cleanup_mdns_thread()
+        self._F回收mdns线程()
 
     def _stop_mdns_probe(self):
-        """取消并清理上一轮 mDNS 探活线程。"""
-        w = getattr(self, '_mdns_worker', None)
-        if w is not None:
-            try:
-                w.cancel()
-            except Exception:
-                pass
-        t = getattr(self, '_mdns_thread', None)
-        if t is not None:
-            try:
-                t.quit()
-            except Exception:
-                pass
-        self._cleanup_mdns_thread()
+        """取消并回收上一轮 mDNS 探活线程（主线程 join 后释放）。"""
+        self._F回收mdns线程()
 
-    def _cleanup_mdns_thread(self):
+    def _F回收mdns线程(self, 等待毫秒=1000):
+        """回收 mDNS 探活线程：主线程 quit + wait(join) 后再释放底层对象。
+
+        背景：该 PySide6 6.11 / Qt6 版本下，QThread 若未在主线程 wait()
+        完成 join，仅 deleteLater 或直接丢弃引用，进程退出 / 对象析构时会在
+        Qt6Core 抛 0xc0000005 访问违例，表现为「扫描完直接闪退」。worker 是
+        同步 socket 循环（单探针 0.4s 超时），cancel 后最多一个超时即返回，
+        短 wait 不会卡住 UI；超时仍未结束的不强行 deleteLater，移入退役池兜底。
+        """
+        w = self._mdns_worker
+        t = self._mdns_thread
         self._mdns_worker = None
         self._mdns_thread = None
+        if t is None:
+            return
+        try:
+            if w is not None:
+                try:
+                    w.cancel()
+                except Exception:
+                    pass
+            t.quit()
+            已结束 = t.wait(等待毫秒)
+        except Exception:
+            已结束 = False
+        if 已结束:
+            try:
+                t.deleteLater()
+            except Exception:
+                pass
+            if w is not None:
+                try:
+                    w.deleteLater()
+                except Exception:
+                    pass
+        else:
+            # 超时未结束：运行中不得 deleteLater，挂退役池由 finished / 关闭路径兜底
+            self._retire_thread(t, w)
 
     def _on_scan_stopped(self):
         if not _is_valid(self) or getattr(self, '_closing', False):
@@ -1019,13 +1048,16 @@ class 局域网扫描对话框(QWidget):
     # ── 线程退役回收（非阻塞，防运行中析构崩溃） ──
 
     def _retire_thread(self, thread, worker=None):
-        """把线程移入退役池并登记 finished 回收，主线程不长时间等待。
+        """把线程移入退役池：断信号 → cancel → quit，统一挂池等待主线程回收。
 
         背景：worker 经 started.connect(run) 直跑，可能正阻塞在 subprocess.run /
         自研握手 / 类级锁等待里，quit() 无法中断 run。若在主线程同步 wait 会卡住
         界面；若线程未结束就 deleteLater，QThread 运行中被析构会触发原生崩溃。
-        这里先断开信号、置取消标志、请求退出事件循环；能立即结束就直接释放，
-        否则保留引用挂到退役池，等 finished 信号自然回收。
+
+        ★ 本方法与 finished 槽都不直接 deleteLater：该 PySide6 6.11/Qt6 版本下，
+        QThread 必须由主线程清理路径 wait(join) 后再释放；槽回调里释放（即便
+        wait）也会在退出阶段触发 Qt6Core 0xc0000005。这里只断信号、置取消标志、
+        请求退出事件循环并挂池，释放交给 _F释放退役线程。
         """
         if thread is None:
             return
@@ -1049,45 +1081,66 @@ class 局域网扫描对话框(QWidget):
             thread.quit()
         except Exception:
             pass
-        # 3) 已结束 → 直接释放；未结束 → 进退役池，finished 后再回收
-        try:
-            already_finished = thread.isFinished()
-        except Exception:
-            already_finished = True
-        if already_finished:
-            try:
-                thread.deleteLater()
-            except Exception:
-                pass
-            if worker is not None:
-                try:
-                    worker.deleteLater()
-                except Exception:
-                    pass
-            return
+        # 3) 统一挂退役池，不在此判断已结束就直接释放
         if (thread, worker) not in self._retired_threads:
             self._retired_threads.append((thread, worker))
         try:
-            thread.finished.connect(lambda th=thread, w=worker: self._drop_retired(th, w))
+            thread.finished.connect(
+                lambda th=thread, w=worker: self._on_retired_finished(th, w))
         except Exception:
             pass
 
-    def _drop_retired(self, thread, worker=None):
-        """线程自然结束后从退役池移除并释放（幂等）。"""
+    def _on_retired_finished(self, thread, worker=None):
+        """finished 槽：线程已结束，仅从活跃池摘出挂到待释放列表，不 deleteLater。
+
+        槽回调上下文释放 QThread 在该版本会原生崩溃；真正的 wait + 释放由主线程
+        清理路径 _F释放退役线程 完成。
+        """
         try:
             self._retired_threads = [
                 (t, w) for (t, w) in self._retired_threads if t is not thread]
         except Exception:
             pass
-        try:
-            thread.deleteLater()
-        except Exception:
-            pass
-        if worker is not None:
+        if thread is not None and (thread, worker) not in self._dead_threads:
+            self._dead_threads.append((thread, worker))
+
+    def _F释放退役线程(self, 等待毫秒=600):
+        """主线程清理路径：对退役 / 待释放线程 wait(join) 后再 deleteLater。
+
+        必须在主线程（清理 / 关闭路径）调用：QThread 只有在主线程 wait 完成
+        join 后析构才安全；槽回调里 wait 或 deleteLater 在该版本无效且会崩溃。
+        """
+        # 活跃池里已结束的先摘出并入待释放列表
+        for t, w in list(self._retired_threads):
             try:
-                worker.deleteLater()
+                if t.isFinished():
+                    self._retired_threads = [
+                        (x, y) for (x, y) in self._retired_threads if x is not t]
+                    self._dead_threads.append((t, w))
             except Exception:
                 pass
+        # 待释放列表：主线程 wait(join) 后再释放底层对象；超时仍未结束的
+        # 保留在列表里，不强行 deleteLater（运行中析构会原生崩溃），下次清理再试。
+        剩余 = []
+        for t, w in list(self._dead_threads):
+            try:
+                t.quit()
+                已结束 = t.wait(等待毫秒)
+            except Exception:
+                已结束 = False
+            if not 已结束:
+                剩余.append((t, w))
+                continue
+            try:
+                t.deleteLater()
+            except Exception:
+                pass
+            if w is not None:
+                try:
+                    w.deleteLater()
+                except Exception:
+                    pass
+        self._dead_threads = 剩余
 
     # ── 操作方法 ──
 
@@ -1209,24 +1262,15 @@ class 局域网扫描对话框(QWidget):
     def _cleanup_worker_list(self, lst, ip):
         """从 (QThread, worker) 列表移除并清理对应条目（兼容 addr/host）。
 
-        done 槽执行时 worker.run 通常已返回；若线程尚未完全结束，移入
-        退役池等 finished 回收，避免运行中 deleteLater 触发崩溃。
+        done 槽执行时 worker.run 通常已返回；无论线程是否跑完，都统一移入
+        退役池，由主线程清理路径 wait 后释放——槽回调里直接 deleteLater 在该
+        PySide6/Qt6 版本会触发原生崩溃。
         """
         kept = []
         for t, w in lst:
             if getattr(w, '_addr', None) == ip or getattr(w, '_ip', None) == ip:
                 try:
-                    if t.isRunning():
-                        self._retire_thread(t, w)
-                    else:
-                        try:
-                            w.deleteLater()
-                        except Exception:
-                            pass
-                        try:
-                            t.deleteLater()
-                        except Exception:
-                            pass
+                    self._retire_thread(t, w)
                 except Exception:
                     pass
             else:
@@ -1611,21 +1655,16 @@ class 局域网扫描对话框(QWidget):
             self._retire_thread(t, w)
         self._enrich_threads.clear()
 
-        # 关闭路径轻量收尾：总预算 1.2s，轮询释放已结束的退役线程；
-        # 超时未结束的留在退役池，由 finished 信号兜底回收。
+        # 关闭路径收尾：总预算 1.2s，先轮询等在途线程结束；再由主线程统一
+        # wait(join) 后释放。QThread 必须在主线程清理路径 wait 后析构，
+        # finished 槽里释放会触发 Qt6Core 0xc0000005。
         _deadline = time.monotonic() + 1.2
         while self._retired_threads and time.monotonic() < _deadline:
-            for t, w in list(self._retired_threads):
-                try:
-                    if t.isFinished():
-                        self._drop_retired(t, w)
-                except Exception:
-                    self._retired_threads = [
-                        (x, y) for (x, y) in self._retired_threads if x is not t]
             if any(not t.isFinished() for t, _ in self._retired_threads):
                 time.sleep(0.03)
             else:
                 break
+        self._F释放退役线程(等待毫秒=600)
 
     def closeEvent(self, event):
         """关闭窗口时停止所有后台线程（扫描 + 连接 + 回填），绝不留悬挂进程。"""

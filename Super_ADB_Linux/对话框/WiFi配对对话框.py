@@ -193,9 +193,13 @@ class WiFi配对对话框(QWidget):
         self._reconnect_entry = None
         self._paired = []
         self._closing = False
-        # 退役池：关闭时未能立即结束的线程移入此处持有引用，等 finished
-        # 信号触发后再 deleteLater，杜绝 QThread 运行中被析构的原生崩溃。
-        self._retired_threads = []    # list[(QThread, QObject)]
+        # 退役池：关闭时未能立即结束的线程移入此处持有引用，等其 run 自然
+        # 返回、finished 信号触发后再释放，杜绝 QThread 运行中被析构的原生崩溃。
+        self._retired_threads = []    # list[(QThread, QObject)] 仍在跑/待 join
+        # 已结束、待主线程清理路径释放的线程：finished 槽里只摘池挂到这里，
+        # 绝不在槽回调里 deleteLater（该 PySide6/Qt6 版本槽上下文释放 QThread
+        # 会 0xc0000005），统一由 清理() 主线程 wait(join) 后再释放。
+        self._dead_threads = []       # list[(QThread, QObject)]
         self._connect_enabled = False   # 配对成功后才允许 connect
         self._embedded = True          # 生产环境仅作为无线调试面板子页嵌入
 
@@ -835,13 +839,16 @@ class WiFi配对对话框(QWidget):
     # ── 线程退役回收（非阻塞，防运行中析构崩溃） ──
 
     def _retire_thread(self, thread, worker=None):
-        """把线程移入退役池并登记 finished 回收，主线程不长时间等待。
+        """把线程移入退役池：断信号 → cancel → quit，统一挂池等待主线程回收。
 
         worker 经 started.connect(run) 直跑，可能正阻塞在 socket 握手 /
         subprocess 等待里，quit() 无法中断 run。主线程同步 wait 会卡住界面；
         线程未结束就 deleteLater 会触发「QThread 运行中被销毁」原生崩溃。
-        这里先断开信号、置取消标志、请求退出事件循环；能立即结束就直接
-        释放，否则保留引用挂退役池，等 finished 信号自然回收。
+
+        ★ 本方法与 finished 槽都不直接 deleteLater：该 PySide6 6.11/Qt6 版本下，
+        QThread 必须由主线程清理路径 wait(join) 后再释放；槽回调里释放（即便
+        wait）也会在退出阶段触发 Qt6Core 0xc0000005。这里只断信号、置取消标志、
+        请求退出事件循环并挂池，释放交给 _F释放退役线程。
         """
         if thread is None:
             return
@@ -863,45 +870,62 @@ class WiFi配对对话框(QWidget):
             thread.quit()
         except Exception:
             pass
-        try:
-            already_finished = thread.isFinished()
-        except Exception:
-            already_finished = True
-        if already_finished:
-            try:
-                thread.deleteLater()
-            except Exception:
-                pass
-            if worker is not None:
-                try:
-                    worker.deleteLater()
-                except Exception:
-                    pass
-            return
         if (thread, worker) not in self._retired_threads:
             self._retired_threads.append((thread, worker))
         try:
             thread.finished.connect(
-                lambda th=thread, w=worker: self._drop_retired(th, w))
+                lambda th=thread, w=worker: self._on_retired_finished(th, w))
         except Exception:
             pass
 
-    def _drop_retired(self, thread, worker=None):
-        """线程自然结束后从退役池移除并释放（幂等）。"""
+    def _on_retired_finished(self, thread, worker=None):
+        """finished 槽：线程已结束，仅从活跃池摘出挂到待释放列表，不 deleteLater。
+
+        槽回调上下文释放 QThread 在该版本会原生崩溃；真正的 wait + 释放由主线程
+        清理路径 _F释放退役线程 完成。
+        """
         try:
             self._retired_threads = [
                 (t, w) for (t, w) in self._retired_threads if t is not thread]
         except Exception:
             pass
-        try:
-            thread.deleteLater()
-        except Exception:
-            pass
-        if worker is not None:
+        if thread is not None and (thread, worker) not in self._dead_threads:
+            self._dead_threads.append((thread, worker))
+
+    def _F释放退役线程(self, 等待毫秒=600):
+        """主线程清理路径：对退役 / 待释放线程 wait(join) 后再 deleteLater。
+
+        必须在主线程（清理 / 关闭路径）调用：QThread 只有在主线程 wait 完成
+        join 后析构才安全；槽回调里 wait 或 deleteLater 在该版本无效且会崩溃。
+        """
+        for t, w in list(self._retired_threads):
             try:
-                worker.deleteLater()
+                if t.isFinished():
+                    self._retired_threads = [
+                        (x, y) for (x, y) in self._retired_threads if x is not t]
+                    self._dead_threads.append((t, w))
             except Exception:
                 pass
+        剩余 = []
+        for t, w in list(self._dead_threads):
+            try:
+                t.quit()
+                已结束 = t.wait(等待毫秒)
+            except Exception:
+                已结束 = False
+            if not 已结束:
+                剩余.append((t, w))
+                continue
+            try:
+                t.deleteLater()
+            except Exception:
+                pass
+            if w is not None:
+                try:
+                    w.deleteLater()
+                except Exception:
+                    pass
+        self._dead_threads = 剩余
 
     def 清理(self):
         """停止所有后台线程，供嵌入统一面板时由父窗口调用。
@@ -922,21 +946,16 @@ class WiFi配对对话框(QWidget):
         self._connect_thread = self._connect_worker = None
         self._reconnect_thread = self._reconnect_worker = None
 
-        # 关闭路径轻量收尾：总预算 1.0s，轮询释放已结束的退役线程；
-        # 超时未结束的留在退役池，由 finished 信号兜底回收。
+        # 关闭路径收尾：总预算 1.0s，先轮询等在途线程结束；再由主线程统一
+        # wait(join) 后释放。QThread 必须在主线程清理路径 wait 后析构，
+        # finished 槽里释放会触发 Qt6Core 0xc0000005。
         _deadline = time.monotonic() + 1.0
         while self._retired_threads and time.monotonic() < _deadline:
-            for t, w in list(self._retired_threads):
-                try:
-                    if t.isFinished():
-                        self._drop_retired(t, w)
-                except Exception:
-                    self._retired_threads = [
-                        (x, y) for (x, y) in self._retired_threads if x is not t]
             if any(not t.isFinished() for t, _ in self._retired_threads):
                 time.sleep(0.03)
             else:
                 break
+        self._F释放退役线程(等待毫秒=600)
 
     def closeEvent(self, event):
         self.清理()

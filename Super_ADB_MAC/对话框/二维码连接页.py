@@ -362,7 +362,11 @@ class 二维码连接页(QWidget):
         self._scan_worker = None
         self._scan_thread = None
         # 已停止线程的引用池：置停止标志后线程仍在收尾，保留引用防止运行中被 GC 销毁崩溃
-        self._retired_threads = []
+        self._retired_threads = []    # list[QThread] 仍在跑/待 join
+        # 已结束、待主线程清理路径释放的线程：finished 槽里只摘池挂到这里，
+        # 绝不在槽回调里 deleteLater（该 PySide6/Qt6 版本槽上下文释放 QThread
+        # 会 0xc0000005），统一由 清理() 主线程 wait(join) 后再释放。
+        self._dead_threads = []       # list[QThread]
 
         # 扫码结果回填状态
         self._last_scan_ip = ''
@@ -892,11 +896,14 @@ class 二维码连接页(QWidget):
         self._scan_thread.start()
 
     def _retire_thread(self, t):
-        """把线程移入退役池并登记 finished 回收，绝不阻塞 UI 线程等待。
+        """把线程移入退役池：quit 后统一挂池等待主线程回收，不在此/槽里释放。
 
         背景：置停止标志后线程仍需短暂收尾（mDNS 查询 / 端口探测 / 配对尝试
-        最多数秒），若在主线程同步等待会卡住界面。这里保留引用防止
-        QThread 运行中被 Python GC 销毁崩溃，线程自然结束后再 deleteLater 释放。
+        最多数秒），若在主线程同步等待会卡住界面。
+
+        ★ 本方法与 finished 槽都不直接 deleteLater：该 PySide6 6.11/Qt6 版本下，
+        QThread 必须由主线程清理路径 wait(join) 后再释放；槽回调里释放（即便
+        wait）也会在退出阶段触发 Qt6Core 0xc0000005。释放交给 _F释放退役线程。
         """
         if t is None:
             return
@@ -906,30 +913,54 @@ class 二维码连接页(QWidget):
             t.quit()
         except Exception:
             pass
-        if t.isFinished():
+        if t not in self._retired_threads:
+            self._retired_threads.append(t)
+        try:
+            t.finished.connect(lambda th=t: self._on_retired_finished(th))
+        except Exception:
+            pass
+
+    def _on_retired_finished(self, th):
+        """finished 槽：仅从活跃池摘出挂到待释放列表，不 deleteLater。
+
+        槽回调上下文释放 QThread 在该版本会原生崩溃；真正的 wait + 释放由主线程
+        清理路径 _F释放退役线程 完成。
+        """
+        try:
+            self._retired_threads = [x for x in self._retired_threads if x is not th]
+        except Exception:
+            pass
+        if th is not None and th not in self._dead_threads:
+            self._dead_threads.append(th)
+
+    def _F释放退役线程(self, 等待毫秒=600):
+        """主线程清理路径：对退役 / 待释放线程 wait(join) 后再 deleteLater。
+
+        必须在主线程（清理 / 关闭路径）调用：QThread 只有在主线程 wait 完成
+        join 后析构才安全；槽回调里 wait 或 deleteLater 在该版本无效且会崩溃。
+        """
+        for t in list(self._retired_threads):
+            try:
+                if t.isFinished():
+                    self._retired_threads = [x for x in self._retired_threads if x is not t]
+                    self._dead_threads.append(t)
+            except Exception:
+                pass
+        剩余 = []
+        for t in list(self._dead_threads):
+            try:
+                t.quit()
+                已结束 = t.wait(等待毫秒)
+            except Exception:
+                已结束 = False
+            if not 已结束:
+                剩余.append(t)
+                continue
             try:
                 t.deleteLater()
             except Exception:
                 pass
-            return
-        if t not in self._retired_threads:
-            self._retired_threads.append(t)
-        try:
-            t.finished.connect(lambda th=t: self._drop_retired(th))
-        except Exception:
-            pass
-
-    def _drop_retired(self, th):
-        """线程自然结束后从退役池移除并释放（幂等）。"""
-        try:
-            if th in self._retired_threads:
-                self._retired_threads.remove(th)
-        except Exception:
-            pass
-        try:
-            th.deleteLater()
-        except Exception:
-            pass
+        self._dead_threads = 剩余
 
     def _stop_scan(self):
         """停止端口扫描兜底线程与基线扫描线程（置标志后非阻塞回收）。"""
@@ -1265,16 +1296,16 @@ class 二维码连接页(QWidget):
         self._stop_waiting()
         self._cleanup_gen_thread()
         self._cleanup_pair_thread()
-        # 关闭路径：有限等待退役线程收尾（窗口即将销毁，短暂等待可接受），
-        # 避免页面销毁时线程仍在运行导致 QThread 崩溃
+        # 关闭路径：有限等待在途线程收尾（窗口即将销毁，短暂等待可接受），
+        # 再由主线程统一 wait(join) 后释放。QThread 必须在主线程清理路径
+        # wait 后析构，finished 槽里释放会触发 Qt6Core 0xc0000005。
         _dl = time.time() + 3.0
         while self._retired_threads and time.time() < _dl:
-            for _t in list(self._retired_threads):
-                if _t.isFinished():
-                    self._drop_retired(_t)
-            if not self._retired_threads:
+            if any(not _t.isFinished() for _t in self._retired_threads):
+                time.sleep(0.02)
+            else:
                 break
-            time.sleep(0.02)
+        self._F释放退役线程(等待毫秒=600)
 
 
 if __name__ == "__main__":

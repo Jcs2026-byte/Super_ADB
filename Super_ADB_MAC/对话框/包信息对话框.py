@@ -177,21 +177,43 @@ def _F解析进程行(行, package_name):
     return pid, 命中名称
 
 
-def _F取进程APK路径(adb, serial, pid):
-    """读 /proc/<pid>/maps，取该进程真正映射的第一个 .apk 路径。"""
+def _F取进程APK路径(adb, serial, pid, package_name=''):
+    """读 /proc/<pid>/maps，取该进程真正映射的"本应用" APK 路径。
+
+    注意不能简单取第一个 .apk：每个进程都会映射 /system/framework/framework-res.apk
+    这类框架资源包，首个匹配往往不是应用自己。判定顺序：
+      1) 路径里带包名（/data/app/<包名>-1/base.apk，split 分包同目录）
+      2) /data/app 下的 apk
+      3) 排除框架资源后的第一个 apk（纯 /system 预装应用兜底）
+    """
     if not pid:
         return ''
     try:
         raw = adb.执行shell(
             serial,
-            f"cat /proc/{pid}/maps 2>/dev/null | grep -o '/[^ ]*\\.apk' | head -n 1",
+            f"cat /proc/{pid}/maps 2>/dev/null | grep -o '/[^ ]*\\.apk'",
             timeout=5)
     except Exception:
         return ''
+
+    路径列表 = []
     for 行 in (raw or '').splitlines():
         匹配 = re.search(r'(/[^ \t]*\.apk)', 行)
         if 匹配:
-            return 匹配.group(1)
+            路径 = 匹配.group(1)
+            if 路径 not in 路径列表:
+                路径列表.append(路径)
+
+    if package_name:
+        for 路径 in 路径列表:
+            if package_name in 路径:
+                return 路径
+    for 路径 in 路径列表:
+        if 路径.startswith('/data/app'):
+            return 路径
+    for 路径 in 路径列表:
+        if not 路径.startswith('/system/framework'):
+            return 路径
     return ''
 
 
@@ -236,7 +258,7 @@ def _F获取进程列表(adb, serial, package_name):
                 进程列表.append({'pid': pid, '进程名': package_name, 'apk路径': ''})
 
     for 进程 in 进程列表:
-        进程['apk路径'] = _F取进程APK路径(adb, serial, 进程['pid'])
+        进程['apk路径'] = _F取进程APK路径(adb, serial, 进程['pid'], package_name)
     return 进程列表
 
 
@@ -345,7 +367,8 @@ def 获取版本信息(adb, serial, package_name, 缓存=None):
         进程列表 = _F缓存取值(缓存, '进程列表',
                             lambda: _F获取进程列表(adb, serial, package_name)) or []
         进程目录集合 = {_F路径转目录(进程.get('apk路径')) for 进程 in 进程列表}
-        进程目录集合.discard('')
+        进程目录集合 = {目录 for 目录 in 进程目录集合
+                     if 目录 and (package_name in 目录 or 目录.startswith('/data'))}
 
         raw = _F缓存取值(缓存, '包信息dump',
                          lambda: adb.执行shell(serial, f'dumpsys package {package_name}', timeout=10))

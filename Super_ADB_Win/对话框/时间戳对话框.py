@@ -4,7 +4,7 @@
 ==============
 点击主界面「便捷工具 → 时间戳转换」按钮弹出的独立窗口：
 - 时间戳 → 北京时间：自动识别 秒 / 毫秒 / 微秒 / 纳秒，实时转换并显示秒级 + 毫秒级北京时间
-- 北京时间 → 时间戳：用日期时间选择器（默认当前北京时间），实时给出 Unix 秒级 + 毫秒级时间戳
+- 北京时间 → 时间戳：用日期 + 时间两个选择器（默认当前北京时间），实时给出 Unix 秒级 + 毫秒级时间戳
 - 每个结果框带「复制」按钮，一键粘贴到日志 / bug 报告
 
 说明：北京时间固定按 UTC+8 计算（datetime.timezone(timedelta(hours=8))），结果与时区无关；
@@ -19,7 +19,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QIcon, QColor
 from PySide6.QtWidgets import (
     QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QWidget,
-    QLineEdit, QPushButton, QGroupBox, QDateTimeEdit,
+    QLineEdit, QPushButton, QGroupBox, QDateEdit, QTimeEdit,
 )
 
 from 项目UI import png_rc  # noqa: F401
@@ -94,18 +94,24 @@ class 时间戳对话框(自绘外壳对话框):
         v2 = QVBoxLayout(g2)
         v2.setSpacing(8)
 
+        now_dt = datetime.now(BJ).replace(tzinfo=None)
         h_dt = QHBoxLayout()
         lbl2 = QLabel("北京时间")
         lbl2.setFixedWidth(56)
-        self.dt_edit = QDateTimeEdit(datetime.now(BJ).replace(tzinfo=None), self)
-        self.dt_edit.setDisplayFormat("yyyy-MM-dd HH:mm:ss.zzz")
-        self.dt_edit.setCalendarPopup(True)
-        self.dt_edit.dateTimeChanged.connect(self._on_dt_changed)
+        self.date_edit = QDateEdit(now_dt.date(), self)
+        self.date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.date_edit.setCalendarPopup(True)
+        self.date_edit.dateChanged.connect(self._on_dt_changed)
+        self.time_edit = QTimeEdit(now_dt.time(), self)
+        self.time_edit.setDisplayFormat("HH:mm:ss.zzz")
+        self.time_edit.setFixedWidth(130)
+        self.time_edit.timeChanged.connect(self._on_dt_changed)
         btn_cur = QPushButton("现在")
         btn_cur.setFixedWidth(56)
         btn_cur.clicked.connect(self._fill_now_dt)
         h_dt.addWidget(lbl2)
-        h_dt.addWidget(self.dt_edit)
+        h_dt.addWidget(self.date_edit)
+        h_dt.addWidget(self.time_edit)
         h_dt.addWidget(btn_cur)
         v2.addLayout(h_dt)
 
@@ -157,7 +163,11 @@ class 时间戳对话框(自绘外壳对话框):
         self.ts_ms.setText(dt.strftime("%Y-%m-%d %H:%M:%S.") + f"{dt.microsecond // 1000:03d}")
 
     def _on_dt_changed(self):
-        dt = self.dt_edit.dateTime().toPython()  # 本地 naive（本机 = 北京时间）
+        # 本地 naive（本机 = 北京时间）：日期框 + 时间框合并
+        dt = datetime.combine(
+            self.date_edit.date().toPython(),
+            self.time_edit.time().toPython(),
+        )
         aware = dt.replace(tzinfo=BJ)
         self.dt_sec.setText(str(int(aware.timestamp())))
         self.dt_ms.setText(str(int(aware.timestamp() * 1000)))
@@ -166,7 +176,9 @@ class 时间戳对话框(自绘外壳对话框):
         self.ts_input.setText(str(int(datetime.now(BJ).timestamp())))
 
     def _fill_now_dt(self):
-        self.dt_edit.setDateTime(datetime.now(BJ).replace(tzinfo=None))
+        now_dt = datetime.now(BJ).replace(tzinfo=None)
+        self.date_edit.setDate(now_dt.date())
+        self.time_edit.setTime(now_dt.time())
 
     @staticmethod
     def _copy(text):

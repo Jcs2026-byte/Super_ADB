@@ -276,8 +276,7 @@ def install(main):
         裁剪_qt.main()
     except Exception as e:
         print('裁剪_qt.py 执行失败（不影响主构建，可手动跑）:', e)
-
-    # 打包完成后，输出文件夹按平台命名（Super_ADB_Win / _MAC / _Linux）
+   # 打包完成后，输出文件夹按平台命名（Super_ADB_Win / _MAC / _Linux）
     _重命名输出文件夹(base_dir, name)
 
 

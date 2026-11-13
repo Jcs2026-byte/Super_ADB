@@ -579,14 +579,76 @@ def _format_duration(seconds):
         return f'{h}h{m}m'
 
 
+# ------------------------------------------------------------------
+# dumpsys package 分块挑选: 系统预装包与 /data 更新包共存时取当前生效的那份
+# ------------------------------------------------------------------
+
+_包块头_正则 = re.compile(r'^\s*Package \[([^\]]+)\]')
+_包块隐藏段_前缀 = ('Hidden system packages', 'Disabled system packages')
+
+
+def _F拆分包块(dumpsys原文):
+    """把 dumpsys package 输出按 "Package [包名]" 切成块。
+
+    Returns: [(是否位于隐藏/禁用段, 块文本), ...]
+    """
+    块列表 = []
+    当前行 = []
+    当前隐藏 = False
+    在隐藏段 = False
+    for 行 in (dumpsys原文 or '').splitlines():
+        去空 = 行.strip()
+        if 去空.startswith(_包块隐藏段_前缀):
+            在隐藏段 = True
+            continue
+        if 去空.startswith('Packages:'):
+            在隐藏段 = False
+            continue
+        if _包块头_正则.match(行):
+            if 当前行:
+                块列表.append((当前隐藏, '\n'.join(当前行)))
+            当前行 = [行]
+            当前隐藏 = 在隐藏段
+            continue
+        if 当前行:
+            当前行.append(行)
+    if 当前行:
+        块列表.append((当前隐藏, '\n'.join(当前行)))
+    return 块列表
+
+
+def _F选择活动包块文本(dumpsys原文):
+    """挑出当前真正生效的包块文本（优先 codePath 位于 /data 下的那份）。
+
+    系统预装应用被 /data 下的更新覆盖后，dumpsys 末尾的
+    Hidden system packages 段仍会列出系统旧版本（codePath=/system/...、
+    dataDir=null），整段正则搜索很容易命中旧版本，必须先分块再挑。
+    """
+    块列表 = _F拆分包块(dumpsys原文)
+    if not 块列表:
+        return dumpsys原文 or ''
+    可见块 = [块 for 块 in 块列表 if not 块[0]] or 块列表
+    for _, 文本 in 可见块:
+        匹配 = re.search(r'codePath=([^\s]+)', 文本)
+        if 匹配 and 匹配.group(1).startswith('/data'):
+            return 文本
+    for _, 文本 in 可见块:
+        if 'versionName=' in 文本 or 'codePath=' in 文本:
+            return 文本
+    return 可见块[0][1]
+
+
 def _parse_uid(package_raw):
-    """从 dumpsys package 输出解析 userId。
+    """从 dumpsys package 输出解析 userId（只取当前生效的包块）。
 
     典型行: userId=10001
     """
     if not package_raw:
         return None
-    m = re.search(r'userId=(\d+)', package_raw)
+    块文本 = _F选择活动包块文本(package_raw)
+    m = re.search(r'userId=(\d+)', 块文本)
+    if not m:
+        m = re.search(r'\buid=(\d+)', 块文本)
     return int(m.group(1)) if m else None
 
 
@@ -977,63 +1039,66 @@ def _parse_app_info(raw, package):
     if not raw:
         return info
 
+    # 先按安装路径挑出当前生效的包块，避免读到 Hidden system packages 里的系统旧版本
+    块文本 = _F选择活动包块文本(raw)
+
     # versionName / versionCode
-    m = re.search(r'versionName=([^\s]+)', raw)
+    m = re.search(r'versionName=([^\s]+)', 块文本)
     if m:
         info['versionName'] = m.group(1)
-    m = re.search(r'versionCode=(\d+)', raw)
+    m = re.search(r'versionCode=(\d+)', 块文本)
     if m:
         info['versionCode'] = m.group(1)
 
     # firstInstallTime / lastUpdateTime
-    m = re.search(r'firstInstallTime=(.+)', raw)
+    m = re.search(r'firstInstallTime=(.+)', 块文本)
     if m:
         info['firstInstallTime'] = m.group(1).strip()
-    m = re.search(r'lastUpdateTime=(.+)', raw)
+    m = re.search(r'lastUpdateTime=(.+)', 块文本)
     if m:
         info['lastUpdateTime'] = m.group(1).strip()
 
     # targetSdk
-    m = re.search(r'targetSdk=(\d+)', raw)
+    m = re.search(r'targetSdk=(\d+)', 块文本)
     if m:
         info['targetSdk'] = m.group(1)
 
     # minSdk (新版 Android)
-    m = re.search(r'minSdk=(\d+)', raw)
+    m = re.search(r'minSdk=(\d+)', 块文本)
     if m:
         info['minSdk'] = m.group(1)
 
     # debuggable — 在 flags=[...] 里查找
-    m = re.search(r'flags=\[([^\]]+)\]', raw)
+    m = re.search(r'flags=\[([^\]]+)\]', 块文本)
     if m:
         flags_str = m.group(1)
         info['debuggable'] = 'DEBUGGABLE' in flags_str
     else:
         # 某些设备用 fl=0x 格式
-        m = re.search(r'fl=0x([0-9a-fA-F]+)', raw)
+        m = re.search(r'fl=0x([0-9a-fA-F]+)', 块文本)
         if m:
             flags_val = int(m.group(1), 16)
             info['debuggable'] = bool(flags_val & 0x2)
 
     # enabled
-    m = re.search(r'enabled=(\d+)', raw)
+    m = re.search(r'enabled=(\d+)', 块文本)
     if m:
         info['enabled'] = m.group(1) != '0'
     else:
         info['enabled'] = True  # 默认 enabled
 
     # userId (UID)
-    m = re.search(r'userId=(\d+)', raw)
+    m = re.search(r'userId=(\d+)', 块文本)
     if m:
         info['uid'] = m.group(1)
 
-    # dataDir
-    m = re.search(r'dataDir=([^\s]+)', raw)
-    if m:
+    # dataDir（null 视为无数据目录）
+    m = re.search(r'dataDir=([^\s]+)', 块文本)
+    if m and m.group(1).lower() != 'null':
         info['dataDir'] = m.group(1)
 
     # codePath (APK 路径)
-    m = re.search(r'codePath=([^\s]+)', raw)
+    m = re.search(r'codePath=([^\s]+)', 块文本)
     if m:
         info['codePath'] = m.group(1)
 

@@ -146,14 +146,6 @@ def _F获取活动安装路径(adb, serial, package_name):
     return 路径列表, 目录集合
 
 
-def _F路径转目录(路径):
-    """APK 路径 → 所在目录（dumpsys 的 codePath 是目录，不带文件名）。"""
-    路径 = (路径 or '').strip()
-    if not 路径:
-        return ''
-    return 路径.rsplit('/', 1)[0] if '/' in 路径 else 路径
-
-
 def _F解析进程行(行, package_name):
     """从 ps 输出行解析 (pid, 进程名)，只保留本包相关进程（含 :子进程）。
 
@@ -321,27 +313,45 @@ def _F解析包块(dump文本):
     return 块列表
 
 
-def _F选择活动包块(块列表, 进程目录集合=(), pm目录集合=()):
+def _F路径与代码路径一致(apk路径, 代码路径):
+    """判断某个 APK 路径是否属于 dumpsys 的 codePath（两种路径风格都要适配）。
+
+    新版：apk=/data/app/com.x-1/base.apk        codePath=/data/app/com.x-1
+    老版：apk=/data/app/com.x-1.apk             codePath=/data/app/com.x-1.apk
+    注意老版不能再"去掉文件名取目录"，否则得到笼统的 /data/app，匹配不到任何块。
+    """
+    apk路径 = (apk路径 or '').strip()
+    代码路径 = (代码路径 or '').strip().rstrip('/')
+    if not apk路径 or not 代码路径:
+        return False
+    if apk路径 == 代码路径 or apk路径.startswith(代码路径 + '/'):
+        return True
+    if apk路径.lower().endswith('.apk'):
+        return apk路径[:-len('.apk')] == 代码路径
+    return False
+
+
+def _F选择活动包块(块列表, 进程APK列表=(), 安装路径列表=()):
     """挑出当前真正生效的那一块。
 
-    优先级：进程实际映射的 APK 目录 → pm path 返回的目录 → 代码路径在 /data 下
+    优先级：进程实际映射的 APK → pm path 返回的 APK → 代码路径在 /data 下
             → 数据目录在 /data 下 → 首个非隐藏块。
     """
     可用块 = [块 for 块 in 块列表 if not 块.get('隐藏段')] or 块列表
 
-    def _按目录匹配(目录集合):
+    def _按APK匹配(APK列表):
         for 块 in 可用块:
-            代码路径 = (块.get('代码路径') or '').rstrip('/')
-            if 代码路径 and 代码路径 in 目录集合:
-                return 块
+            for apk in APK列表 or ():
+                if _F路径与代码路径一致(apk, 块.get('代码路径')):
+                    return 块
         return None
 
-    for 目录集合 in (进程目录集合, pm目录集合):
-        命中块 = _按目录匹配(目录集合 or ())
+    for APK列表 in (进程APK列表, 安装路径列表):
+        命中块 = _按APK匹配(APK列表 or ())
         if 命中块:
             return 命中块
 
-    # 程序走到这里说明目录都没对上，按 /data 前缀兜底
+    # 程序走到这里说明路径都没对上，按 /data 前缀兜底
     for 块 in 可用块:
         if (块.get('代码路径') or '').startswith('/data'):
             return 块
@@ -363,17 +373,17 @@ def 获取版本信息(adb, serial, package_name, 缓存=None):
         缓存 = _F取缓存(缓存)
         安装路径结果 = _F缓存取值(缓存, '安装路径',
                                lambda: _F获取活动安装路径(adb, serial, package_name))
-        路径列表, pm目录集合 = 安装路径结果 or ([], set())
+        路径列表, _pm目录集合 = 安装路径结果 or ([], set())
         进程列表 = _F缓存取值(缓存, '进程列表',
                             lambda: _F获取进程列表(adb, serial, package_name)) or []
-        进程目录集合 = {_F路径转目录(进程.get('apk路径')) for 进程 in 进程列表}
-        进程目录集合 = {目录 for 目录 in 进程目录集合
-                     if 目录 and (package_name in 目录 or 目录.startswith('/data'))}
+        进程APK列表 = [进程.get('apk路径') for 进程 in 进程列表 if 进程.get('apk路径')]
+        进程APK列表 = [apk for apk in 进程APK列表
+                    if package_name in apk or apk.startswith('/data')]
 
         raw = _F缓存取值(缓存, '包信息dump',
                          lambda: adb.执行shell(serial, f'dumpsys package {package_name}', timeout=10))
         块列表 = _F解析包块(raw or '')
-        块 = _F选择活动包块(块列表, 进程目录集合, pm目录集合)
+        块 = _F选择活动包块(块列表, 进程APK列表, 路径列表)
         if not 块:
             return '未获取到版本信息'
 
@@ -395,16 +405,16 @@ def 获取版本信息(adb, serial, package_name, 缓存=None):
             lines.append(f"版本路径: {块['代码路径']}")
 
         # 多进程各自跑着不同 APK 时（双开/多用户），把其余版本也列出来
-        其他目录 = sorted(目录 for 目录 in 进程目录集合
-                        if 目录 != (块['代码路径'] or '').rstrip('/'))
-        if 其他目录:
+        其他APK = sorted(apk for apk in set(进程APK列表)
+                      if not _F路径与代码路径一致(apk, 块['代码路径']))
+        if 其他APK:
             lines.append('其他运行中 APK:')
-            for 目录 in 其他目录:
+            for apk in 其他APK:
                 其他块 = next((候选 for 候选 in 块列表
-                               if (候选['代码路径'] or '').rstrip('/') == 目录), None)
+                               if _F路径与代码路径一致(apk, 候选['代码路径'])), None)
                 版本 = (f"{其他块['版本名']}（{其他块['版本号']}）"
                         if 其他块 and 其他块['版本名'] else '版本未知')
-                lines.append(f"  {目录} → {版本}")
+                lines.append(f"  {apk} → {版本}")
 
         return '\n  '.join(lines) if lines else '未获取到版本信息'
     except Exception as e:

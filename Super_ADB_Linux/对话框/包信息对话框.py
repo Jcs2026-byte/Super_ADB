@@ -11,7 +11,7 @@ import threading
 from PySide6.QtCore import Qt, Slot, Signal, QObject
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QTextEdit, QLabel,
+    QDialog, QVBoxLayout, QTextEdit,
 )
 
 from 项目UI.界面样式 import get_stylesheet
@@ -480,9 +480,7 @@ class 包信息对话框(自绘外壳对话框):
         lay.setContentsMargins(14, 14, 14, 14)
         lay.setSpacing(8)
 
-        title = QLabel(f'包名: {self.package_name}')
-        lay.addWidget(title)
-
+        # 包名只在窗口标题栏显示一次，卡片内不再重复
         self.text_edit = QTextEdit()
         self.text_edit.setReadOnly(True)
         self.text_edit.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)

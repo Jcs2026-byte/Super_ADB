@@ -205,10 +205,12 @@ class 文件管理页(QWidget):
         self._live_workers = []
         self._computed_dir_sizes = set()  # 已后台 du -sh 算过大小的目录，避免重复算
         self._last_browsed_path = None  # 最近一次浏览的目录路径，自动刷新刷它
+        self._最近展开路径 = None      # 最新展开的目录路径，定时刷新只刷这一个
+        self._抑制展开记录 = False     # _populate 恢复展开态时置 True，避免误记基点
         # ── 设备管理器开关：默认关闭 → 不执行获取文件 ──
         self._device_mgr_on = False
         self.btn_device_mgr = None
-        # 定时刷新（仅刷新已展开的目录），默认 3 秒一次
+        # 定时刷新（只刷最新展开的那一个目录），默认 3 秒一次
         self._auto_refresh_ms = 3000
         self._auto_refresh_timer = QTimer(self)
         self._auto_refresh_timer.timeout.connect(self._on_auto_refresh)
@@ -603,6 +605,9 @@ class 文件管理页(QWidget):
         self._dir_items[self._root_path] = item
         self.model.appendRow([item, QStandardItem('—'), QStandardItem('—'), QStandardItem('—')])
         self.tree.setExpanded(item.index(), True)
+        # 基点未记录时以根目录兜底，否则自动刷新会因为 _last_browsed_path 为空而完全不触发
+        self._last_browsed_path = self._root_path
+        self._最近展开路径 = self._root_path
         self._apply_search_filter()
 
     # ------------------------------------------------------------------
@@ -633,20 +638,30 @@ class 文件管理页(QWidget):
         """关闭设备管理器时清空文件树，释放资源。"""
         self._dir_items.clear()
         self._loading.clear()
+        self._最近展开路径 = None
+        self._last_browsed_path = None
         self.model.clear()
         self.model.setHorizontalHeaderLabels(['名称', '大小', '权限', '修改时间'])
         self._apply_header_modes()
 
     def _on_auto_refresh(self):
-        """定时刷新：刷新用户最近浏览的目录（记录在 _last_browsed_path）。"""
+        """定时刷新：只刷「最新展开的那一个目录」，不再一次刷 N 个已展开目录。
+
+        3 秒一轮 × N 个目录 = 每轮 N 次 adb ls，展开层数一多就把设备压满；
+        改成只跟随用户最近展开的路径：看哪个目录就刷哪个。
+        该目录已不存在（被删/树重建）时回退到最近浏览目录 / 根目录。
+        """
         if not self._device_mgr_on or not self._current_serial:
             return
         if self._deep_search_mode:
             return
-        path = self._last_browsed_path
-        if not path:
+        目标 = self._最近展开路径
+        if not 目标 or 目标 not in self._dir_items:
+            目标 = self._last_browsed_path or self._root_path
+        if not 目标 or 目标 not in self._dir_items:
             return
-        self._refresh_dir(path)
+        self._last_browsed_path = 目标
+        self._refresh_dir(目标, 记录=False)
 
     # ------------------------------------------------------------------
     # 懒加载
@@ -655,10 +670,15 @@ class 文件管理页(QWidget):
         item = self.model.itemFromIndex(index)
         if not item:
             return
-        if item.data(LOADED_ROLE):
-            return
         entry = item.data(Qt.UserRole) or {}
         path = entry.get('path', '')
+        # 记录“最新展开的目录”，供定时刷新只刷这一个路径用。
+        # _populate 恢复展开状态时也会触发 expanded 信号，那种不算用户操作，
+        # 用 _抑制展开记录 挡掉，否则基点会被恢复到某个子目录上。
+        if path and not self._抑制展开记录:
+            self._最近展开路径 = path
+        if item.data(LOADED_ROLE):
+            return
         if not path or path in self._loading:
             return
         self._loading.add(path)
@@ -747,13 +767,17 @@ class 文件管理页(QWidget):
 
         # 4) 恢复被刷新目录自身及其已展开子目录的展开状态
         item.setData(True, LOADED_ROLE)
-        if was_exp:
-            self.tree.setExpanded(item.index(), True)
-        for r in range(item.rowCount()):
-            child = item.child(r, 0)
-            entry = child.data(Qt.UserRole) or {}
-            if entry.get('path') in expanded_sub:
-                self.tree.setExpanded(child.index(), True)
+        self._抑制展开记录 = True
+        try:
+            if was_exp:
+                self.tree.setExpanded(item.index(), True)
+            for r in range(item.rowCount()):
+                child = item.child(r, 0)
+                entry = child.data(Qt.UserRole) or {}
+                if entry.get('path') in expanded_sub:
+                    self.tree.setExpanded(child.index(), True)
+        finally:
+            self._抑制展开记录 = False
         self._apply_search_filter()
         # 有真实子项时删掉占位子项，避免多一个空行；空目录保留占位（三角箭头才在）
         if len(new_list) > 0:
@@ -897,19 +921,78 @@ class 文件管理页(QWidget):
         w = _CmdWorker(_do_du)
         self._track(w, on_result=_on_done, pool=self._du_pool)
 
-    def _refresh_dir(self, path):
+    def _refresh_dir(self, path, 记录=True):
         item = self._dir_items.get(path)
         if not item or path in self._loading:
             return
         # 记录最近浏览的目录，供自动刷新使用（不依赖 currentIndex，
         # 避免用户展开子目录后焦点仍在根目录导致一直刷 /sdcard/）
-        self._last_browsed_path = path
+        # 批量刷新展开目录时传 记录=False，避免把子目录记成“最近浏览”导致基点漂移
+        if 记录:
+            self._last_browsed_path = path
         # 不 removeRows 清空：直接 diff 更新（_populate 保留已有节点与展开状态）
         self._loading.add(path)
         w = _CmdWorker(self._mgr.列出目录, self._current_serial, path)
         self._track(w, on_result=lambda e: self._populate(item, e),
                    on_error=lambda e: self._on_list_err(item, path, e),
                    on_finished=lambda: self._loading.discard(path))
+
+    def _收集已展开目录(self, 起点路径=None):
+        """从起点目录（默认根目录）向下 BFS，返回所有已展开目录的路径（含起点）。
+
+        只有展开过的节点才会出现在结果里 —— 折叠目录的内容没人看，不必刷。
+        """
+        item = self._dir_items.get(起点路径 or self._root_path)
+        if item is None:
+            return []
+        结果 = []
+        队列 = [item]
+        while 队列:
+            当前 = 队列.pop(0)
+            try:
+                数据 = 当前.data(Qt.UserRole) or {}
+            except RuntimeError:
+                continue
+            路径 = 数据.get('path')
+            if 路径 and 路径 not in 结果:
+                结果.append(路径)
+            for 行 in range(当前.rowCount()):
+                子项 = 当前.child(行, 0)
+                if 子项 is None:
+                    continue
+                子数据 = 子项.data(Qt.UserRole) or {}
+                子路径 = 子数据.get('path')
+                if not 子路径:
+                    continue
+                try:
+                    已展开 = self.tree.isExpanded(子项.index())
+                except RuntimeError:
+                    continue
+                if 已展开:
+                    队列.append(子项)
+        return 结果
+
+    def _刷新目录树(self, 基点路径=None, 整树=False):
+        """刷新基点目录 + 已展开目录（定时刷新与手动刷新统一走这里）。
+
+        每目录一次 adb ls，时序上先父后子：父目录先 diff 完成，子目录节点才存在，
+        避免出现“父目录重建后子目录还没刷”的空档。
+        手动刷新用整树=False：只刷基点及其子树里展开的部分（定时刷新已改为
+        _on_auto_refresh 单刷「最新展开路径」，不走这里）。
+        """
+        基点 = 基点路径 or self._last_browsed_path or self._root_path
+        起点 = self._root_path if 整树 else 基点
+        目标 = [基点] if 基点 else []
+        for 路径 in self._收集已展开目录(起点):
+            if 路径 not in 目标:
+                目标.append(路径)
+        上限 = 16
+        if len(目标) > 上限:
+            self._status(f'刷新目录过多（{len(目标)} 个），本次只刷前 {上限} 个')
+            目标 = 目标[:上限]
+        self._last_browsed_path = 基点
+        for 路径 in 目标:
+            self._refresh_dir(路径, 记录=False)
 
     def _refresh_current(self):
         if self._deep_search_mode:
@@ -921,11 +1004,13 @@ class 文件管理页(QWidget):
             entry = item.data(Qt.UserRole) or {}
             path = entry.get('path', '')
             if entry.get('is_dir'):
-                self._refresh_dir(path)
+                self._刷新目录树(path)
+            elif path:
+                self._刷新目录树(self._dirname(path))
             else:
-                self._refresh_dir(self._dirname(path))
+                self._刷新目录树(self._root_path)
         else:
-            self._refresh_dir(self._root_path)
+            self._刷新目录树(self._root_path)
 
     # ------------------------------------------------------------------
     # 右键菜单

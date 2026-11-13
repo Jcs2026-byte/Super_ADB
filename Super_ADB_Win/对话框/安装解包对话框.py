@@ -659,6 +659,13 @@ class 安装解包对话框(对话框基类):
             self.tree.clear()
 
     def _on_package_loaded(self, zf, entries, path, size):
+        # 弹窗已关闭（加载线程晚到）：立刻关闭句柄，否则这个 zip 再没人关 → APK 永久被占用
+        if not self.isVisible():
+            try:
+                zf.close()
+            except Exception:
+                pass
+            return
         self._zf = zf
         self._zip_path = path
         self._zip_size = size
@@ -1281,12 +1288,7 @@ class 安装解包对话框(对话框基类):
 
     def closeEvent(self, ev):
         # 先释放 zip 句柄
-        if self._zf is not None:
-            try:
-                self._zf.close()
-            except Exception as e:
-                print(f'[安装弹窗] 关闭时释放 zip 失败: {e!r}')
-            self._zf = None
+        self._释放包()
         线程列表 = (self._load_thread, self._build_tree_thread,
                    getattr(self, '_meta_thread', None), getattr(self, '_thread', None),
                    getattr(self, '_preview_thread', None))
@@ -1312,3 +1314,33 @@ class 安装解包对话框(对话框基类):
         # 清理已自然结束的存活线程引用
         self._存活线程 = [t for t in self._存活线程 if t.isRunning()]
         super().closeEvent(ev)
+
+    # ------------------------------------------------------------------
+    # 句柄释放：close / ✕(reject) / hide 三条路径都要走
+    # ------------------------------------------------------------------
+    def _释放包(self):
+        """释放当前 zip 句柄与包状态（幂等）。
+
+        根因：标题栏 ✕ 按钮连的是 ``reject()``，QDialog.reject() 只 hide、
+        不发 QCloseEvent，原来只在 closeEvent 里关 zip —— 于是点 ✕ 关掉弹窗后
+        APK 仍被本进程占用（Windows 提示“文件已在 Super_ADB.exe 中打开”）。
+        """
+        zf = self._zf
+        self._zf = None
+        self._zip_path = None
+        self._tree_data = None
+        if zf is not None:
+            try:
+                zf.close()
+            except Exception as e:
+                print(f'[安装弹窗] 释放 zip 失败: {e!r}')
+
+    def reject(self):
+        """点标题栏 ✕ / Esc 关闭：先释放包再走 QDialog.reject()。"""
+        self._释放包()
+        super().reject()
+
+    def hideEvent(self, ev):
+        """被宿主隐藏（切页/最小化）时也释放，避免句柄跟着不可见窗口挂着。"""
+        self._释放包()
+        super().hideEvent(ev)

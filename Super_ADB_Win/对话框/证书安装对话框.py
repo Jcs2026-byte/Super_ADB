@@ -7,7 +7,8 @@
 - 检查设备 /system 分区读写权限（adb root + remount + 写入验证）
 - 计算证书 subject hash（参考 哈希校验对话框._Pem主题哈希器：文件内容 MD5 取前 8 位）
 - 重命名为 <hash>.0 并 adb push 到 /system/etc/security/cacerts/
-- chmod 777 赋予权限
+- chmod 644 + chown root:root（系统证书规范权限）
+- 根分区满盘（ext4 可用块为 0）时自动走 tmpfs 桥接兜底
 - 输出框实时展示每一步执行的命令与结果
 
 UI 与逻辑分离：本模块只依赖 adb 实例与 获取序列号 回调。
@@ -98,6 +99,34 @@ def _解析df可用KB(df输出, 挂载点='/system'):
     return _带单位转KB(部分[3])
 
 
+def _解析statfs可用KB(statf输出):
+    """从 ``stat -f`` 输出中解析真正可分配的 KB。
+
+    关键：ext4 的 ``Free`` 把根目录保留块（5%）也算进去，满盘时会出现
+    ``Free`` 还有 969 块、但 ``Available`` 为 0。此时 root 同样分配不到块，
+    写入必定 ENOSPC。df 的 Available 列在部分 toybox 上与 Free 同值，
+    所以空间判定必须以 statfs 的 ``Available`` 为准。
+
+    返回 None 表示无法解析。
+    """
+    import re
+    块大小 = 4096
+    可用块 = None
+    for 行 in (statf输出 or '').splitlines():
+        行 = 行.strip()
+        if 行.startswith('Block Size'):
+            数字 = re.findall(r'\d+', 行)
+            if 数字:
+                块大小 = int(数字[0])
+        elif 行.startswith('Blocks'):
+            数字 = re.search(r'Available:\s*(\d+)', 行)
+            if 数字:
+                可用块 = int(数字.group(1))
+    if 可用块 is None:
+        return None
+    return 可用块 * 块大小 // 1024
+
+
 # ----------------------------------------------------------------------
 # 后台执行线程（避免卡 UI）
 # ----------------------------------------------------------------------
@@ -147,26 +176,7 @@ class 证书安装线程(QThread):
         临时路径 = os.path.join(临时目录, f'{哈希值}.0')
         shutil.copy(self._证书路径, 临时路径)
         self.日志.emit(f'    已重命名为: {哈希值}.0')
-        # 3. 检查 /system 分区可用空间和可写性
-        远程路径 = f'/system/etc/security/cacerts/{哈希值}.0'
-        try:
-            # 不用 df -k：部分设备 toybox/busybox df 不支持 -k，会把它当路径报错
-            df_out = self._adb.执行shell(self._序列号, 'df /system', timeout=10)
-            self.日志.emit(f'    /system 空间: {(df_out or "").strip()}')
-            可用KB = _解析df可用KB(df_out, '/system')
-            证书大小KB = max(1, (os.path.getsize(临时路径) + 1023) // 1024)
-            if 可用KB is not None:
-                self.日志.emit(f'    可用空间: {可用KB} KB（证书需 {证书大小KB} KB）')
-                if 可用KB < 证书大小KB:
-                    self.日志.emit(f'    ✗ /system 可用空间不足: {可用KB}KB < 证书大小 {证书大小KB}KB')
-                    self.完成.emit(False, f'/system 可用空间不足 ({可用KB}KB)，证书需要 {证书大小KB}KB。请清理 /system 分区或使用 Magisk 模块方式安装。')
-                    return
-            else:
-                self.日志.emit('    ⚠ 无法解析 df 输出，跳过空间检查')
-        except Exception as e:
-            self.日志.emit(f'    空间检查跳过: {e}')
-
-        # 4. 确保证书目录存在（个别设备缺 cacerts 目录会导致推送静默失败）
+        # 3. 确保证书目录存在（个别设备缺 cacerts 目录会导致推送静默失败）
         self.日志.emit('>>> mkdir -p /system/etc/security/cacerts')
         try:
             mkdir_out = (self._adb.执行shell(
@@ -183,79 +193,70 @@ class 证书安装线程(QThread):
             self.完成.emit(False, f'创建证书目录失败: {e}')
             return
 
-        # 5. adb push
-        self.日志.emit(f'>>> adb push {临时路径} {远程路径}')
+        证书目录 = '/system/etc/security/cacerts'
+        远程路径 = f'{证书目录}/{哈希值}.0'
+        证书大小KB = max(1, (os.path.getsize(临时路径) + 1023) // 1024)
+
+        # 4. 目标目录空间检查（以 statfs 的 Available 为准：df 的 Available 会把
+        #    ext4 保留池里的块算成“可用”，满盘时误判成还有几 MB 而放行）
+        已桥接 = False
         try:
-            结果 = self._adb.直接执行(self._序列号, ['push', 临时路径, 远程路径], timeout=30)
-            self.日志.emit(f'    {结果.strip() or "推送成功"}')
+            statf_out = (self._adb.执行shell(
+                self._序列号, f'stat -f {证书目录}', timeout=10) or '').strip()
+            self.日志.emit('    目标目录 statfs: ' + ' | '.join(
+                l.strip() for l in statf_out.splitlines() if l.strip()))
+            可分配KB = _解析statfs可用KB(statf_out)
+            if 可分配KB is None:
+                self.日志.emit('    ⚠ 无法解析 statfs 输出，跳过空间检查')
+            else:
+                self.日志.emit(f'    可分配空间: {可分配KB} KB（证书需 {证书大小KB} KB）')
+                if 可分配KB < 64:
+                    self.日志.emit('    ⚠ 可分配块为 0 或极小：ext4 剩余块都在保留池里，'
+                                   'root 也分配不到，df 显示“还剩几 MB”属于误判 → push 必然 ENOSPC')
+                    已桥接 = self._临时挂载证书目录()
+                    if not 已桥接:
+                        self.完成.emit(False, '证书目录满盘且 tmpfs 桥接失败，详见日志')
+                        return
         except Exception as e:
-            错误信息 = str(e)
-            self.日志.emit(f'    ✗ 推送失败: {错误信息}')
-            # 详细诊断: 逐步排查失败原因
-            self.日志.emit('    --- 诊断信息 ---')
-            # 诊断1: 检查 /system 是否真的可写
+            self.日志.emit(f'    空间检查跳过: {e}')
+
+        # 5. adb push（ENOSPC 时自动桥接后重试一次）
+        for 第几次 in (1, 2):
+            self.日志.emit(f'>>> adb push {临时路径} {远程路径}')
             try:
-                验证 = self._adb.执行shell(
-                    self._序列号,
-                    'touch /system/.super_adb_write_test && rm /system/.super_adb_write_test && echo WRITABLE',
-                    timeout=5)
-                if 'WRITABLE' not in (验证 or ''):
-                    self.日志.emit('    ✗ 诊断: /system 实际为只读，remount 可能未生效')
-                    错误信息 += ' | 原因: /system 为只读分区（remount 可能未生效）'
-                else:
-                    self.日志.emit('    ✓ 诊断: /system 分区可写')
-            except Exception as de:
-                self.日志.emit(f'    ✗ 诊断: /system 写入验证异常: {de}')
-                错误信息 += f' | 原因: /system 写入验证异常({de})'
-            # 诊断2: 检查远程目标目录是否存在
-            try:
-                目录检查 = self._adb.执行shell(
-                    self._序列号,
-                    f'ls -ld /system/etc/security/cacerts 2>&1',
-                    timeout=5)
-                self.日志.emit(f'    诊断: 目标目录状态: {目录检查.strip() or "无输出"}')
-                if 'No such file' in (目录检查 or ''):
-                    错误信息 += ' | 原因: 目标目录 /system/etc/security/cacerts 不存在'
-            except Exception as de:
-                self.日志.emit(f'    诊断: 目录检查异常: {de}')
-            # 诊断3: 检查本地文件大小是否正确
-            try:
-                本地大小 = os.path.getsize(临时路径)
-                self.日志.emit(f'    诊断: 本地证书大小: {本地大小}B')
-            except Exception:
-                self.日志.emit('    诊断: 无法获取本地文件大小')
-            # 诊断4: 检查 /system 分区剩余空间
-            try:
-                空间 = self._adb.执行shell(
-                    self._序列号, 'df /system 2>&1', timeout=5)
-                self.日志.emit(f'    诊断: /system 分区空间: {(空间 or "").strip()}')
-            except Exception:
-                pass
-            # 给出建议
-            if '字节数不一致' in 错误信息 or '0B' in 错误信息:
-                错误信息 += ' | 建议: 设备权限不足或 /system 分区已满，请确认 root 权限和分区空间'
-            elif '只读' in 错误信息:
-                错误信息 += ' | 建议: 请执行 adb root && adb remount 重新获取写权限'
-            self.日志.emit(f'    --- 诊断结束 ---')
-            self.完成.emit(False, f'推送失败: {错误信息}')
-            return
-        # 6. chmod 777（用标记验证，设备端 chmod 失败不抛异常）
-        self.日志.emit(f'>>> adb shell chmod 777 {远程路径}')
-        try:
-            chmod_out = (self._adb.执行shell(
-                self._序列号,
-                f'chmod 777 {远程路径} 2>&1 && echo CHMOD_OK',
-                timeout=10) or '').strip()
-            if 'CHMOD_OK' not in chmod_out:
-                self.日志.emit(f'    权限设置失败: {chmod_out or "无输出"}')
-                self.完成.emit(False, f'chmod 失败: {chmod_out or 远程路径}')
+                结果 = self._adb.直接执行(self._序列号, ['push', 临时路径, 远程路径], timeout=30)
+                self.日志.emit(f'    {结果.strip() or "推送成功"}')
+                break
+            except Exception as e:
+                错误信息 = str(e)
+                self.日志.emit(f'    ✗ 推送失败: {错误信息}')
+                if 'No space left' in 错误信息 and not 已桥接 and 第几次 == 1:
+                    self.日志.emit('    → 诊断: 目标分区无空闲块（ENOSPC），tmpfs 桥接后重试')
+                    if self._临时挂载证书目录():
+                        已桥接 = True
+                        continue
+                self._推送失败诊断(临时路径, 证书目录)
+                self.完成.emit(False, f'推送失败: {错误信息}')
                 return
-            self.日志.emit('    权限设置成功')
+
+        # 6. 权限：系统证书规范为 644 root:root（777 会被部分 ROM 的校验拒绝）
+        self.日志.emit(f'>>> adb shell chown root:root {远程路径}; chmod 644 {远程路径}')
+        try:
+            权限输出 = (self._adb.执行shell(
+                self._序列号,
+                f'chown root:root {远程路径} 2>&1; chmod 644 {远程路径} 2>&1 && echo CHMOD_OK',
+                timeout=10) or '').strip()
+            if 'CHMOD_OK' not in 权限输出:
+                self.日志.emit(f'    权限设置失败: {权限输出 or "无输出"}')
+                self.完成.emit(False, f'chmod 失败: {权限输出 or 远程路径}')
+                return
+            self.日志.emit('    权限设置成功（644 root:root）')
         except Exception as e:
             self.日志.emit(f'    权限设置失败: {e}')
             self.完成.emit(False, f'chmod 失败: {e}')
             return
-        # 7. 验证（硬性关卡：设备上文件不存在即判失败，不再误报成功）
+
+        # 7. 验证（硬性关卡：文件必须存在，且远端大小与本地一致）
         self.日志.emit(f'>>> 验证: adb shell ls -l {远程路径}')
         try:
             验证 = (self._adb.执行shell(
@@ -268,7 +269,133 @@ class 证书安装线程(QThread):
                            f'安装验证失败: 设备上不存在 {远程路径}'
                            f'（{验证 or "无输出"}）')
             return
+        本地大小B = os.path.getsize(临时路径)
+        try:
+            远端大小 = (self._adb.执行shell(
+                self._序列号, f'stat -c %s {远程路径} 2>&1', timeout=10) or '').strip()
+            if 远端大小.isdigit() and int(远端大小) != 本地大小B:
+                self.日志.emit(f'    ✗ 大小不一致: 本地 {本地大小B}B / 远端 {远端大小}B')
+                self.完成.emit(False, f'安装验证失败: 远端大小 {远端大小}B ≠ 本地 {本地大小B}B')
+                return
+        except Exception as e:
+            self.日志.emit(f'    大小校验跳过: {e}')
+        if 已桥接:
+            self.日志.emit('    ⚠ 本次经由 tmpfs 桥接安装：设备重启后挂载消失，证书需重新安装')
+            self.完成.emit(True, f'证书安装成功（临时，重启后需重装）: {哈希值}.0')
+            return
         self.完成.emit(True, f'证书安装成功: {哈希值}.0')
+
+    def _统计目录条目(self, 目录):
+        """统计目录内条目数量（ls -1A | wc -l）；异常返回 -1。"""
+        try:
+            输出 = (self._adb.执行shell(
+                self._序列号, f'ls -1A {目录} 2>/dev/null | wc -l', timeout=10) or '').strip()
+            数字 = 输出.split()[-1] if 输出 else ''
+            return int(数字) if 数字.isdigit() else -1
+        except Exception:
+            return -1
+
+    def _临时挂载证书目录(self, 证书目录='/system/etc/security/cacerts'):
+        """根分区满盘时的兜底：备份原证书 → tmpfs 覆盖目标目录 → 回填原证书。
+
+        返回 True 表示目录已挂载为可写的 tmpfs；任一步失败都会 umount 还原，
+        保证不会把系统原有根证书弄丢。注意 tmpfs 在内存里，重启后挂载消失。
+        """
+        备份目录 = '/data/local/tmp/_superadb_cacerts_bak'
+        self.日志.emit('    >>> 桥接: 备份原有系统证书')
+        try:
+            输出 = (self._adb.执行shell(
+                self._序列号,
+                f'rm -rf {备份目录}; mkdir -p {备份目录}; '
+                f'cp -a {证书目录}/. {备份目录}/ 2>&1 && echo CP_OK',
+                timeout=30) or '').strip()
+            self.日志.emit('    ' + (输出 or '无输出'))
+            if 'CP_OK' not in 输出:
+                self.日志.emit('    ✗ 备份原始证书失败，放弃桥接（未改动系统目录）')
+                return False
+            原数量 = self._统计目录条目(证书目录)
+            备数量 = self._统计目录条目(备份目录)
+            self.日志.emit(f'    原目录 {原数量} 项 / 备份 {备数量} 项')
+            if 原数量 <= 0 or 备数量 != 原数量:
+                self.日志.emit('    ✗ 备份条目数不一致，放弃桥接（避免覆盖后丢证书）')
+                return False
+        except Exception as e:
+            self.日志.emit(f'    ✗ 备份异常: {e}')
+            return False
+
+        self.日志.emit('    >>> 桥接: mount -t tmpfs 覆盖证书目录')
+        try:
+            挂载输出 = (self._adb.执行shell(
+                self._序列号,
+                f'mount -t tmpfs -o mode=0755,size=32m tmpfs {证书目录} 2>&1 && echo MOUNT_OK',
+                timeout=15) or '').strip()
+            self.日志.emit('    ' + (挂载输出 or '无输出'))
+            if 'MOUNT_OK' not in 挂载输出:
+                self.日志.emit('    ✗ tmpfs 挂载失败，放弃桥接')
+                return False
+        except Exception as e:
+            self.日志.emit(f'    ✗ tmpfs 挂载异常: {e}')
+            return False
+
+        self.日志.emit('    >>> 桥接: 回填原有系统证书')
+        try:
+            回填输出 = (self._adb.执行shell(
+                self._序列号,
+                f'cp -a {备份目录}/. {证书目录}/ 2>&1 && echo CP_OK',
+                timeout=30) or '').strip()
+            新数量 = self._统计目录条目(证书目录)
+            self.日志.emit(f'    回填后 {新数量} 项')
+            if 'CP_OK' not in 回填输出 or 新数量 != 备数量:
+                self.日志.emit('    ✗ 回填失败，umount 还原系统目录')
+                self._adb.执行shell(self._序列号, f'umount {证书目录} 2>&1; true', timeout=10)
+                return False
+            self._adb.执行shell(
+                self._序列号,
+                f'chown root:root {证书目录}; chmod 755 {证书目录}; '
+                f'find {证书目录} -maxdepth 1 -type f -exec chmod 644 {{}} \\; 2>&1; true',
+                timeout=20)
+            self.日志.emit('    已修正目录 755 / 文件 644 root:root')
+            self.日志.emit('    ⚠ 已切到内存 tmpfs 挂载：本次有效，重启后挂载消失需重装')
+            return True
+        except Exception as e:
+            self.日志.emit(f'    ✗ 回填异常: {e}，尝试还原')
+            try:
+                self._adb.执行shell(self._序列号, f'umount {证书目录} 2>&1; true', timeout=10)
+            except Exception:
+                pass
+            return False
+
+    def _推送失败诊断(self, 临时路径, 证书目录):
+        """push 失败时输出诊断日志（供用户定位是只读、目录缺失还是满盘）。"""
+        self.日志.emit('    --- 诊断信息 ---')
+        try:
+            验证 = self._adb.执行shell(
+                self._序列号,
+                'touch /system/.super_adb_write_test && rm /system/.super_adb_write_test && echo WRITABLE',
+                timeout=5)
+            if 'WRITABLE' not in (验证 or ''):
+                self.日志.emit('    ✗ 诊断: /system 实际为只读，remount 可能未生效')
+            else:
+                self.日志.emit('    ✓ 诊断: /system 分区可写（不是权限问题）')
+        except Exception as de:
+            self.日志.emit(f'    ✗ 诊断: /system 写入验证异常: {de}')
+        try:
+            目录检查 = self._adb.执行shell(
+                self._序列号, f'ls -ld {证书目录} 2>&1', timeout=5)
+            self.日志.emit(f'    诊断: 目标目录状态: {(目录检查 or "").strip() or "无输出"}')
+        except Exception as de:
+            self.日志.emit(f'    诊断: 目录检查异常: {de}')
+        try:
+            self.日志.emit(f'    诊断: 本地证书大小: {os.path.getsize(临时路径)}B')
+        except Exception:
+            self.日志.emit('    诊断: 无法获取本地文件大小')
+        try:
+            空间 = self._adb.执行shell(self._序列号, f'stat -f {证书目录} 2>&1', timeout=5)
+            self.日志.emit('    诊断: 目标目录 statfs: ' + ' | '.join(
+                l.strip() for l in (空间 or '').splitlines() if l.strip()))
+        except Exception:
+            pass
+        self.日志.emit('    --- 诊断结束 ---')
 
 
 # ----------------------------------------------------------------------

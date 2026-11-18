@@ -106,6 +106,121 @@ def 获取进程PID(adb, serial, package_name, 缓存=None):
         return f'获取失败: {e}'
 
 
+# ------------------------------------------------------------------
+# 内存信息（原主界面「内存」按钮的输出，迁到包信息弹窗内展示）
+# ------------------------------------------------------------------
+
+def _F格式化千字节(text):
+    """把 KB 数值格式化为 KB + MB 双单位。"""
+    try:
+        kb = int(str(text).strip())
+    except ValueError:
+        return str(text).strip()
+    return f'{kb} KB ({kb / 1024:.1f} MB)' if kb >= 1024 else f'{kb} KB'
+
+
+_内存明细映射 = [
+    ('Java 堆', 'java_mb', 'Java Heap'),
+    ('Native 堆', 'native_mb', 'Native Heap'),
+    ('代码', None, 'Code'),
+    ('栈', None, 'Stack'),
+    ('图形', 'graphics_mb', 'Graphics'),
+    ('私有其他', None, 'Private Other'),
+    ('系统占用', None, 'System'),
+]
+
+
+def _F格式化内存明细(原始, 解析=None):
+    """把一个进程的 dumpsys meminfo 输出格式化成明细行，返回 (行列表, PSS MB)。"""
+    if not 原始 or not str(原始).strip():
+        return [], None
+    if 解析 is None:
+        解析 = _F解析内存指标(原始)
+    行列表 = []
+    pss_mb = 解析.get('pss_mb')
+    if pss_mb is not None:
+        行列表.append(f'总 PSS: {_F格式化千字节(str(int(pss_mb * 1024)))}')
+    if 'rss_mb' in 解析:
+        行列表.append(f'总 RSS: {_F格式化千字节(str(int(解析["rss_mb"] * 1024)))}')
+    else:
+        # 解析器不产出 rss_mb，直接取 App Summary 的 TOTAL RSS 行
+        匹配RSS = re.search(r'TOTAL RSS:\s*(\d+)', str(原始))
+        if 匹配RSS:
+            行列表.append(f'总 RSS: {_F格式化千字节(匹配RSS.group(1))}')
+    for 名称, 解析键, 原始键 in _内存明细映射:
+        if 解析键 and 解析键 in 解析:
+            行列表.append(f'{名称}: {_F格式化千字节(str(int(解析[解析键] * 1024)))}')
+        else:
+            匹配 = re.search(rf'{re.escape(原始键)}:\s*(\d+)', 原始 or '')
+            行列表.append(f'{名称}: {_F格式化千字节(匹配.group(1)) if 匹配 else "未获取"}')
+    return 行列表, pss_mb
+
+
+def _F解析内存指标(原始):
+    """用应用性能监控里已兼容新旧 Android 的解析器，避免重复实现。"""
+    try:
+        from 工具.android调试工具.应用性能监控 import _parse_meminfo
+        return _parse_meminfo(原始 or '')
+    except Exception:
+        return {}
+
+
+def 获取内存信息(adb, serial, package_name, 缓存=None):
+    """分进程展示 dumpsys meminfo 关键指标。
+
+    单进程：直接给该 PID 的明细。
+    多进程（:子进程 / 双开）：逐个 PID 各出一块明细，末尾给 PSS 合计。
+    PSS 是系统按共享页比例折算过的值，多进程相加不会重复计算；
+    RSS 含共享内存，相加会重复，所以只对 PSS 做合计。
+    """
+    try:
+        缓存 = _F取缓存(缓存)
+        进程列表 = _F缓存取值(缓存, '进程列表',
+                            lambda: _F获取进程列表(adb, serial, package_name)) or []
+
+        if not 进程列表:
+            # 进程没在跑时仍尝试拿包级 meminfo（部分 ROM 会给总体数据）
+            try:
+                原始 = adb.获取内存信息(serial, package_name)
+            except Exception:
+                原始 = ''
+            行列表, _pss = _F格式化内存明细(原始)
+            if 行列表:
+                行列表.insert(0, '未运行（以下为包级 meminfo）')
+            return '\n  '.join(行列表) if 行列表 else '未运行'
+
+        if len(进程列表) == 1:
+            进程 = 进程列表[0]
+            原始 = adb.获取内存信息(serial, 进程['pid'])
+            行列表, _pss = _F格式化内存明细(原始)
+            if not 行列表:
+                行列表 = ['未获取到内存数据']
+            行列表.insert(0, f'进程 PID: {进程["pid"]}  {进程["进程名"]}')
+            return '\n  '.join(行列表)
+
+        总行列表 = []
+        pss合计 = 0.0
+        有PSS = False
+        for 进程 in 进程列表:
+            try:
+                原始 = adb.获取内存信息(serial, 进程['pid'])
+                明细, pss_mb = _F格式化内存明细(原始)
+            except Exception as e:
+                明细, pss_mb = [f'获取失败: {e}'], None
+            总行列表.append(f'进程 PID: {进程["pid"]}  {进程["进程名"]}')
+            for 行 in 明细:
+                总行列表.append(f'    {行}')
+            if pss_mb:
+                pss合计 += pss_mb
+                有PSS = True
+        if 有PSS:
+            总行列表.append(f'合计 PSS: {_F格式化千字节(str(int(pss合计 * 1024)))}'
+                         f'（{len(进程列表)} 个进程，按各进程 PSS 相加；RSS 含共享内存故不累加）')
+        return '\n  '.join(总行列表)
+    except Exception as e:
+        return f'获取失败: {e}'
+
+
 # dumpsys package 里每个包块的头： "  Package [com.foo.bar] (1a2b3c):"
 _包块头_正则 = re.compile(r'^\s*Package \[([^\]]+)\]')
 
@@ -452,6 +567,7 @@ def 获取应用大小(adb, serial, package_name, 缓存=None):
 _INFO_ITEMS = [
     ('安装路径', 获取安装路径),
     ('进程 PID', 获取进程PID),
+    ('内存信息', 获取内存信息),
     ('版本信息', 获取版本信息),
     ('应用大小', 获取应用大小),
 ]

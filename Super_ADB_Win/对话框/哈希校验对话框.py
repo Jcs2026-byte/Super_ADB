@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QLabel, QPushButton,
     QVBoxLayout, QWidget, QScrollArea, QCheckBox, QProgressBar,
     QMessageBox, QFileDialog, QGroupBox, QTableWidget, QTableWidgetItem,
-    QRadioButton, QLineEdit, QSpinBox,
+    QRadioButton, QLineEdit, QSpinBox, QPlainTextEdit, QButtonGroup,
 )
 
 from 项目UI import png_rc  # noqa: F401
@@ -537,6 +537,11 @@ class 哈希校验对话框(对话框基类):
         self._concurrency = int(self._settings.value('concurrency', 4))
         # 大小写偏好（默认勾选=大写）
         self._upper_case = self._settings.value('upper_case', True, type=bool)
+        # 文本 MD5 偏好：摘要长度（32 / 16）与大小写
+        self._md5_len = self._settings.value('text_md5_len', '32')
+        if self._md5_len not in ('32', '16'):
+            self._md5_len = '32'
+        self._md5_upper = self._settings.value('text_md5_upper', True, type=bool)
         # PEM_SUBJECT_HASH 永远默认勾选（用户偏好：「PEM 默认勾选」）。
         # 即使 saved 里被别人清空，加载时仍强制回写一次，避免被空白结果列表误导。
         saved = self._settings.value('algos', 'MD5,SHA1,SHA256,PEM_SUBJECT_HASH')
@@ -593,6 +598,66 @@ class 哈希校验对话框(对话框基类):
         self.spin_conc.valueChanged.connect(self._on_concurrency_changed)
         algo_layout.addWidget(self.spin_conc)
         root.addWidget(algo_box)
+
+        # ── 文本 MD5 区：直接输入字符串计算 MD5（32 / 16 位，可选大小写）──
+        text_box = QGroupBox("文本 MD5")
+        text_v = QVBoxLayout(text_box)
+        text_v.setSpacing(6)
+        self.text_edit = QPlainTextEdit()
+        self.text_edit.setPlaceholderText("输入需要计算 MD5 的文本（按 UTF-8 编码，保留首尾空格与换行）")
+        self.text_edit.setFixedHeight(64)
+        self._text_input_style = (
+            f"QPlainTextEdit {{ background: {THEMES[self._theme_id]['bg_input']};"
+            f" color: {THEMES[self._theme_id]['text_primary']};"
+            f" border: 1px solid {self._accent}; border-radius: 6px; padding: 4px; }}")
+        self.text_edit.setStyleSheet(self._text_input_style)
+        text_v.addWidget(self.text_edit)
+
+        opt_row = QHBoxLayout()
+        opt_row.setSpacing(8)
+        opt_row.addWidget(QLabel("长度："))
+        self.rb_md5_32 = QRadioButton("32 位")
+        self.rb_md5_16 = QRadioButton("16 位")
+        self.rb_md5_32.setChecked(self._md5_len == '32')
+        self.rb_md5_16.setChecked(self._md5_len == '16')
+        self.rb_md5_16.setToolTip("16 位 = 32 位 MD5 的第 9–24 位（去掉首尾各 8 位）")
+        opt_row.addWidget(self.rb_md5_32)
+        opt_row.addWidget(self.rb_md5_16)
+        opt_row.addSpacing(12)
+        opt_row.addWidget(QLabel("大小写："))
+        self.rb_md5_upper = QRadioButton("大写")
+        self.rb_md5_lower = QRadioButton("小写")
+        self.rb_md5_upper.setChecked(self._md5_upper)
+        self.rb_md5_lower.setChecked(not self._md5_upper)
+        opt_row.addWidget(self.rb_md5_upper)
+        opt_row.addWidget(self.rb_md5_lower)
+        # 长度、大小写各为一组互斥；否则同一父容器下的 4 个单选钮会被 Qt 自动归为同一组
+        self._grp_len = QButtonGroup(self)
+        self._grp_len.addButton(self.rb_md5_32)
+        self._grp_len.addButton(self.rb_md5_16)
+        self._grp_case = QButtonGroup(self)
+        self._grp_case.addButton(self.rb_md5_upper)
+        self._grp_case.addButton(self.rb_md5_lower)
+        opt_row.addSpacing(12)
+        self.lbl_text_md5 = QLabel("—")
+        self.lbl_text_md5.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.lbl_text_md5.setFont(QFont(FONT_FAMILY, 10))
+        self._text_md5_raw = ""
+        opt_row.addWidget(self.lbl_text_md5, 1)
+        self.btn_copy_text = QPushButton("复制")
+        self.btn_copy_text.setFixedWidth(60)
+        self.btn_copy_text.setEnabled(False)
+        self.btn_copy_text.clicked.connect(self._copy_text_md5)
+        opt_row.addWidget(self.btn_copy_text)
+        text_v.addLayout(opt_row)
+        root.addWidget(text_box)
+
+        # 信号：输入内容 / 长度 / 大小写任一变化即实时刷新
+        self.text_edit.textChanged.connect(self._refresh_text_md5)
+        self.rb_md5_32.toggled.connect(lambda on: on and self._set_md5_len('32'))
+        self.rb_md5_16.toggled.connect(lambda on: on and self._set_md5_len('16'))
+        self.rb_md5_upper.toggled.connect(lambda on: on and self._set_md5_case(True))
+        self.rb_md5_lower.toggled.connect(lambda on: on and self._set_md5_case(False))
 
         root.addWidget(self.drop_area)
 
@@ -703,6 +768,13 @@ class 哈希校验对话框(对话框基类):
         self.card.setStyleSheet(highlight_card_style(theme_id))
         add_green_glow(self.card, accent=QColor(self._accent))
         self.drop_area.apply_theme(theme_id)
+        # 文本 MD5 输入框 / 结果标签配色跟随主题
+        self._text_input_style = (
+            f"QPlainTextEdit {{ background: {THEMES[theme_id]['bg_input']};"
+            f" color: {THEMES[theme_id]['text_primary']};"
+            f" border: 1px solid {self._accent}; border-radius: 6px; padding: 4px; }}")
+        self.text_edit.setStyleSheet(self._text_input_style)
+        self._refresh_text_md5()
         # 滚动区背景色：跟随主题的输入框底色，避免深色 / 浅色反差突兀
         scroll = self.findChild(QScrollArea)
         if scroll is not None:
@@ -744,6 +816,51 @@ class 哈希校验对话框(对话框基类):
                 raw = lbl.property('raw_value')
                 if raw and isinstance(raw, str):
                     lbl.setText(哈希结果行._显示值(raw, checked))
+
+    # ── 文本 MD5 ──
+
+    def _set_md5_len(self, v):
+        self._md5_len = v
+        self._settings.setValue('text_md5_len', v)
+        self._refresh_text_md5()
+
+    def _set_md5_case(self, upper):
+        self._md5_upper = upper
+        self._settings.setValue('text_md5_upper', upper)
+        self._refresh_text_md5()
+
+    def _refresh_text_md5(self):
+        """按当前输入文本 + 长度 / 大小写选项实时刷新文本 MD5 结果。"""
+        text = self.text_edit.toPlainText()
+        if not text:
+            self._text_md5_raw = ""
+            self.lbl_text_md5.setText("—")
+            self.lbl_text_md5.setStyleSheet(
+                f"color: {THEMES[self._theme_id]['text_disabled']}; background: transparent;")
+            self.btn_copy_text.setEnabled(False)
+            return
+        digest = hashlib.md5(text.encode('utf-8')).hexdigest()
+        if self._md5_len == '16':
+            digest = digest[8:24]  # 16 位：取 32 位结果中间 16 位
+        self._text_md5_raw = digest
+        shown = digest.upper() if self._md5_upper else digest
+        ok_color = self._accent if self._theme_id == 'light_soft' else 哈希结果行._CLR_OK
+        self.lbl_text_md5.setText(shown)
+        self.lbl_text_md5.setStyleSheet(f"color: {ok_color}; background: transparent;")
+        self.btn_copy_text.setEnabled(True)
+
+    def _copy_text_md5(self):
+        if not self._text_md5_raw:
+            return
+        text = self._text_md5_raw.upper() if self._md5_upper else self._text_md5_raw
+        QApplication.clipboard().setText(text)
+        btn = self.btn_copy_text
+        old = btn.text()
+        btn.setText("已复制")
+        btn.setEnabled(False)
+        QApplication.processEvents()
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(800, lambda: (btn.setText(old), btn.setEnabled(True)))
 
     def _enabled(self):
         if not self._enabled_algos:

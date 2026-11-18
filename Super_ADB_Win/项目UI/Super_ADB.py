@@ -366,11 +366,6 @@ class Ui_MainWindow(object):
         self.gridLayout_2 = QGridLayout(self.appScrollContent)
         self.gridLayout_2.setSpacing(6)
         self.gridLayout_2.setObjectName(u"gridLayout_2")
-        self.btnMeminfo = QPushButton(self.appScrollContent)
-        self.btnMeminfo.setObjectName(u"btnMeminfo")
-
-        self.gridLayout_2.addWidget(self.btnMeminfo, 1, 5, 1, 1)
-
         self.btnStopApp = QPushButton(self.appScrollContent)
         self.btnStopApp.setObjectName(u"btnStopApp")
 
@@ -415,7 +410,7 @@ class Ui_MainWindow(object):
         self.btnRunningApps_2 = QPushButton(self.appScrollContent)
         self.btnRunningApps_2.setObjectName(u"btnRunningApps_2")
 
-        self.gridLayout_2.addWidget(self.btnRunningApps_2, 1, 6, 1, 1)
+        self.gridLayout_2.addWidget(self.btnRunningApps_2, 1, 5, 1, 1)
 
         self.btnUninstall = QPushButton(self.appScrollContent)
         self.btnUninstall.setObjectName(u"btnUninstall")
@@ -951,7 +946,6 @@ class Ui_MainWindow(object):
         self.btnInputText.setText(QCoreApplication.translate("MainWindow", u"\u8f93\u5165\u6587\u672c", None))
         self.btnReboot.setText(QCoreApplication.translate("MainWindow", u"\u8bbe\u5907\u91cd\u542f", None))
         self.appGroup.setTitle(QCoreApplication.translate("MainWindow", u"\u5e94\u7528\u64cd\u4f5c", None))
-        self.btnMeminfo.setText(QCoreApplication.translate("MainWindow", u"\u5185\u5b58", None))
         self.btnStopApp.setText(QCoreApplication.translate("MainWindow", u"\u5173\u95ed", None))
         self.btnpm.setText(QCoreApplication.translate("MainWindow", u"\u76d1\u63a7", None))
         self.lblPkg.setText(QCoreApplication.translate("MainWindow", u"\u5305\u540d:", None))

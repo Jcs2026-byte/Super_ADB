@@ -572,7 +572,6 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         # 应用操作
         self.btnStartApp.clicked.connect(self.启动应用)
         self.btnStopApp.clicked.connect(self.停止应用)
-        self.btnMeminfo.clicked.connect(self.显示内存信息)
         self.btnClearApp.clicked.connect(self.清除应用)
         self.btnUninstall.clicked.connect(self.卸载应用)
         self.btnAppInfo.clicked.connect(self.显示应用信息)
@@ -1619,65 +1618,6 @@ class 主窗口(QWidget, Ui_MainWindow, 弹窗打开Mixin, 设备管理Mixin, �
         if not serial or not pkg:
             return
         self._异步运行(self.adb.停止应用, serial, pkg)
-
-    def 显示内存信息(self):
-        serial = self._确保序列号()
-        pkg = self._包名()
-        if not serial or not pkg:
-            return
-        self.output.clear()
-
-        def _任务():
-            raw = self.adb.获取内存信息(serial, pkg)
-            return self._格式化内存信息(raw, pkg)
-
-        self._异步运行(_任务)
-
-    # ------------------------------------------------------------------
-    # meminfo 结果简化（展示层）：只保留关键内存指标
-    # ------------------------------------------------------------------
-    @staticmethod
-    def _格式化千字节(text: str) -> str:
-        """把 KB 数值格式化为 KB + MB 双单位。"""
-        try:
-            kb = int(text.strip())
-        except ValueError:
-            return text.strip()
-        return f'{kb} KB ({kb / 1024:.1f} MB)' if kb >= 1024 else f'{kb} KB'
-
-    @classmethod
-    def _格式化内存信息(cls, raw: str, pkg: str) -> str:
-        lines = [f'包名: {pkg}']
-        m = re.search(r'MEMINFO in pid (\d+)', raw)
-        if m:
-            lines.append(f'进程 PID: {m.group(1)}')
-
-        # 优先用 应用性能监控 里已兼容新旧 Android 的解析器
-        from 工具.android调试工具.应用性能监控 import _parse_meminfo
-        parsed = _parse_meminfo(raw)
-        if 'pss_mb' in parsed:
-            lines.append(f'总 PSS: {cls._格式化千字节(str(int(parsed["pss_mb"] * 1024)))}')
-        if 'rss_mb' in parsed:
-            lines.append(f'总 RSS: {cls._格式化千字节(str(int(parsed["rss_mb"] * 1024)))}')
-
-        lines.append('-' * 32)
-        mapping = [
-            ('Java 堆', 'java_mb', 'Java Heap'),
-            ('Native 堆', 'native_mb', 'Native Heap'),
-            ('代码', None, 'Code'),
-            ('栈', None, 'Stack'),
-            ('图形', 'graphics_mb', 'Graphics'),
-            ('私有其他', None, 'Private Other'),
-            ('系统占用', None, 'System'),
-        ]
-        for name, parsed_key, raw_key in mapping:
-            if parsed_key and parsed_key in parsed:
-                val_kb = int(parsed[parsed_key] * 1024)
-                lines.append(f'{name}: {cls._格式化千字节(str(val_kb))}')
-            else:
-                m = re.search(rf'{re.escape(raw_key)}:\s*(\d+)', raw)
-                lines.append(f'{name}: {cls._格式化千字节(m.group(1)) if m else "未获取"}')
-        return '\n'.join(lines)
 
     def 清除应用(self):
         serial = self._确保序列号()

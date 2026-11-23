@@ -579,12 +579,12 @@ class 哈希校验对话框(对话框基类):
         algo_layout.addWidget(self.spin_conc)
         root.addWidget(algo_box)
 
-        # ── 文本 MD5 区：直接输入字符串计算 MD5（32 / 16 位，可选大小写）──
-        text_box = QGroupBox("文本 MD5")
+        # ── 文本哈希区：直接输入字符串计算 MD5 / SHA-256（MD5 可选 32/16 位，可选大小写）──
+        text_box = QGroupBox("文本哈希")
         text_v = QVBoxLayout(text_box)
         text_v.setSpacing(6)
         self.text_edit = QPlainTextEdit()
-        self.text_edit.setPlaceholderText("输入需要计算 MD5 的文本（按 UTF-8 编码，保留首尾空格与换行）")
+        self.text_edit.setPlaceholderText("输入需要计算哈希的文本（按 UTF-8 编码，保留首尾空格与换行）")
         self.text_edit.setFixedHeight(64)
         self._text_input_style = (
             f"QPlainTextEdit {{ background: {THEMES[self._theme_id]['bg_input']};"
@@ -595,7 +595,7 @@ class 哈希校验对话框(对话框基类):
 
         opt_row = QHBoxLayout()
         opt_row.setSpacing(8)
-        opt_row.addWidget(QLabel("长度："))
+        opt_row.addWidget(QLabel("MD5 长度："))
         self.rb_md5_32 = QRadioButton("32 位")
         self.rb_md5_16 = QRadioButton("16 位")
         self.rb_md5_32.setChecked(self._md5_len == '32')
@@ -618,22 +618,51 @@ class 哈希校验对话框(对话框基类):
         self._grp_case = QButtonGroup(self)
         self._grp_case.addButton(self.rb_md5_upper)
         self._grp_case.addButton(self.rb_md5_lower)
-        opt_row.addSpacing(12)
+        text_v.addLayout(opt_row)
+
+        # MD5 结果行
+        md5_row = QHBoxLayout()
+        md5_row.setSpacing(6)
+        tag_md5 = QLabel("MD5")
+        tag_md5.setStyleSheet(f"color: {self._accent}; font-size: 9pt; font-weight: bold;")
+        tag_md5.setFixedWidth(72)
+        md5_row.addWidget(tag_md5)
         self.lbl_text_md5 = QLabel("—")
         self.lbl_text_md5.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.lbl_text_md5.setFont(QFont(FONT_FAMILY, 10))
+        self.lbl_text_md5.setWordWrap(True)
         self._text_md5_raw = ""
-        opt_row.addWidget(self.lbl_text_md5, 1)
+        md5_row.addWidget(self.lbl_text_md5, 1)
         self.btn_copy_text = QPushButton("复制")
         self.btn_copy_text.setFixedWidth(60)
         self.btn_copy_text.setEnabled(False)
         self.btn_copy_text.clicked.connect(self._copy_text_md5)
-        opt_row.addWidget(self.btn_copy_text)
-        text_v.addLayout(opt_row)
+        md5_row.addWidget(self.btn_copy_text)
+        text_v.addLayout(md5_row)
+
+        # SHA-256 结果行（固定 64 位，长度选项不作用于它）
+        sha_row = QHBoxLayout()
+        sha_row.setSpacing(6)
+        tag_sha = QLabel("SHA-256")
+        tag_sha.setStyleSheet(f"color: {self._accent}; font-size: 9pt; font-weight: bold;")
+        tag_sha.setFixedWidth(72)
+        sha_row.addWidget(tag_sha)
+        self.lbl_text_sha256 = QLabel("—")
+        self.lbl_text_sha256.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.lbl_text_sha256.setFont(QFont(FONT_FAMILY, 10))
+        self.lbl_text_sha256.setWordWrap(True)
+        self._text_sha256_raw = ""
+        sha_row.addWidget(self.lbl_text_sha256, 1)
+        self.btn_copy_sha256 = QPushButton("复制")
+        self.btn_copy_sha256.setFixedWidth(60)
+        self.btn_copy_sha256.setEnabled(False)
+        self.btn_copy_sha256.clicked.connect(self._copy_text_sha256)
+        sha_row.addWidget(self.btn_copy_sha256)
+        text_v.addLayout(sha_row)
         root.addWidget(text_box)
 
         # 信号：输入内容 / 长度 / 大小写任一变化即实时刷新
-        self.text_edit.textChanged.connect(self._refresh_text_md5)
+        self.text_edit.textChanged.connect(self._refresh_text_hash)
         self.rb_md5_32.toggled.connect(lambda on: on and self._set_md5_len('32'))
         self.rb_md5_16.toggled.connect(lambda on: on and self._set_md5_len('16'))
         self.rb_md5_upper.toggled.connect(lambda on: on and self._set_md5_case(True))
@@ -754,7 +783,7 @@ class 哈希校验对话框(对话框基类):
             f" color: {THEMES[theme_id]['text_primary']};"
             f" border: 1px solid {self._accent}; border-radius: 6px; padding: 4px; }}")
         self.text_edit.setStyleSheet(self._text_input_style)
-        self._refresh_text_md5()
+        self._refresh_text_hash()
         # 滚动区背景色：跟随主题的输入框底色，避免深色 / 浅色反差突兀
         scroll = self.findChild(QScrollArea)
         if scroll is not None:
@@ -786,50 +815,64 @@ class 哈希校验对话框(对话框基类):
         self._sem = QSemaphore(val)
         self._settings.setValue('concurrency', val)
 
-    # ── 文本 MD5 ──
+    # ── 文本哈希（MD5 / SHA-256）──
 
     def _set_md5_len(self, v):
         self._md5_len = v
         self._settings.setValue('text_md5_len', v)
-        self._refresh_text_md5()
+        self._refresh_text_hash()
 
     def _set_md5_case(self, upper):
         self._md5_upper = upper
         self._settings.setValue('text_md5_upper', upper)
-        self._refresh_text_md5()
+        self._refresh_text_hash()
 
-    def _refresh_text_md5(self):
-        """按当前输入文本 + 长度 / 大小写选项实时刷新文本 MD5 结果。"""
+    def _refresh_text_hash(self):
+        """按当前输入文本 + 长度 / 大小写选项实时刷新文本 MD5 与 SHA-256 结果。"""
         text = self.text_edit.toPlainText()
+        ok_color = self._accent if self._theme_id == 'light_soft' else 哈希结果行._CLR_OK
+        disabled_color = THEMES[self._theme_id]['text_disabled']
         if not text:
             self._text_md5_raw = ""
-            self.lbl_text_md5.setText("—")
-            self.lbl_text_md5.setStyleSheet(
-                f"color: {THEMES[self._theme_id]['text_disabled']}; background: transparent;")
-            self.btn_copy_text.setEnabled(False)
+            self._text_sha256_raw = ""
+            for lbl, btn in ((self.lbl_text_md5, self.btn_copy_text),
+                             (self.lbl_text_sha256, self.btn_copy_sha256)):
+                lbl.setText("—")
+                lbl.setStyleSheet(f"color: {disabled_color}; background: transparent;")
+                btn.setEnabled(False)
             return
-        digest = hashlib.md5(text.encode('utf-8')).hexdigest()
+        raw_bytes = text.encode('utf-8')
+        md5 = hashlib.md5(raw_bytes).hexdigest()
         if self._md5_len == '16':
-            digest = digest[8:24]  # 16 位：取 32 位结果中间 16 位
-        self._text_md5_raw = digest
-        shown = digest.upper() if self._md5_upper else digest
-        ok_color = self._accent if self._theme_id == 'light_soft' else 哈希结果行._CLR_OK
-        self.lbl_text_md5.setText(shown)
+            md5 = md5[8:24]  # 16 位：取 32 位结果中间 16 位
+        sha256 = hashlib.sha256(raw_bytes).hexdigest()
+        self._text_md5_raw = md5
+        self._text_sha256_raw = sha256
+        self.lbl_text_md5.setText(哈希结果行._显示值(md5, self._md5_upper))
         self.lbl_text_md5.setStyleSheet(f"color: {ok_color}; background: transparent;")
+        self.lbl_text_sha256.setText(哈希结果行._显示值(sha256, self._md5_upper))
+        self.lbl_text_sha256.setStyleSheet(f"color: {ok_color}; background: transparent;")
         self.btn_copy_text.setEnabled(True)
+        self.btn_copy_sha256.setEnabled(True)
 
-    def _copy_text_md5(self):
-        if not self._text_md5_raw:
+    def _复制文本哈希(self, raw, btn):
+        """通用复制：按当前大小写转换后写入剪贴板，按钮短暂反馈「已复制」。"""
+        if not raw:
             return
-        text = self._text_md5_raw.upper() if self._md5_upper else self._text_md5_raw
+        text = raw.upper() if self._md5_upper else raw
         QApplication.clipboard().setText(text)
-        btn = self.btn_copy_text
         old = btn.text()
         btn.setText("已复制")
         btn.setEnabled(False)
         QApplication.processEvents()
         from PySide6.QtCore import QTimer
         QTimer.singleShot(800, lambda: (btn.setText(old), btn.setEnabled(True)))
+
+    def _copy_text_md5(self):
+        self._复制文本哈希(self._text_md5_raw, self.btn_copy_text)
+
+    def _copy_text_sha256(self):
+        self._复制文本哈希(self._text_sha256_raw, self.btn_copy_sha256)
 
     def _enabled(self):
         if not self._enabled_algos:
